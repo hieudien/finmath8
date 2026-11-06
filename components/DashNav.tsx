@@ -116,10 +116,10 @@ export default function DashNav({ email }: { email: string }) {
       )}
 
       {/* Desktop: thanh bên */}
-      <aside className="hidden w-60 shrink-0 flex-col gap-1 border-r border-border bg-surface p-4 md:flex">
+      <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-1 border-r border-border bg-surface p-4 md:flex">
         <Link href="/dashboard" className="mb-4" aria-label="FinMath 8, về tổng quan"><Brand /></Link>
-        <nav aria-label="Chính" className="flex flex-col gap-1">{ITEMS.map(([h, l]) => link(h, l, "flex min-h-11 items-center rounded-sm px-3"))}</nav>
-        <div className="mt-auto flex flex-col gap-2 border-t border-border pt-3">
+        <nav aria-label="Chính" className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-1">{ITEMS.map(([h, l]) => link(h, l, "flex min-h-11 items-center rounded-sm px-3"))}</nav>
+        <div className="mt-auto flex shrink-0 flex-col gap-2 border-t border-border pt-3">
           <p className="truncate text-sm text-text-muted" title={email}>{email}</p>
           {err && <Alert tone="danger">{err}</Alert>}
               <Button variant="secondary" onClick={logout} pending={busy ? "Đang đăng xuất..." : undefined}>Đăng xuất</Button>
