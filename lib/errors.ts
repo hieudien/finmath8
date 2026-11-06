@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import { log } from "@/lib/log";
 
 export type Who = "teacher" | "student";
@@ -30,7 +29,7 @@ export function friendly(e: unknown, who: Who = "teacher"): Friendly {
 
 // Ghi lỗi vào nhật ký (giáo viên thấy ở trang Nhật ký) và trả mã lỗi ngắn để người dùng gửi cho admin.
 export async function reportError(e: unknown, where: string, ctx: Ctx = {}) {
-  const ref = randomBytes(3).toString("hex").toUpperCase();
+  const ref = Array.from(globalThis.crypto.getRandomValues(new Uint8Array(3)), (byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase();
   console.error(`[${ref}] ${where}`, e);
   try {
     await log({ actor: "system", action: "error", teacherId: ctx.teacherId, linkId: ctx.linkId, anonId: ctx.anonId, meta: { ref, where, message: String((e as Error)?.message ?? e).slice(0, 300) } });
