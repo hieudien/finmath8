@@ -1,0 +1,572 @@
+[
+  {
+    "id": "TC01",
+    "title": "Lựa chọn cửa hàng mua vở tiết kiệm",
+    "grade": 8,
+    "topic": "Mua sắm thông minh",
+    "statement": "An có 300.000 đồng để mua vở (giá niêm yết 10.000 đồng/quyển). Cửa hàng A giảm 15% mỗi quyển, phí giao hàng 20.000 đồng. Cửa hàng B giảm 10% mỗi quyển, miễn phí giao hàng. An mua số vở trị giá 300.000 đồng theo giá niêm yết thì nên mua ở cửa hàng nào để tiết kiệm nhất? Giải thích.",
+    "learning_objectives": [
+      "Xác định đại lượng so sánh",
+      "Tính toán tỷ lệ phần trăm",
+      "Đánh giá và giải thích kết quả"
+    ],
+    "data": {
+      "budget": 300000,
+      "price": 10000,
+      "discount_A": 0.15,
+      "fee_A": 20000,
+      "discount_B": 0.1,
+      "fee_B": 0
+    },
+    "solution": {
+      "cost_A": 275000,
+      "cost_B": 270000,
+      "best": "B"
+    },
+    "common_errors": [
+      "Quên phí giao hàng của A",
+      "Tính phần trăm nhầm"
+    ],
+    "hints": [
+      {
+        "level": 1,
+        "text": "Cần so sánh đại lượng nào giữa hai cửa hàng?"
+      },
+      {
+        "level": 2,
+        "text": "Tính tổng tiền phải trả ở cửa hàng A đi."
+      },
+      {
+        "level": 3,
+        "text": "Tính tiền giảm giá ở A (15% của 300.000), lấy 300.000 trừ đi, rồi cộng phí giao hàng. Em ra bao nhiêu?"
+      }
+    ],
+    "extension": "Nếu An chỉ mua 20 quyển vở (giá niêm yết 200.000 đồng) thì lựa chọn nào tốt hơn? Vì sao?",
+    "rubric": {
+      "identify": 3,
+      "plan": 3,
+      "calculate": 3,
+      "explain": 3
+    },
+    "solution_steps": [
+      "Số vở cần mua có giá niêm yết 300.000 đồng.",
+      "Cửa hàng A giảm 15% nên chỉ trả 85%: 300.000 × 0,85 = 255.000 đồng. Cộng phí giao hàng 20.000 đồng: 255.000 + 20.000 = 275.000 đồng.",
+      "Cửa hàng B giảm 10% nên chỉ trả 90%: 300.000 × 0,9 = 270.000 đồng. Miễn phí giao hàng nên tổng là 270.000 đồng.",
+      "So sánh: 270.000 < 275.000, nên cửa hàng B rẻ hơn 5.000 đồng.",
+      "Kết luận: An nên mua ở cửa hàng B."
+    ]
+  },
+  {
+    "id": "TC02",
+    "title": "Lập kế hoạch tiết kiệm mua bộ dụng cụ học tập",
+    "grade": 8,
+    "topic": "Kế hoạch chi tiêu",
+    "statement": "Minh muốn mua một bộ dụng cụ vẽ giá 480.000 đồng. Hiện Minh có 120.000 đồng và mỗi tuần để dành thêm 40.000 đồng. Sau bao nhiêu tuần Minh đủ tiền mua? Hãy lập phương trình để giải.",
+    "learning_objectives": [
+      "Lập biểu thức tính số tiền tiết kiệm theo số tuần",
+      "Giải phương trình bậc nhất một ẩn",
+      "Kiểm tra nghiệm theo ngữ cảnh"
+    ],
+    "data": {
+      "target": 480000,
+      "saved": 120000,
+      "weekly": 40000
+    },
+    "solution": {
+      "equation": "120000 + 40000x = 480000",
+      "weeks": 9
+    },
+    "common_errors": [
+      "Quên trừ số tiền đã có sẵn",
+      "Chia 480.000 cho 40.000 mà không trừ 120.000",
+      "Không kiểm tra lại nghiệm bằng cách thay vào"
+    ],
+    "hints": [
+      {
+        "level": 1,
+        "text": "Em cần tìm đại lượng nào? Ta gọi nó là x."
+      },
+      {
+        "level": 2,
+        "text": "Viết biểu thức số tiền Minh có sau x tuần, rồi cho nó bằng giá bộ dụng cụ."
+      },
+      {
+        "level": 3,
+        "text": "Số tiền sau x tuần là 120.000 cộng với 40.000 nhân x. Em lập phương trình và chuyển vế xem."
+      }
+    ],
+    "extension": "Nếu Minh tiết kiệm mỗi tuần 60.000 đồng thì mua sớm hơn mấy tuần?",
+    "rubric": {
+      "identify": 3,
+      "plan": 3,
+      "calculate": 3,
+      "explain": 3
+    },
+    "solution_steps": [
+      "Gọi x là số tuần Minh tiết kiệm. Sau x tuần Minh có 120.000 + 40.000x đồng.",
+      "Minh đủ tiền khi số tiền đó bằng giá bộ dụng cụ: 120.000 + 40.000x = 480.000.",
+      "Chuyển vế: 40.000x = 480.000 − 120.000 = 360.000. Suy ra x = 360.000 ÷ 40.000 = 9.",
+      "Kiểm tra: 120.000 + 40.000 × 9 = 480.000 (đúng).",
+      "Kết luận: Sau 9 tuần Minh đủ tiền mua."
+    ]
+  },
+  {
+    "id": "TC03",
+    "title": "So sánh hai chương trình khuyến mãi mua áo",
+    "grade": 8,
+    "topic": "Mua hàng khuyến mãi",
+    "statement": "Chiếc áo giá niêm yết 400.000 đồng. Cửa hàng có hai khuyến mãi (chỉ chọn một): KM1 giảm 20% giá niêm yết. KM2 giảm 50.000 đồng, sau đó giảm thêm 10% trên số tiền còn lại. Em chọn khuyến mãi nào để trả ít tiền hơn, và ít hơn bao nhiêu?",
+    "learning_objectives": [
+      "Tính tiền sau giảm giá nhiều lần",
+      "So sánh hai phương án",
+      "Giải thích lựa chọn bằng số liệu"
+    ],
+    "data": {
+      "price": 400000,
+      "km1_percent": 0.2,
+      "km2_fixed": 50000,
+      "km2_percent": 0.1
+    },
+    "solution": {
+      "cost_KM1": 320000,
+      "cost_KM2": 315000,
+      "best": "KM2",
+      "difference": 5000
+    },
+    "common_errors": [
+      "Giảm 10% trên giá niêm yết thay vì trên số tiền còn lại",
+      "Cộng 20% với số khác rồi tính một lần",
+      "Quên so sánh hai kết quả"
+    ],
+    "hints": [
+      {
+        "level": 1,
+        "text": "Muốn chọn khuyến mãi, em cần biết đại lượng nào của mỗi khuyến mãi?"
+      },
+      {
+        "level": 2,
+        "text": "Tính số tiền phải trả theo KM1 trước, rồi theo KM2. Chú ý KM2 giảm hai lần."
+      },
+      {
+        "level": 3,
+        "text": "Với KM2: lấy 400.000 trừ 50.000 trước, rồi mới tính 90% của số vừa ra. Em tính thử."
+      }
+    ],
+    "extension": "Giá niêm yết là bao nhiêu thì hai khuyến mãi cho số tiền phải trả bằng nhau?",
+    "rubric": {
+      "identify": 3,
+      "plan": 3,
+      "calculate": 3,
+      "explain": 3
+    },
+    "solution_steps": [
+      "KM1: giảm 20% nên trả 80%: 400.000 × 0,8 = 320.000 đồng.",
+      "KM2: giảm 50.000 đồng trước: 400.000 − 50.000 = 350.000 đồng. Giảm thêm 10% trên số còn lại: 350.000 × 0,9 = 315.000 đồng.",
+      "So sánh: 315.000 < 320.000, KM2 rẻ hơn 320.000 − 315.000 = 5.000 đồng.",
+      "Kết luận: Chọn KM2, tiết kiệm hơn 5.000 đồng."
+    ]
+  },
+  {
+    "id": "TC04",
+    "title": "Chọn gói cước điện thoại phù hợp",
+    "grade": 8,
+    "topic": "Dịch vụ, gói cước",
+    "statement": "Gói A: 60.000 đồng/tháng gồm 5 GB, mỗi GB vượt thêm 10.000 đồng. Gói B: 90.000 đồng/tháng gồm 12 GB. Tháng này Lan dùng 9 GB. Gói nào rẻ hơn? Với bao nhiêu GB thì hai gói tốn bằng nhau (trong khoảng từ 5 đến 12 GB)?",
+    "learning_objectives": [
+      "Lập biểu thức chi phí theo mức sử dụng",
+      "Giải phương trình để tìm điểm hòa vốn",
+      "So sánh hai gói dịch vụ"
+    ],
+    "data": {
+      "A_fee": 60000,
+      "A_included_gb": 5,
+      "A_extra_per_gb": 10000,
+      "B_fee": 90000,
+      "B_included_gb": 12,
+      "used_gb": 9
+    },
+    "solution": {
+      "cost_A": 100000,
+      "cost_B": 90000,
+      "best": "B",
+      "equal_at_gb": 8
+    },
+    "common_errors": [
+      "Tính tiền vượt trên cả 9 GB thay vì 4 GB",
+      "Quên cộng cước cố định của gói A",
+      "Bỏ điều kiện dùng trên 5 GB khi lập phương trình"
+    ],
+    "hints": [
+      {
+        "level": 1,
+        "text": "Lan dùng 9 GB. Với gói A, phần nào là cước cố định, phần nào là phần vượt?"
+      },
+      {
+        "level": 2,
+        "text": "Tìm số GB vượt của gói A trước, rồi tính tiền vượt, rồi cộng cước cố định."
+      },
+      {
+        "level": 3,
+        "text": "Số GB vượt của gói A là 9 trừ 5. Nhân số đó với 10.000 rồi cộng 60.000. Em ra bao nhiêu?"
+      }
+    ],
+    "extension": "Nếu Lan dùng 6 GB thì gói nào rẻ hơn? Vì sao kết quả đổi so với 9 GB?",
+    "rubric": {
+      "identify": 3,
+      "plan": 3,
+      "calculate": 3,
+      "explain": 3
+    },
+    "solution_steps": [
+      "Gói A: Lan dùng 9 GB, vượt 9 − 5 = 4 GB. Tiền vượt: 4 × 10.000 = 40.000 đồng. Tổng: 60.000 + 40.000 = 100.000 đồng.",
+      "Gói B: 9 GB không vượt 12 GB nên chỉ trả 90.000 đồng.",
+      "So sánh: 90.000 < 100.000, gói B rẻ hơn 10.000 đồng.",
+      "Tìm điểm bằng nhau: gọi x là số GB (5 ≤ x ≤ 12). Gói A tốn 60.000 + 10.000(x − 5). Cho bằng 90.000: 10.000(x − 5) = 30.000, suy ra x − 5 = 3, x = 8.",
+      "Kết luận: Dùng 9 GB thì gói B rẻ hơn. Hai gói tốn bằng nhau khi dùng 8 GB."
+    ]
+  },
+  {
+    "id": "TC05",
+    "title": "Lãi đơn và lãi kép khi gửi tiết kiệm",
+    "grade": 8,
+    "topic": "Tài chính cá nhân",
+    "statement": "Bình có 50.000.000 đồng gửi 2 năm. Ngân hàng X trả lãi đơn 6%/năm (lãi mỗi năm tính trên số tiền gốc). Ngân hàng Y trả lãi kép 6%/năm (lãi năm đầu được cộng vào gốc để tính lãi năm sau). Sau 2 năm, Bình nhận được bao nhiêu tiền ở mỗi ngân hàng? Nên gửi ở đâu?",
+    "learning_objectives": [
+      "Phân biệt lãi đơn và lãi kép",
+      "Tính phần trăm liên tiếp",
+      "So sánh và rút ra kết luận"
+    ],
+    "data": {
+      "principal": 50000000,
+      "rate": 0.06,
+      "years": 2
+    },
+    "solution": {
+      "simple_total": 56000000,
+      "compound_total": 56180000,
+      "difference": 180000,
+      "best": "Y"
+    },
+    "common_errors": [
+      "Dùng lãi đơn cho cả hai ngân hàng",
+      "Tính lãi năm hai trên số gốc ban đầu ở ngân hàng Y",
+      "Quên cộng tiền gốc vào tổng nhận được"
+    ],
+    "hints": [
+      {
+        "level": 1,
+        "text": "Hai ngân hàng khác nhau ở điểm nào khi tính lãi năm thứ hai?"
+      },
+      {
+        "level": 2,
+        "text": "Tính số tiền sau năm thứ nhất ở ngân hàng Y, rồi lấy đó làm gốc cho năm thứ hai."
+      },
+      {
+        "level": 3,
+        "text": "Ở Y, sau năm thứ nhất em có gốc nhân 106%. Năm thứ hai lại nhân 106% số vừa tính. Em tính thử."
+      }
+    ],
+    "extension": "Nếu gửi 3 năm thì chênh lệch giữa hai ngân hàng tăng hay giảm? Vì sao?",
+    "rubric": {
+      "identify": 3,
+      "plan": 3,
+      "calculate": 3,
+      "explain": 3
+    },
+    "solution_steps": [
+      "Ngân hàng X (lãi đơn): lãi mỗi năm là 50.000.000 × 6% = 3.000.000 đồng. Hai năm lãi 6.000.000 đồng. Tổng nhận: 50.000.000 + 6.000.000 = 56.000.000 đồng.",
+      "Ngân hàng Y (lãi kép), năm 1: 50.000.000 × 1,06 = 53.000.000 đồng.",
+      "Ngân hàng Y, năm 2 (lấy 53.000.000 làm gốc): 53.000.000 × 1,06 = 56.180.000 đồng.",
+      "Chênh lệch: 56.180.000 − 56.000.000 = 180.000 đồng.",
+      "Kết luận: Nên gửi ngân hàng Y vì nhận nhiều hơn 180.000 đồng."
+    ]
+  },
+  {
+    "id": "TC06",
+    "title": "Mua xe đạp trả góp",
+    "grade": 8,
+    "topic": "Tín dụng mua sắm",
+    "statement": "Chiếc xe đạp giá 3.000.000 đồng. Cửa hàng cho trả góp: trả trước 20% giá xe, phần còn lại vay trong 6 tháng với lãi đơn 1%/tháng tính trên số tiền vay, trả đều mỗi tháng. Tổng số tiền phải trả là bao nhiêu? Mỗi tháng trả bao nhiêu? Trả góp đắt hơn trả tiền mặt bao nhiêu?",
+    "learning_objectives": [
+      "Tính phần trăm của một số",
+      "Tính lãi đơn theo tháng",
+      "So sánh tổng chi phí vay với trả tiền mặt"
+    ],
+    "data": {
+      "price": 3000000,
+      "down_percent": 0.2,
+      "months": 6,
+      "monthly_rate": 0.01
+    },
+    "solution": {
+      "down_payment": 600000,
+      "loan": 2400000,
+      "interest": 144000,
+      "total": 3144000,
+      "monthly": 424000,
+      "extra_vs_cash": 144000
+    },
+    "common_errors": [
+      "Tính lãi trên cả giá xe thay vì số tiền vay",
+      "Quên cộng khoản trả trước vào tổng",
+      "Chia lãi mà không chia phần gốc cho 6 tháng"
+    ],
+    "hints": [
+      {
+        "level": 1,
+        "text": "Trước hết, em cần biết số tiền thực sự phải vay là bao nhiêu?"
+      },
+      {
+        "level": 2,
+        "text": "Tính số tiền trả trước, suy ra số tiền vay, rồi tính tổng lãi trong 6 tháng."
+      },
+      {
+        "level": 3,
+        "text": "Số tiền vay là 3.000.000 trừ khoản trả trước. Lãi là số tiền vay nhân 1% nhân 6. Em tính thử."
+      }
+    ],
+    "extension": "Nếu trả trước 40% thì tổng lãi giảm bao nhiêu?",
+    "rubric": {
+      "identify": 3,
+      "plan": 3,
+      "calculate": 3,
+      "explain": 3
+    },
+    "solution_steps": [
+      "Tiền trả trước: 3.000.000 × 20% = 600.000 đồng.",
+      "Số tiền vay: 3.000.000 − 600.000 = 2.400.000 đồng.",
+      "Tiền lãi 6 tháng (lãi đơn 1%/tháng): 2.400.000 × 1% × 6 = 144.000 đồng.",
+      "Tổng số tiền phải trả: 600.000 + 2.400.000 + 144.000 = 3.144.000 đồng.",
+      "Mỗi tháng trả: (2.400.000 + 144.000) ÷ 6 = 424.000 đồng.",
+      "So với trả tiền mặt: 3.144.000 − 3.000.000 = 144.000 đồng. Trả góp đắt hơn đúng bằng tiền lãi."
+    ]
+  },
+  {
+    "id": "TC07",
+    "title": "Phân bổ ngân sách ăn trưa trong tuần",
+    "grade": 8,
+    "topic": "Quản lý chi tiêu",
+    "statement": "Một tuần học 5 ngày, em có 350.000 đồng cho ăn trưa và nước uống. Tiền nước uống cả tuần là 30.000 đồng. Ba ngày đầu em ăn hết 70.000 đồng mỗi ngày. Hai ngày còn lại, mỗi ngày em được chi tối đa bao nhiêu để không vượt ngân sách (giả sử hai ngày chi bằng nhau)?",
+    "learning_objectives": [
+      "Lập biểu thức chi tiêu",
+      "Giải phương trình bậc nhất",
+      "So sánh chi phí thực tế với dự tính"
+    ],
+    "data": {
+      "budget": 350000,
+      "drinks": 30000,
+      "days_spent": 3,
+      "per_day_spent": 70000,
+      "days_left": 2
+    },
+    "solution": {
+      "equation": "3*70000 + 2x + 30000 = 350000",
+      "remaining_budget": 110000,
+      "max_per_day": 55000
+    },
+    "common_errors": [
+      "Quên trừ tiền nước uống",
+      "Chia cho 5 ngày thay vì 2 ngày còn lại",
+      "Lập phương trình thiếu số tiền ba ngày đầu"
+    ],
+    "hints": [
+      {
+        "level": 1,
+        "text": "Em đã tiêu những khoản nào, và còn khoản nào chưa tiêu?"
+      },
+      {
+        "level": 2,
+        "text": "Gọi x là số tiền mỗi ngày trong hai ngày còn lại. Viết tổng các khoản chi bằng ngân sách."
+      },
+      {
+        "level": 3,
+        "text": "Tổng chi gồm: 3 lần 70.000, cộng 2 lần x, cộng 30.000 tiền nước. Cho tổng đó bằng 350.000 rồi giải."
+      }
+    ],
+    "extension": "Nếu em muốn dư lại ít nhất 20.000 đồng thì mỗi ngày trong hai ngày còn lại tối đa bao nhiêu?",
+    "rubric": {
+      "identify": 3,
+      "plan": 3,
+      "calculate": 3,
+      "explain": 3
+    },
+    "solution_steps": [
+      "Gọi x là số tiền chi mỗi ngày trong hai ngày còn lại.",
+      "Tổng chi bằng ngân sách: 3 × 70.000 + 2x + 30.000 = 350.000.",
+      "Rút gọn: 210.000 + 2x + 30.000 = 350.000, nên 2x = 350.000 − 240.000 = 110.000.",
+      "Suy ra x = 110.000 ÷ 2 = 55.000.",
+      "Kết luận: Hai ngày còn lại, mỗi ngày chi tối đa 55.000 đồng."
+    ]
+  },
+  {
+    "id": "TC08",
+    "title": "Đầu tư cổ phiếu đơn giản: lời hay lỗ",
+    "grade": 8,
+    "topic": "Đầu tư tài chính",
+    "statement": "Hùng mua 100 cổ phiếu, giá 25.000 đồng/cổ phiếu. Sau 1 tháng giá lên 27.000 đồng/cổ phiếu và Hùng bán hết. Phí bán là 0,2% giá trị bán. Hùng lãi ròng bao nhiêu tiền, tỉ suất sinh lời là bao nhiêu phần trăm (làm tròn 2 chữ số thập phân)? Nếu gửi cùng số vốn vào ngân hàng lãi 0,5%/tháng thì được lãi bao nhiêu? Em nhận xét gì về hai cách?",
+    "learning_objectives": [
+      "Tính giá trị mua, bán và phí",
+      "Tính tỉ suất sinh lời",
+      "Đánh giá lợi nhuận và rủi ro"
+    ],
+    "data": {
+      "shares": 100,
+      "buy_price": 25000,
+      "sell_price": 27000,
+      "fee_rate": 0.002,
+      "bank_rate": 0.005
+    },
+    "solution": {
+      "buy_value": 2500000,
+      "sell_value": 2700000,
+      "fee": 5400,
+      "net_profit": 194600,
+      "return_percent": 7.78,
+      "bank_interest": 12500
+    },
+    "common_errors": [
+      "Quên trừ phí bán",
+      "Tính tỉ suất sinh lời trên giá trị bán thay vì vốn bỏ ra",
+      "Bỏ qua yếu tố rủi ro khi so sánh với tiết kiệm"
+    ],
+    "hints": [
+      {
+        "level": 1,
+        "text": "Lãi ròng là hiệu của những khoản tiền nào?"
+      },
+      {
+        "level": 2,
+        "text": "Tính tiền vốn bỏ ra, tiền thu về khi bán, rồi trừ phí bán."
+      },
+      {
+        "level": 3,
+        "text": "Tỉ suất sinh lời bằng lãi ròng chia cho vốn bỏ ra, rồi nhân 100%. Em lấy lãi ròng đã tính chia cho vốn xem."
+      }
+    ],
+    "extension": "Nếu giá giảm xuống 24.000 đồng/cổ phiếu thì Hùng lỗ bao nhiêu? Vì sao cổ phiếu có rủi ro hơn gửi tiết kiệm?",
+    "rubric": {
+      "identify": 3,
+      "plan": 3,
+      "calculate": 3,
+      "explain": 3
+    },
+    "solution_steps": [
+      "Vốn bỏ ra: 100 × 25.000 = 2.500.000 đồng.",
+      "Tiền bán: 100 × 27.000 = 2.700.000 đồng. Phí bán 0,2%: 2.700.000 × 0,002 = 5.400 đồng.",
+      "Lãi ròng: 2.700.000 − 5.400 − 2.500.000 = 194.600 đồng.",
+      "Tỉ suất sinh lời: 194.600 ÷ 2.500.000 × 100% ≈ 7,78%.",
+      "Gửi ngân hàng cùng số vốn: 2.500.000 × 0,5% = 12.500 đồng.",
+      "Nhận xét: Cổ phiếu lãi nhiều hơn trong trường hợp này, nhưng giá có thể giảm nên có rủi ro lỗ. Gửi tiết kiệm lãi ít hơn nhưng an toàn."
+    ]
+  },
+  {
+    "id": "TC09",
+    "title": "Giá tai nghe sau giảm giá và thuế VAT",
+    "grade": 8,
+    "topic": "Mua sắm thông minh",
+    "statement": "Tai nghe có giá chưa VAT là 500.000 đồng, VAT 8%. Cửa hàng A giảm 10% giá chưa VAT, sau đó mới cộng VAT. Cửa hàng B tính VAT trước rồi giảm thẳng 50.000 đồng. Em mua ở cửa hàng nào rẻ hơn và rẻ hơn bao nhiêu?",
+    "learning_objectives": [
+      "Tính phần trăm liên tiếp (giảm giá, VAT)",
+      "Phân biệt thứ tự các phép tính phần trăm",
+      "So sánh và kết luận"
+    ],
+    "data": {
+      "price_before_vat": 500000,
+      "vat": 0.08,
+      "A_discount": 0.1,
+      "B_fixed_discount": 50000
+    },
+    "solution": {
+      "cost_A": 486000,
+      "cost_B": 490000,
+      "best": "A",
+      "difference": 4000
+    },
+    "common_errors": [
+      "Giảm 10% trên giá đã có VAT rồi tính VAT lần nữa",
+      "Quên cộng VAT ở cửa hàng A",
+      "Trừ 50.000 trước khi cộng VAT ở cửa hàng B"
+    ],
+    "hints": [
+      {
+        "level": 1,
+        "text": "Ở mỗi cửa hàng, giá cuối cùng gồm những bước tính nào, theo thứ tự nào?"
+      },
+      {
+        "level": 2,
+        "text": "Cửa hàng A: giảm giá trước, VAT sau. Cửa hàng B: VAT trước, trừ tiền sau. Em tính A trước."
+      },
+      {
+        "level": 3,
+        "text": "Ở A: lấy 500.000 nhân 90%, rồi nhân tiếp 108%. Em tính thử."
+      }
+    ],
+    "extension": "Nếu cửa hàng B giảm thẳng 60.000 đồng thì chọn cửa hàng nào?",
+    "rubric": {
+      "identify": 3,
+      "plan": 3,
+      "calculate": 3,
+      "explain": 3
+    },
+    "solution_steps": [
+      "Cửa hàng A: giảm 10% giá chưa VAT: 500.000 × 0,9 = 450.000 đồng. Cộng VAT 8%: 450.000 × 1,08 = 486.000 đồng.",
+      "Cửa hàng B: tính VAT trước: 500.000 × 1,08 = 540.000 đồng. Trừ 50.000 đồng: 540.000 − 50.000 = 490.000 đồng.",
+      "So sánh: 486.000 < 490.000, cửa hàng A rẻ hơn 4.000 đồng.",
+      "Kết luận: Mua ở cửa hàng A."
+    ]
+  },
+  {
+    "id": "TC10",
+    "title": "Chia chi phí chuyến tham quan của nhóm",
+    "grade": 8,
+    "topic": "Quản lý chi tiêu",
+    "statement": "Một nhóm bạn đi tham quan. Mỗi bạn trả tiền vé 40.000 đồng. Tiền thuê xe chung là 240.000 đồng, chia đều cho các bạn. Biết mỗi bạn phải trả tổng cộng 52.000 đồng. Nhóm có bao nhiêu bạn?",
+    "learning_objectives": [
+      "Lập phương trình từ bài toán chia đều",
+      "Giải phương trình bậc nhất một ẩn",
+      "Kiểm tra nghiệm theo ngữ cảnh"
+    ],
+    "data": {
+      "ticket": 40000,
+      "bus": 240000,
+      "per_person_total": 52000
+    },
+    "solution": {
+      "equation": "40000x + 240000 = 52000x",
+      "students": 20
+    },
+    "common_errors": [
+      "Quên nhân tiền vé với số bạn",
+      "Không quy đổi tiền thuê xe thành tiền mỗi bạn",
+      "Không thử lại nghiệm"
+    ],
+    "hints": [
+      {
+        "level": 1,
+        "text": "Em cần tìm gì? Ta gọi số bạn trong nhóm là x."
+      },
+      {
+        "level": 2,
+        "text": "Viết tổng số tiền cả nhóm phải trả theo hai cách: theo vé cộng xe, và theo số tiền mỗi bạn nhân x."
+      },
+      {
+        "level": 3,
+        "text": "Tổng cả nhóm là 40.000 nhân x cộng 240.000. Mặt khác là 52.000 nhân x. Cho hai biểu thức bằng nhau rồi giải."
+      }
+    ],
+    "extension": "Nếu có thêm 5 bạn tham gia thì mỗi bạn trả bao nhiêu?",
+    "rubric": {
+      "identify": 3,
+      "plan": 3,
+      "calculate": 3,
+      "explain": 3
+    },
+    "solution_steps": [
+      "Gọi x là số bạn trong nhóm.",
+      "Tổng số tiền cả nhóm trả: tiền vé 40.000x cộng tiền xe 240.000, tức 40.000x + 240.000. Mặt khác, mỗi bạn trả 52.000 nên cả nhóm trả 52.000x.",
+      "Lập phương trình: 40.000x + 240.000 = 52.000x, suy ra 240.000 = 12.000x, nên x = 20.",
+      "Kiểm tra: mỗi bạn trả 40.000 + 240.000 ÷ 20 = 52.000 (đúng).",
+      "Kết luận: Nhóm có 20 bạn."
+    ]
+  }
+]
