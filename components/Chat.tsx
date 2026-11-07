@@ -19,6 +19,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   const [rated, setRated] = useState(false);
   const [sure, setSure] = useState(false); // đã tự đánh giá mức hiểu bài
   const [text, setText] = useState("");
+  const [showStmt, setShowStmt] = useState(true); // đề bài ghim phía trên; học sinh có thể thu gọn khi cần thêm chỗ
   const end = useRef<HTMLDivElement>(null);
   const started = useRef(false);
   const tok = useRef(0); // mỗi lần mở bài/quay lại tăng 1: phản hồi của lần cũ đến muộn thì bỏ
@@ -58,7 +59,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   // Quay lại danh sách đề. Phiên đang làm dở để nguyên ("Bỏ dở"), giống khi học sinh đóng tab.
   function back() {
     tok.current++;
-    setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setSure(false); setText(""); setErr(""); setBusy(false);
+    setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setSure(false); setText(""); setErr(""); setBusy(false); setShowStmt(true);
   }
 
   async function finishNow() {
@@ -111,8 +112,17 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
         {problems.length > 1 && <Button variant="ghost" type="button" onClick={back} className="mt-1 -ml-3 text-sm">← Danh sách đề</Button>}
       </header>
 
+      {prob.statement && (
+        <section aria-label="Đề bài" className="shrink-0 border-b border-border border-l-4 border-l-primary bg-primary-soft px-4 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-primary">Đề bài</h2>
+            <Button variant="ghost" type="button" onClick={() => setShowStmt((v) => !v)} aria-expanded={showStmt} className="-mr-3 text-sm">{showStmt ? "Thu gọn" : "Xem đề"}</Button>
+          </div>
+          {showStmt && <div className="max-h-[35dvh] overflow-y-auto pb-1 text-base"><MathText text={prob.statement} /></div>}
+        </section>
+      )}
+
       <div className="flex-1 overflow-y-auto px-4 py-4" role="log" aria-live="polite">
-        {prob.statement && <p className="mb-4 rounded-sm border border-border bg-surface px-3 py-2 text-sm"><MathText text={prob.statement} /></p>}
         <ul className="flex flex-col gap-3">
           {msgs.map((m, i) => (
             <li key={i} className={`max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 ${m.role === "bot" ? "self-start bg-surface border border-border" : "self-end bg-primary text-on-primary"}`}>

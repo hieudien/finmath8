@@ -59,25 +59,27 @@ async function callOpenAI(cfg: LlmCfg, system: string, turns: Turn[], json = tru
 const dead = new Map<string, number>();
 const deadKey = (c: LlmCfg, model: string) => `${c.provider}:${c.key.slice(-8)}:${model}`;
 const isQuota = (e: unknown) => /PerDay|insufficient_quota|RESOURCE_EXHAUSTED|429|no longer available|404/i.test(String(e));
-const isOverload = (e: unknown) => /\b50\d\b|UNAVAILABLE|overload|high demand/i.test(String(e));
+const isOverload = (e: unknown) => /\b50\d\b|UNAVAILABLE|overload|high demand|AI_SLOW/i.test(String(e));
 const isLongQuota = (e: unknown) => /PerDay|insufficient_quota|no longer available|404/i.test(String(e));
 
 // Hết quota (hoặc model không còn) thì tự thử model kế tiếp của cùng nhà cung cấp, tối đa 4 model.
-export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string, turns: Turn[], schema: T, opts: { think?: boolean; maxTokens?: number; deadlineMs?: number } = {}): Promise<z.infer<T>> {
+export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string, turns: Turn[], schema: T, opts: { think?: boolean; maxTokens?: number; deadlineMs?: number; attemptMs?: number } = {}): Promise<z.infer<T>> {
   const cfg = { ...cfg0, ...opts };
   const deadline = Date.now() + (opts.deadlineMs ?? Infinity); // chat đặt hạn chót để trả lỗi thân thiện trước khi trình duyệt tự báo timeout
-  const all = [cfg.model, ...PROVIDERS[cfg.provider].models.map((m) => m.id).filter((id) => id !== cfg.model)].slice(0, 4);
+  const all = [cfg.model, ...PROVIDERS[cfg.provider].models.filter((id) => id !== cfg.model)].slice(0, 4);
   const alive = all.filter((m) => (dead.get(deadKey(cfg, m)) ?? 0) < Date.now());
   const chain = alive.length ? alive : [cfg.model];
   let last: unknown;
   for (let i = 0; i < chain.length; i++) {
     const left = deadline - Date.now();
     if (left <= 0) throw last ?? new Error("AI_TIMEOUT: quá thời gian chờ AI");
+    // Mỗi model (trừ model cuối) chỉ được chờ attemptMs: Google thỉnh thoảng chậm 5-9s, chờ tiếp không bằng đổi model ngay.
+    const cap = i + 1 < chain.length ? Math.min(left, opts.attemptMs ?? Infinity) : left;
     try {
       const run = askOne({ ...cfg, model: chain[i] }, system, turns, schema);
-      if (left === Infinity) return await run;
+      if (cap === Infinity) return await run;
       let timer: ReturnType<typeof setTimeout>;
-      const timeout = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error("AI_TIMEOUT: quá thời gian chờ AI")), left); });
+      const timeout = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error(cap < left ? "AI_SLOW: model trả lời quá chậm" : "AI_TIMEOUT: quá thời gian chờ AI")), cap); });
       return await Promise.race([run, timeout]).finally(() => clearTimeout(timer));
     } catch (e) {
       if (/AI_TIMEOUT/.test(String(e))) throw last && isQuota(last) ? last : e;
@@ -85,7 +87,7 @@ export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string,
       if (!quota && !isOverload(e)) throw e;
       last = e;
       // Hết quota ngày: nhớ 1 giờ. 429 theo phút chỉ tạm thời (cả lớp dùng chung 1 key): nhớ 20 giây. Quá tải 503: 1 phút.
-      dead.set(deadKey(cfg, chain[i]), Date.now() + (isLongQuota(e) ? 3_600_000 : quota ? 20_000 : 60_000));
+      dead.set(deadKey(cfg, chain[i]), Date.now() + (isLongQuota(e) ? 3_600_000 : quota || /AI_SLOW/.test(String(e)) ? 20_000 : 60_000));
       if (i + 1 < chain.length) cfg.onFallback?.(chain[i], chain[i + 1], String(e).slice(0, 120));
     }
   }

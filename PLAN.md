@@ -12,7 +12,7 @@ Nguồn: `Tóm tắt báo cáo tạo chatbot.docx`. Mục tiêu: giáo viên n�
 ## 1. Stack
 - Next.js 15 App Router + TS + Tailwind. Không UI lib nặng (shadcn tối thiểu nếu cần).
 - Supabase: Postgres + Auth (email/password) + RLS.
-- Gemini: `@google/genai`, model `gemini-3.5-flash` (đổi được trong settings).
+- Gemini: `@google/genai`, model cố định trong `lib/models.ts` (đầu danh sách là model dùng, các model sau là dự phòng).
 - Email: `nodemailer` + Gmail SMTP từ `.env` (`GMAIL_SMTP_USER`, `GMAIL_SMTP_APP_PASSWORD`).
 - Zod validate mọi input. Recharts cho biểu đồ.
 - `.env` thêm: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `APP_SECRET` (32B, mã hóa Gemini key + salt), `NEXT_PUBLIC_SITE_URL`. **.env không commit** (thêm `.gitignore`).
@@ -29,7 +29,7 @@ Hero, 3 bước (nạp đề → tạo link → xem thống kê), quy trình Pol
 
 ### 2.3 Cài đặt Gemini key `/dashboard/settings`
 - GV dán key → validate bằng 1 call nhỏ → mã hóa AES-256-GCM (key từ `APP_SECRET`) → lưu `teacher_settings.gemini_key_enc`. Không bao giờ trả key về client (chỉ hiện `…abcd`).
-- Chọn model, nhiệt độ (mặc định thấp 0.3). Log `settings_changed` (không log giá trị key).
+- Giáo viên chỉ chọn nhà cung cấp và dán key; model và nhiệt độ (0.3) cố định trong code. Log `settings_changed` (không log giá trị key).
 
 ### 2.4 Nạp đề `/dashboard/problems`
 - Tab JSON: upload/dán, validate Zod theo schema mục 3 tài liệu (id,title,grade,topic,learning_objectives,data,solution,common_errors,hints[3],extension,rubric). Cho phép mảng nhiều đề. Báo lỗi theo field.

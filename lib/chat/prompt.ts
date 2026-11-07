@@ -82,14 +82,3 @@ export const mentions = (text: string, nums: string[]) => nums.filter((n) => has
 export function leaks(reply: string, solution: unknown, given: unknown = "", steps: string[] = []) {
   return mentions(reply, answerNums(solution, given, steps)).length > 0;
 }
-
-// Viết lại reply đã lộ đáp án thành hướng dẫn bước kế tiếp.
-export const gateSchema = z.object({ reply: z.string().min(1) });
-
-export function gateSystem(p: Problem, draft: string) {
-  return `Bạn biên tập chatbot dạy Toán 8. Bản nháp trả lời dưới đây đã nói ra kết quả mà học sinh chưa tự nêu.
-Đề: ${p.title}. ${p.statement ?? ""} Đáp án (bí mật): ${JSON.stringify(p.solution)}.
-Bản nháp: """${draft}"""
-Viết lại 1–2 câu, xưng "mình", gọi học sinh "bạn", thân thiện: KHÔNG chứa số kết quả hay phép tính ra kết quả nào học sinh chưa nêu; ghi nhận phần bạn làm đúng (nếu có) và hỏi một câu nhỏ cho bước tiếp theo. Chỉ được xác nhận số mà học sinh đã nêu trong hội thoại.
-Chỉ trả JSON: {"reply":string}`;
-}

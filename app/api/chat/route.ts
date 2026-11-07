@@ -5,7 +5,7 @@ import { z } from "zod";
 import { admin } from "@/lib/supabase/admin";
 import { llmCfg } from "@/lib/teacher";
 import { getLink } from "@/lib/links";
-import { finish, openingTurn, turn, type Session } from "@/lib/chat/engine";
+import { finish, openingTurn, turn, type Session, type Tm } from "@/lib/chat/engine";
 import { type Problem } from "@/lib/schema/problem";
 import { log } from "@/lib/log";
 import { failResponse } from "@/lib/errors";
@@ -85,7 +85,15 @@ async function handle(req: Request) {
     }
   }
 
-  const { data: sd } = await db.from("chat_sessions").select("*").eq("id", b.sessionId).eq("link_id", link.id).eq("anon_id", anon).maybeSingle();
+  // Phiên, cấu hình AI và các tin của phiên độc lập nhau: đọc song song một lượt thay vì nối tiếp.
+  const tm: Tm = {};
+  const t0 = Date.now();
+  const [{ data: sd }, cfg, { data: msgs }] = await Promise.all([
+    db.from("chat_sessions").select("*").eq("id", b.sessionId).eq("link_id", link.id).eq("anon_id", anon).maybeSingle(),
+    b.action === "survey" ? null : llmCfg(link.teacher_id),
+    b.action === "message" ? db.from("messages").select("role,content,hint_level,ts").eq("session_id", b.sessionId).order("id") : { data: null },
+  ]);
+  tm.db_pre = Date.now() - t0;
   const sess = sd as (Session & { problem_code: string }) | null;
   if (!sess) return err("Phiên chat không tồn tại.", 404);
   const prob = problems.find((x) => x.id === sess.problem_code) as Problem;
@@ -98,7 +106,6 @@ async function handle(req: Request) {
     return Response.json({ ok: true });
   }
 
-  const cfg = await llmCfg(link.teacher_id);
   if (!cfg) return err("Chatbot chưa sẵn sàng. Nhờ giáo viên kiểm tra cài đặt.", 503);
 
   try {
@@ -109,14 +116,16 @@ async function handle(req: Request) {
       return Response.json({ ok: true, done: true });
     }
     if (sess.status !== "active") return err("Bài này đã kết thúc.", 409);
-    // Một lần đọc cho cả giới hạn số tin, chống gửi dồn và ngữ cảnh của lượt này.
-    const { data: said } = await db.from("messages").select("content,ts").eq("session_id", sess.id).eq("role", "student").order("id");
-    const prior = (said ?? []) as { content: string; ts: string }[];
-    if (prior.length >= link.max_messages) return err("Đã đủ số tin nhắn cho bài này. Bấm Kết thúc bài.", 429);
+    // Một lần đọc (ở trên) cho cả giới hạn số tin, chống gửi dồn và ngữ cảnh của lượt này.
+    const all = (msgs ?? []) as { role: "student" | "bot"; content: string; hint_level: number | null; ts: string }[];
+    const said = all.filter((m) => m.role === "student");
+    if (said.length >= link.max_messages) return err("Đã đủ số tin nhắn cho bài này. Bấm Kết thúc bài.", 429);
     // Chống gửi dồn: cách tin trước ít nhất 2 giây trong cùng phiên.
-    const last = prior.at(-1);
+    const last = said.at(-1);
     if (last && Date.now() - new Date(last.ts).getTime() < 2000) return err("Bạn gửi nhanh quá. Chờ một chút rồi gửi lại nhé.", 429);
-    return Response.json(await turn(cfg, sess, prob, b.text, link.teacher_id, prior.map((m) => m.content)));
+    const r = await turn(cfg, sess, prob, b.text, link.teacher_id, all, tm);
+    tm.total = Date.now() - t0;
+    return Response.json(r, { headers: { "Server-Timing": Object.entries(tm).map(([k, v]) => `${k};dur=${v}`).join(", ") } });
   } catch (e) {
     return geminiFail(e, link.teacher_id, anon, link.id);
   }

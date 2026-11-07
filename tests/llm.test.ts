@@ -27,6 +27,18 @@ describe("tự đổi model khi hết quota", () => {
     expect(used).toEqual(["gpt-6.1-terra"]); // luna bị bỏ qua
   });
 
+  it("model chậm quá attemptMs thì đổi sang model kế", async () => {
+    const used: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_u: string, init: RequestInit) => {
+      const model = JSON.parse(String(init.body)).model as string;
+      used.push(model);
+      return model === "gpt-6-luna" ? new Promise<Response>(() => {}) : ok('{"a":2}'); // luna treo mãi
+    }));
+    const cfg = { provider: "openai" as const, key: "sk-test-cccc3333", model: "gpt-6-luna", temperature: 0.3 };
+    expect(await askJson(cfg, "JSON", [{ role: "user", text: "x" }], schema, { attemptMs: 50, deadlineMs: 5000 })).toEqual({ a: 2 });
+    expect(used).toEqual(["gpt-6-luna", "gpt-6.1-terra"]);
+  });
+
   it("lỗi khác (key sai) thì không đổi model", async () => {
     const f = vi.fn(async () => new Response("bad key", { status: 401 }));
     vi.stubGlobal("fetch", f);
