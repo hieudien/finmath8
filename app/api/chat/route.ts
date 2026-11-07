@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { admin } from "@/lib/supabase/admin";
-import { llmCfg } from "@/lib/teacher";
+import { hasKey, llmCfg } from "@/lib/teacher";
 import { finish, openingTurn, turn, type Session } from "@/lib/chat/engine";
 import { parseProblems, type Problem } from "@/lib/schema/problem";
 import { log } from "@/lib/log";
@@ -60,15 +60,21 @@ async function handle(req: Request) {
   if (b.action === "start") {
     const prob = problems.find((x) => x.id === b.problemCode);
     if (!prob) return err("Không tìm thấy bài.", 404);
-    const cfg = await llmCfg(link.teacher_id);
-    if (!cfg) return err("Chatbot chưa sẵn sàng. Nhờ giáo viên kiểm tra cài đặt.", 503);
-    const { count } = await db.from("chat_sessions").select("id", { count: "exact", head: true }).eq("link_id", link.id);
+    // Lượt mở bằng lời chào có sẵn không gọi AI: chỉ cần biết có key, không giải mã. Đề không có statement mới cần cấu hình đầy đủ.
+    const [cfg, keyed, { count }] = await Promise.all([
+      prob.statement ? null : llmCfg(link.teacher_id),
+      prob.statement ? hasKey(link.teacher_id) : true,
+      db.from("chat_sessions").select("id", { count: "exact", head: true }).eq("link_id", link.id),
+    ]);
+    if (prob.statement ? !keyed : !cfg) return err("Chatbot chưa sẵn sàng. Nhờ giáo viên kiểm tra cài đặt.", 503);
     const { data: s, error } = await db.from("chat_sessions").insert({ link_id: link.id, anon_id: anon, seq: (count ?? 0) + 1, problem_code: prob.id } as never).select("*").single();
     if (error || !s) throw new Error("Không tạo được phiên chat: " + (error?.message ?? "rỗng"));
     const sess = s as Session & { seq: number };
-    await log({ actor: "student", action: "chat_session_started", teacherId: link.teacher_id, anonId: anon, linkId: link.id, meta: { problem: prob.id, seq: sess.seq } });
     try {
-      const r = prob.statement ? await openingTurn(sess, prob, link.teacher_id) : await turn(cfg, sess, prob, null, link.teacher_id);
+      const [r] = await Promise.all([
+        prob.statement ? openingTurn(sess, prob, link.teacher_id) : turn(cfg!, sess, prob, null, link.teacher_id),
+        log({ actor: "student", action: "chat_session_started", teacherId: link.teacher_id, anonId: anon, linkId: link.id, meta: { problem: prob.id, seq: sess.seq } }),
+      ]);
       return Response.json({ sessionId: sess.id, ...r });
     } catch (e) {
       return geminiFail(e, link.teacher_id, anon, link.id);

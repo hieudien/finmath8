@@ -9,11 +9,8 @@ export type LlmCfg = {
   temperature: number;
   think?: boolean; // true: để model suy nghĩ sâu (chậm hơn). Mặc định tắt: chat cần nhanh
   maxTokens?: number; // giới hạn độ dài trả lời, tránh model nói dài
-  onUsage?: (model: string, inTok: number, outTok: number) => void; // ghi nhận mỗi lượt gọi thành công để thống kê hạn mức
-  onQuota?: (model: string, q: QuotaInfo) => void; // model chạm giới hạn: ghi lại loại và mức giới hạn nếu nhà cung cấp báo
   onFallback?: (from: string, to: string, reason: string) => void; // để ghi nhật ký khi tự đổi model
 };
-export type QuotaInfo = { kind: "day" | "minute" | "unknown"; limit: number | null };
 type Turn = { role: "user" | "model"; text: string };
 
 // Structured output của Gemini: ép đúng khung JSON, khỏi mô tả định dạng trong prompt và khỏi gọi lại khi JSON sai.
@@ -33,8 +30,6 @@ async function callGemini(cfg: LlmCfg, system: string, turns: Turn[], schema?: z
     if (cfg.think || !/thinking/i.test(String(e))) throw e;
     res = await run({});
   }
-  const u = res.usageMetadata;
-  cfg.onUsage?.(cfg.model, u?.promptTokenCount ?? 0, (u?.candidatesTokenCount ?? 0) + (u?.thoughtsTokenCount ?? 0));
   return res.text ?? "";
 }
 
@@ -55,8 +50,7 @@ async function callOpenAI(cfg: LlmCfg, system: string, turns: Turn[], json = tru
     if (json && r.status === 400 && /response_format|json_object/i.test(t)) return callOpenAI(cfg, system, turns, false); // model không hỗ trợ JSON mode: dựa vào prompt
     throw new Error(`OpenAI ${r.status}: ${t.slice(0, 300)}`);
   }
-  const j = (await r.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
-  cfg.onUsage?.(cfg.model, j.usage?.prompt_tokens ?? 0, j.usage?.completion_tokens ?? 0);
+  const j = (await r.json()) as { choices?: { message?: { content?: string } }[] };
   return j.choices?.[0]?.message?.content ?? "";
 }
 
@@ -67,13 +61,6 @@ const deadKey = (c: LlmCfg, model: string) => `${c.provider}:${c.key.slice(-8)}:
 const isQuota = (e: unknown) => /PerDay|insufficient_quota|RESOURCE_EXHAUSTED|429|no longer available|404/i.test(String(e));
 const isOverload = (e: unknown) => /\b50\d\b|UNAVAILABLE|overload|high demand/i.test(String(e));
 const isLongQuota = (e: unknown) => /PerDay|insufficient_quota|no longer available|404/i.test(String(e));
-
-// Gemini 429 thường kèm quotaId (vd ...PerDay...) và quotaValue (mức giới hạn): đọc ra để biết hạn mức thật mà không cần nhập tay.
-export function parseQuota(e: unknown): QuotaInfo {
-  const s = String(e);
-  const v = /"quotaValue"\s*:\s*"?(\d+)/.exec(s)?.[1] ?? /\blimit:\s*(\d+)/i.exec(s)?.[1];
-  return { kind: /PerDay|Daily/i.test(s) ? "day" : /PerMinute/i.test(s) ? "minute" : "unknown", limit: v ? Number(v) : null };
-}
 
 // Hết quota (hoặc model không còn) thì tự thử model kế tiếp của cùng nhà cung cấp, tối đa 4 model.
 export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string, turns: Turn[], schema: T, opts: { think?: boolean; maxTokens?: number; deadlineMs?: number } = {}): Promise<z.infer<T>> {
@@ -97,7 +84,6 @@ export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string,
       const quota = isQuota(e);
       if (!quota && !isOverload(e)) throw e;
       last = e;
-      if (quota) cfg.onQuota?.(chain[i], parseQuota(e));
       // Quá tải (503) chỉ tạm thời: nhớ 1 phút để lượt sau bỏ qua model này ngay.
       dead.set(deadKey(cfg, chain[i]), Date.now() + (isLongQuota(e) ? 60 : quota ? 5 : 1) * 60_000);
       if (i + 1 < chain.length) cfg.onFallback?.(chain[i], chain[i + 1], String(e).slice(0, 120));

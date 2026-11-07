@@ -1,32 +1,31 @@
 import { supabaseServer, currentUser } from "@/lib/supabase/server";
 import { LinkButton } from "@/components/ui";
 import { check } from "@/lib/db";
-import { summarize, type Ev, type Sess } from "@/lib/stats";
-import { summarizeUsage, windowStart } from "@/lib/usage";
-import UsageCard from "@/components/UsageCard";
+import { r1 } from "@/lib/stats";
 
 type L = { id: string; label: string; active: boolean };
+type Sess = { id: string; link_id: string; seq: number; status: string; started_at: string; problem_code: string };
+type Ov = { sessions: number; done: number; evals: number; total_avg: number; correct_pct: number; duration_s: number; hint_avg: number };
 const STATUS: Record<string, string> = { active: "Đang làm", done: "Hoàn thành" };
 
 export default async function Page() {
   const u = (await currentUser())!;
   const sb = await supabaseServer();
-  const start = windowStart();
+  // Số liệu gom sẵn trong DB (view overview_stats, error_counts): không kéo toàn bộ phiên/chấm điểm/nhật ký về.
   const res = await Promise.all([
     sb.from("teacher_settings").select("*").eq("teacher_id", u.id).maybeSingle(),
     sb.from("problems").select("id", { count: "exact", head: true }).is("deleted_at", null),
     sb.from("public_links").select("id,label,active").order("created_at", { ascending: false }),
-    sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code").order("started_at", { ascending: false }),
-    sb.from("session_evals").select("*"),
-    sb.from("activity_logs").select("action,ts,meta").in("action", ["ai_call", "model_fallback", "quota_hit"]).gte("ts", start.toISOString()).limit(5000),
-    sb.from("activity_logs").select("meta").eq("action", "quota_hit").eq("meta->>kind", "day").not("meta->>limit", "is", null).order("id", { ascending: false }).limit(1),
+    sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code").order("started_at", { ascending: false }).limit(5),
+    sb.from("overview_stats").select("*").maybeSingle(),
+    sb.from("error_counts").select("name,value").order("value", { ascending: false }).limit(3),
   ]);
   res.forEach(check);
-  const [{ data: s }, { count: np }, { data: ln }, { data: ss }, { data: es }, { data: lg }, { data: lq }] = res as unknown as [
-    { data: { provider: string; gemini_key_enc: string | null; openai_key_enc: string | null; daily_limit?: number } | null }, { count: number | null }, { data: L[] | null }, { data: Sess[] | null }, { data: Ev[] | null }, { data: { action: string; ts: string; meta: { model?: string; in?: number; out?: number } }[] | null }, { data: { meta: { limit?: number } }[] | null },
+  const [{ data: s }, { count: np }, { data: ln }, { data: ss }, { data: ov }, { data: er }] = res as unknown as [
+    { data: { provider: string; gemini_key_enc: string | null; openai_key_enc: string | null} | null }, { count: number | null }, { data: L[] | null }, { data: Sess[] | null }, { data: Ov | null }, { data: { name: string; value: number }[] | null },
   ];
   const links = ln ?? [];
-  const sessions = ss ?? [];
+  const recent = ss ?? [];
   const hasKey = !!(s && (s.provider === "openai" ? s.openai_key_enc : s.gemini_key_enc));
   const steps = [
     { done: hasKey, text: "Chọn nhà cung cấp AI (Gemini hoặc ChatGPT) và nhập API key", href: "/dashboard/settings", cta: "Mở cài đặt" },
@@ -34,7 +33,8 @@ export default async function Page() {
     { done: links.length > 0, text: "Tạo liên kết cho học sinh", href: "/dashboard/links", cta: "Tạo liên kết" },
   ];
   const next = steps.find((x) => !x.done);
-  const m = summarize(sessions, es ?? [], 0);
+  const o: Ov = ov ?? { sessions: 0, done: 0, evals: 0, total_avg: 0, correct_pct: 0, duration_s: 0, hint_avg: 0 };
+  const m = { sessions: o.sessions, completion: o.sessions ? Math.round((o.done / o.sessions) * 100) : 0, totalAvg: r1(o.total_avg), correctPct: Math.round(o.correct_pct), durationMin: r1(o.duration_s / 60), hintAvg: r1(o.hint_avg), errors: er ?? [] };
   const label = new Map(links.map((l) => [l.id, l.label]));
   const fmt = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" });
   const kpis: [string, string | number][] = [
@@ -61,7 +61,6 @@ export default async function Page() {
           <LinkButton href={next.href} className="self-start">{next.cta}</LinkButton>
         </section>
       )}
-      {hasKey && <UsageCard {...summarizeUsage(lg ?? [])} limit={s?.daily_limit ?? 0} learned={lq?.[0]?.meta.limit ?? 0} resetAt={new Intl.DateTimeFormat("vi-VN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(start.getTime() + 864e5)) + " giờ Việt Nam"} />}
       <dl className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {kpis.map(([k, v]) => <div key={k}><dt className="text-sm text-text-muted">{k}</dt><dd className="tnum text-2xl font-bold">{v}</dd></div>)}
       </dl>
@@ -72,7 +71,7 @@ export default async function Page() {
           <section className="flex flex-col gap-2 border-t border-border pt-4" aria-labelledby="recent">
             <div className="flex items-center justify-between gap-2"><h2 id="recent">Hoạt động gần đây</h2><LinkButton href="/dashboard/stats" variant="ghost">Xem thống kê</LinkButton></div>
             <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
-              {sessions.slice(0, 5).map((x) => (
+              {recent.map((x) => (
                 <li key={x.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
                   <span className="min-w-0"><span className="font-medium">HS #{x.seq} · {x.problem_code}</span> <span className="text-sm text-text-muted">· {label.get(x.link_id) ?? "Liên kết đã xóa"}</span></span>
                   <span className="text-sm text-text-muted">{STATUS[x.status] ?? "Bỏ dở"} · {fmt.format(new Date(x.started_at))}</span>
@@ -80,7 +79,7 @@ export default async function Page() {
               ))}
             </ul>
           </section>
-          {m.enough && (es ?? []).length > 0 && (
+          {o.evals > 0 && (
             <section className="flex flex-col gap-2 border-t border-border pt-4" aria-labelledby="sum">
               <h2 id="sum">Kết quả chung</h2>
               <dl className="grid grid-cols-2 gap-4 md:grid-cols-4">

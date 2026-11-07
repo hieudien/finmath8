@@ -1,4 +1,4 @@
-import { mean, standardDeviation, tTestTwoSample } from "simple-statistics";
+import { mean, standardDeviation, sampleVariance } from "simple-statistics";
 
 export type Sess = { id: string; link_id: string; seq: number; status: string; started_at: string; problem_code: string };
 export type Ev = { session_id: string; identify: number; plan: number; calculate: number; explain: number; total: number; final_correct: boolean; max_hint_level: number; hint_count: number; errors: string[]; duration_s: number; survey_likert: number | null };
@@ -43,8 +43,17 @@ export function summarize(sessions: Sess[], evals: Ev[], visits: number) {
   };
 }
 
+type G = { n: number; mean: number; sd: number; v: number }; // v = phương sai mẫu, sd = độ lệch chuẩn tổng thể
+
+// t hai mẫu độc lập (phương sai gộp), tính từ số liệu đã gom sẵn trong DB (view tag_stats) hoặc từ mảng.
+export function compareStats(a: G | undefined, b: G | undefined) {
+  if (!a || !b || a.n < 2 || b.n < 2) return null;
+  const wv = ((a.n - 1) * a.v + (b.n - 1) * b.v) / (a.n + b.n - 2);
+  const t = (a.mean - b.mean) / Math.sqrt(wv * (1 / a.n + 1 / b.n));
+  return { meanA: r1(a.mean), sdA: r1(a.sd), nA: a.n, meanB: r1(b.mean), sdB: r1(b.sd), nB: b.n, t: Number.isFinite(t) ? r1(t) : null };
+}
+
 export function compare(a: number[], b: number[]) {
-  if (a.length < 2 || b.length < 2) return null;
-  const t = tTestTwoSample(a, b, 0);
-  return { meanA: r1(mean(a)), sdA: r1(standardDeviation(a)), nA: a.length, meanB: r1(mean(b)), sdB: r1(standardDeviation(b)), nB: b.length, t: t == null ? null : r1(t) };
+  const g = (x: number[]): G | undefined => x.length < 2 ? undefined : { n: x.length, mean: mean(x), sd: standardDeviation(x), v: sampleVariance(x) };
+  return compareStats(g(a), g(b));
 }

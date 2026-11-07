@@ -4,17 +4,15 @@ import Brand from "@/components/Brand";
 import { Alert, Button, post } from "@/components/ui";
 import { MathText } from "@/components/MathText";
 
-type P = { id: string; title: string; statement: string };
+type P = { id: string; title: string; statement: string; greeting: string };
 type M = { role: "student" | "bot"; text: string };
 type R = { sessionId?: string; reply?: string; step?: number; done?: boolean };
 
-const STEPS = ["Khám phá", "Phân tích", "Đề xuất", "Thực hiện", "Đánh giá"];
 
 export default function Chat({ slug, label, problems }: { slug: string; label: string; problems: P[] }) {
   const [prob, setProb] = useState<P | null>(problems.length === 1 ? problems[0] : null);
   const [sid, setSid] = useState<string>();
   const [msgs, setMsgs] = useState<M[]>([]);
-  const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState(false);
@@ -22,16 +20,20 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
   const started = useRef(false);
+  const tok = useRef(0); // mỗi lần mở bài/quay lại tăng 1: phản hồi của lần cũ đến muộn thì bỏ
 
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [msgs, busy]);
 
   async function start(p: P) {
-    setProb(p); setBusy(true); setErr("");
+    const my = ++tok.current;
+    setProb(p); setBusy(!p.greeting); setErr("");
+    if (p.greeting) setMsgs([{ role: "bot", text: p.greeting }]); // hiện lời chào ngay; server tạo phiên song song, có sid thì mở ô nhập
     const { ok, data } = await post<R>("/api/chat", { action: "start", slug, problemCode: p.id });
+    if (my !== tok.current) return;
     setBusy(false);
-    if (!ok) { setErr(data.error ?? "Có lỗi."); started.current = false; return; }
-    setSid(data.sessionId); setStep(data.step ?? 1);
-    setMsgs([{ role: "bot", text: data.reply ?? "" }]);
+    if (!ok) { setErr(data.error ?? "Có lỗi."); started.current = false; setMsgs([]); if (problems.length > 1) setProb(null); return; } // lỗi: bỏ lời chào đã hiện, nhiều đề thì về danh sách (lỗi hiện ở đó)
+    setSid(data.sessionId);
+    if (!p.greeting) setMsgs([{ role: "bot", text: data.reply ?? "" }]);
   }
 
   useEffect(() => {
@@ -48,9 +50,14 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
     const { ok, data } = await post<R>("/api/chat", { action: "message", slug, sessionId: sid, text: t });
     setBusy(false);
     if (!ok) { setMsgs((m) => m.slice(0, -1)); setText(t); return setErr(data.error ?? "Có lỗi. Bạn thử gửi lại nhé."); } // trả tin về ô nhập để không mất
-    setStep(data.step ?? step);
     setMsgs((m) => [...m, { role: "bot", text: data.reply ?? "" }]);
     if (data.done) setDone(true);
+  }
+
+  // Quay lại danh sách đề. Phiên đang làm dở để nguyên ("Bỏ dở"), giống khi học sinh đóng tab.
+  function back() {
+    tok.current++;
+    setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setText(""); setErr(""); setBusy(false);
   }
 
   async function finishNow() {
@@ -73,6 +80,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
         <Brand tagline />
         <h1>{label}</h1>
         <p className="text-text-muted">Chọn một bài để bắt đầu. Chatbot sẽ gợi ý từng bước, em hãy tự suy nghĩ trước khi xin gợi ý.</p>
+        {err && <Alert tone="danger">{err}</Alert>}
         <ul className="flex flex-col gap-2">
           {problems.map((p) => (
             <li key={p.id}>
@@ -94,13 +102,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
           <p className="truncate text-sm text-text-muted" title={label}>{label}</p>
         </div>
         <h1 className="text-lg">{prob.title}</h1>
-        <ol className="mt-2 flex gap-1 text-xs" aria-label="Các bước giải bài">
-          {STEPS.map((s, i) => (
-            <li key={s} aria-current={i + 1 === step ? "step" : undefined} className={`flex-1 rounded-sm px-1 py-1 text-center ${i + 1 === step ? "bg-primary text-on-primary font-medium" : i + 1 < step ? "bg-primary-soft text-primary" : "bg-border text-text-muted"}`}>
-              {i + 1}. {s}
-            </li>
-          ))}
-        </ol>
+        {problems.length > 1 && <Button variant="ghost" type="button" onClick={back} className="mt-1 -ml-3 text-sm">← Danh sách đề</Button>}
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 py-4" role="log" aria-live="polite">

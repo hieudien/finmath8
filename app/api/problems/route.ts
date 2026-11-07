@@ -9,6 +9,7 @@ import { SEED } from "@/lib/seed";
 import { runSelfTest } from "@/lib/chat/selftest";
 import { log } from "@/lib/log";
 import { missingAnswers } from "@/lib/answer-check";
+import { makeGreeting } from "@/lib/greeting";
 
 const NORMALIZE_SYSTEM = `Bạn chuẩn hóa đề Toán lớp 8 (tình huống tài chính) từ văn bản thô sang JSON. Chỉ trả JSON một đối tượng đúng mẫu:
 {"id":"TCxx","title":string,"grade":8,"topic":string,"statement":string (nguyên văn đề bài cho học sinh),"learning_objectives":[string],"data":{số liệu, tỉ lệ dạng thập phân 0.x},"solution":{đáp án chuẩn bằng số},"solution_steps":[lời giải từng bước, mỗi bước 1–2 câu có phép tính, bước cuối là kết luận],"common_errors":[string],"hints":[{"level":1,"text":..},{"level":2,"text":..},{"level":3,"text":..}],"extension":string,"rubric":{"identify":3,"plan":3,"calculate":3,"explain":3}}
@@ -37,6 +38,7 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("normalize"), text: z.string().min(20, "Văn bản quá ngắn.") }),
   z.object({ action: z.literal("save"), problems: z.array(z.unknown()).min(1) }),
   z.object({ action: z.literal("seed") }),
+  z.object({ action: z.literal("greetings") }),
   z.object({ action: z.literal("explain"), id: z.string().uuid() }),
   z.object({ action: z.literal("selftest"), id: z.string().uuid() }),
   z.object({ action: z.literal("delete"), id: z.string().uuid() }),
@@ -80,6 +82,27 @@ Dữ liệu: ${JSON.stringify(prob.data)}
     return Response.json({ ok: true });
   }
 
+  if (b.action === "greetings") {
+    const cfg = await llmCfg(u.id);
+    if (!cfg) return bad("Chưa có API key. Vào Cài đặt để nhập.");
+    const { data } = await admin().from("problems").select("id,content,version").eq("teacher_id", u.id).is("deleted_at", null);
+    let made = 0, failed = 0;
+    const todo = ((data ?? []) as { id: string; content: unknown; version: number }[]).flatMap((row) => {
+      const pp = problemSchema.safeParse(row.content);
+      return pp.success && !pp.data.greeting ? [{ row, prob: pp.data }] : [];
+    });
+    // Song song từng nhóm 3 đề: nhanh hơn tuần tự mà chưa vượt giới hạn tốc độ của nhà cung cấp AI.
+    for (let i = 0; i < todo.length; i += 3) {
+      await Promise.all(todo.slice(i, i + 3).map(async ({ row, prob }) => {
+        const greeting = await makeGreeting(cfg, prob).catch(() => "");
+        if (!greeting) { failed++; return; }
+        const { data: upd } = await admin().from("problems").update({ content: { ...prob, greeting }, version: row.version + 1, updated_at: new Date().toISOString() } as never).eq("id", row.id).eq("version", row.version).select("id");
+        if (upd?.length) made++; else failed++;
+      }));
+    }
+    return Response.json({ ok: true, made, failed });
+  }
+
   if (b.action === "selftest") {
     const cfg = await llmCfg(u.id);
     if (!cfg) return bad("Chưa có API key. Vào Cài đặt để nhập.");
@@ -99,6 +122,7 @@ Dữ liệu: ${JSON.stringify(prob.data)}
     const out = await askJson(cfg, NORMALIZE_SYSTEM, [{ role: "user", text: b.text }], problemSchema, { think: true });
     // Lời giải lệch đáp án thì bỏ lời giải (giáo viên có thể bấm "Tạo lời giải bằng AI" sau).
     if (out.solution_steps.length && missingAnswers(out.solution, out.solution_steps).length) out.solution_steps = [];
+    out.greeting = await makeGreeting(cfg, out).catch(() => ""); // lỗi AI thì để trống, chat dùng câu dự phòng; có thể bấm tạo lại sau
     await log({ actor: "teacher", action: "problem_normalized", teacherId: u.id, meta: { code: out.id, chars: b.text.length } });
     return Response.json({ ok: true, problem: out });
   }

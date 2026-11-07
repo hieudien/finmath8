@@ -22,7 +22,9 @@ export function checkpoints(p: Problem): Cp[] {
   });
 }
 
-export const countDone = (mask: number) => mask.toString(2).replace(/0/g, "").length;
+// Bit 30 của mask = học sinh đã trình bày cách làm đúng (AI xác nhận, server kiểm bằng chứng). Không tính vào số mốc.
+export const METHOD = 1 << 30;
+export const countDone = (mask: number) => (mask & (METHOD - 1)).toString(2).replace(/0/g, "").length;
 
 // Server xác minh bằng chứng AI nộp: trích nguyên văn từ tin của học sinh, và số của mốc phải do học sinh tự viết.
 export function verify(c: Cp, evidence: string, said: string) {

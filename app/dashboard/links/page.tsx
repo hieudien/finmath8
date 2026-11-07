@@ -1,7 +1,7 @@
 import { supabaseServer } from "@/lib/supabase/server";
 import { CreateLink, LinkActions } from "@/components/LinkTools";
 import { Empty, LinkButton } from "@/components/ui";
-import { MathText } from "@/components/MathText";
+import { plain } from "@/lib/plain";
 import { parseProblems } from "@/lib/schema/problem";
 
 type L = { id: string; slug: string; label: string; tag: string | null; active: boolean; created_at: string; problems_snapshot: unknown[] };
@@ -43,7 +43,7 @@ export default async function Page() {
                     {parseProblems(l.problems_snapshot).ok.map((p) => (
                       <li key={p.id} className="flex flex-col gap-1 py-3">
                         <p className="font-medium"><span className="tnum text-text-muted">{p.id}</span> {p.title}</p>
-                        {p.statement && <p className="max-w-prose text-sm"><MathText text={p.statement} /></p>}
+                        {p.statement && <p className="max-w-prose text-sm">{plain(p.statement)}</p>}
                         {idOf.has(p.id) && <a className="inline-flex min-h-11 items-center text-sm text-primary underline" href={`/dashboard/problems/${idOf.get(p.id)}`}>Xem lời giải và gợi ý</a>}
                       </li>
                     ))}

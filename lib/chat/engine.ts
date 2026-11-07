@@ -2,7 +2,8 @@ import { check } from "@/lib/db";
 import { admin } from "@/lib/supabase/admin";
 import { askJson, type LlmCfg } from "@/lib/llm";
 import { chatState, chatSystem, evalSchema, evalSystem, gateSchema, gateSystem, leaks, turnSchema } from "@/lib/chat/prompt";
-import { checkpoints, countDone, hasNum, stepOf, verify } from "@/lib/chat/progress";
+import { METHOD, checkpoints, countDone, hasNum, norm, stepOf, verify } from "@/lib/chat/progress";
+import { GREETING_FALLBACK } from "@/lib/greeting";
 import { scrub } from "@/lib/pii";
 import { log } from "@/lib/log";
 import type { Problem } from "@/lib/schema/problem";
@@ -53,17 +54,22 @@ ${chatState(cps, mask0, s.hint_level)}` },
     const c = cps[d.id - 1];
     if (c && !(mask >> c.id & 1) && verify(c, d.evidence, said)) mask |= 1 << c.id;
   }
-  // 3) Chống vòng quanh: mọi mốc có số đã xong mà mốc còn lại chỉ là lời giải thích, sau nhiều lượt vẫn chưa nộp được bằng chứng thì coi như xong.
+  // 3) Cách làm: AI xác nhận học sinh tự trình bày cách làm đúng, server kiểm trích dẫn có thật trong tin học sinh. Chưa có thì chưa kết thúc dù đã nêu đủ đáp án.
+  const ev = norm(out?.method_evidence ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (onTopic && out!.method_ok && ev.length >= 3 && norm(said).replace(/\s+/g, " ").toLowerCase().includes(ev)) mask |= METHOD;
+  // 4) Chống vòng quanh: mọi mốc có số đã xong mà mốc còn lại chỉ là lời giải thích, sau nhiều lượt vẫn chưa nộp được bằng chứng thì coi như xong.
   const numeric = cps.filter((c) => c.must.length);
-  if (numeric.length && numeric.every((c) => mask >> c.id & 1) && prior.length + 1 >= Math.max(8, cps.length * 3)) for (const c of cps) mask |= 1 << c.id;
+  if (numeric.length && numeric.every((c) => mask >> c.id & 1) && prior.length + 1 >= Math.max(8, cps.length * 3)) { for (const c of cps) mask |= 1 << c.id; mask |= METHOD; }
   const progressed = mask !== mask0;
   const done = countDone(mask);
-  const finished = onTopic && done >= cps.length;
-  const step = stepOf(done, cps.length);
+  const finished = onTopic && done >= cps.length && !!(mask & METHOD);
+  const step = finished ? 5 : Math.min(4, stepOf(done, cps.length));
   const hint = onTopic && !progressed && out!.struggling ? Math.min(3, s.hint_level + 1) : s.hint_level;
 
   // Bot chỉ được nói số kết quả/trung gian mà học sinh đã tự nêu. Vi phạm -> AI viết lại; vẫn lộ thì dùng câu trung tính.
   let reply = onTopic ? out!.reply : REDIRECT;
+  // AI viết lời tổng kết (không có câu hỏi) nhưng server chưa xác nhận cách làm: không để bot chào kết trong khi phiên còn mở, hỏi lại cách làm.
+  if (onTopic && !finished && done >= cps.length && !reply.includes("?")) reply = "Kết quả của bạn đúng rồi. Bạn tính ra kết quả đó bằng phép tính nào? Viết phép tính ra nhé.";
   const given = [p.data, p.statement, said, cps.filter((c) => mask >> c.id & 1).map((c) => c.must)];
   if (leaks(reply, p.solution, given, p.solution_steps)) {
     const g = await askJson(cfg, gateSystem(p, reply), [{ role: "user", text: turns.map((t) => `${t.role === "user" ? "HS" : "Bot"}: ${t.text}`).join("\n") }], gateSchema, { maxTokens: 250, deadlineMs: 15_000 }).catch(() => null);
@@ -104,11 +110,13 @@ export async function finish(cfg: LlmCfg, s: Session, p: Problem, teacherId: str
   await log({ actor: "student", action: "chat_session_ended", teacherId, anonId: s.anon_id, linkId: s.link_id });
 }
 
-// Lời mở đầu không cần gọi Gemini: đề có statement thì dùng gợi ý mức 1 của đề. Tiết kiệm 1 lượt/phiên.
+// Lời mở đầu không gọi AI lúc chat: dùng câu chào AI đã tạo sẵn khi nạp đề (p.greeting). Tiết kiệm 1 lượt/phiên.
 export async function openingTurn(s: Session, p: Problem, teacherId: string) {
-  const hint = p.hints.find((h) => h.level === 1)?.text.replace(/(?<![\p{L}])em(?![\p{L}])/giu, (m) => (m[0] === "E" ? "Bạn" : "bạn")) ?? "Bạn đọc đề rồi cho mình biết đề hỏi gì nhé?"; // xưng hô cố định mình/bạn
-  const reply = `Chào bạn! Mình sẽ cùng bạn giải bài này từng bước. ${hint}`;
-  check(await admin().from("messages").insert({ session_id: s.id, role: "bot", content: reply, step: 1, hint_level: 1 } as never));
-  await log({ actor: "student", action: "chat_message", teacherId, anonId: s.anon_id, linkId: s.link_id, meta: { role: "bot", len: reply.length, step: 1, static: true } });
+  const reply = p.greeting || GREETING_FALLBACK;
+  const [ins] = await Promise.all([
+    admin().from("messages").insert({ session_id: s.id, role: "bot", content: reply, step: 1, hint_level: 1 } as never),
+    log({ actor: "student", action: "chat_message", teacherId, anonId: s.anon_id, linkId: s.link_id, meta: { role: "bot", len: reply.length, step: 1, static: true } }),
+  ]);
+  check(ins);
   return { reply, step: 1, done: false };
 }

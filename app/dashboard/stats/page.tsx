@@ -1,44 +1,40 @@
 import { supabaseServer } from "@/lib/supabase/server";
-import { BarBox, LineBox } from "@/components/Charts";
+import { BarBox, LineBox } from "@/components/ChartsLazy";
+import ChatLog from "@/components/ChatLog";
+import "katex/dist/katex.min.css";
 import { Empty } from "@/components/ui";
-import { MathText } from "@/components/MathText";
 import { check } from "@/lib/db";
-import { compare, summarize, type Ev, type Sess } from "@/lib/stats";
+import { compareStats, r1, summarize, type Ev, type Sess } from "@/lib/stats";
 
 type L = { id: string; label: string; tag: string | null };
+type LS = { link_id: string; sessions: number; done: number; total_avg: number; visits: number };
+type TS = { tag: string; n: number; mean: number; sd_pop: number; var_samp: number };
 const TAG: Record<string, string> = { pre: "Trước", post: "Sau", experiment: "Thực nghiệm", control: "Đối chứng" };
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ link?: string }> }) {
   const { link } = await searchParams;
   const sb = await supabaseServer();
+  // Danh sách liên kết lấy số liệu đã gom từ view link_stats; chỉ khi mở 1 liên kết mới tải phiên và chấm điểm của riêng liên kết đó.
   const res = await Promise.all([
     sb.from("public_links").select("id,label,tag").order("created_at", { ascending: false }),
-    sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code").order("seq"),
-    sb.from("session_evals").select("*"),
-    sb.from("link_visit_counts").select("link_id,n"),
+    sb.from("link_stats").select("*"),
+    link ? sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code").eq("link_id", link).order("seq") : null,
+    link ? sb.from("session_evals").select("*, chat_sessions!inner(link_id)").eq("chat_sessions.link_id", link) : null,
+    link ? null : sb.from("tag_stats").select("*"),
   ]);
-  res.forEach(check); // lỗi đọc dữ liệu thì hiện trang báo lỗi, không để trang hiện số 0 gây hiểu nhầm
-  const [ln, ss, es, vs] = res.map((r) => r.data);
-  const links = (ln ?? []) as L[];
-  const sessions = (ss ?? []) as Sess[];
-  const evals = (es ?? []) as Ev[];
-  const visits = (vs ?? []) as { link_id: string; n: number }[];
-  const per = (id: string) => {
-    const s = sessions.filter((x) => x.link_id === id);
-    const ids = new Set(s.map((x) => x.id));
-    return { s, e: evals.filter((x) => ids.has(x.session_id)), v: visits.find((x) => x.link_id === id)?.n ?? 0 };
-  };
+  res.forEach((r) => r && check(r)); // lỗi đọc dữ liệu thì hiện trang báo lỗi, không để trang hiện số 0 gây hiểu nhầm
+  const links = (res[0].data ?? []) as L[];
+  const stats = new Map(((res[1].data ?? []) as LS[]).map((x) => [x.link_id, x]));
+  const sessions = (res[2]?.data ?? []) as Sess[];
+  const evals = (res[3]?.data ?? []) as Ev[];
+  const tags = new Map(((res[4]?.data ?? []) as TS[]).map((x) => [x.tag, { n: x.n, mean: x.mean, sd: x.sd_pop, v: x.var_samp }]));
 
   if (!links.length) return <div className="flex flex-col gap-6"><h1>Thống kê</h1><Empty text="Chưa có liên kết nào để thống kê." /></div>;
 
   const cur = links.find((l) => l.id === link);
   if (cur) {
-    const { s, e, v } = per(cur.id);
-    const m = summarize(s, e, v);
-    // ponytail: tối đa 5000 tin gần nhất của liên kết này; phân trang khi lớp rất đông.
-    const mres = s.length && m.enough ? await sb.from("messages").select("session_id,role,content,ts").in("session_id", s.map((x) => x.id)).order("id").limit(5000) : { data: [], error: null };
-    check(mres);
-    const msgs = (mres.data ?? []) as { session_id: string; role: "student" | "bot"; content: string; ts: string }[];
+    const s = sessions, e = evals;
+    const m = summarize(s, e, stats.get(cur.id)?.visits ?? 0);
     const evBy = new Map(e.map((x) => [x.session_id, x]));
     return (
       <div className="flex flex-col gap-6">
@@ -84,19 +80,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
             <Section title="Hội thoại của học sinh (ẩn danh)">
               <p className="text-sm text-text-muted">Tin nhắn đã được che số điện thoại, email, tên. Bấm vào từng học sinh để xem.</p>
               <div className="flex flex-col gap-2">
-                {s.map((x) => { const list = msgs.filter((m) => m.session_id === x.id); const ev = evBy.get(x.id); return (
-                  <details key={x.id} className="rounded-sm border border-border bg-surface px-3">
-                    <summary className="min-h-11 cursor-pointer py-2 font-medium">HS #{x.seq} · {x.problem_code} · {list.length} tin{ev ? ` · ${ev.total}/12` : ""}</summary>
-                    <ul className="flex flex-col gap-2 pb-3">
-                      {list.map((m, i) => (
-                        <li key={i} className={`max-w-[90%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm ${m.role === "bot" ? "self-start border border-border" : "self-end bg-primary-soft"}`}>
-                          <span className="block text-xs text-text-muted">{m.role === "bot" ? "Chatbot" : "Học sinh"} · {new Date(m.ts).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</span>
-                          <MathText text={m.content} />
-                        </li>
-                      ))}
-                      {list.length === 0 && <li className="text-sm text-text-muted">Chưa có tin nhắn.</li>}
-                    </ul>
-                  </details>); })}
+                {s.map((x) => { const ev = evBy.get(x.id); return <ChatLog key={x.id} id={x.id} title={`HS #${x.seq} · ${x.problem_code}${ev ? ` · ${ev.total}/12` : ""}`} />; })}
               </div>
               <a href="/api/export?kind=chat" className="inline-flex min-h-11 items-center self-start rounded-sm border border-border-strong bg-surface px-4 font-medium hover:bg-primary-soft">Tải toàn bộ hội thoại (CSV)</a>
             </Section>
@@ -106,24 +90,23 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
     );
   }
 
-  const byTag = (t: string) => links.filter((l) => l.tag === t).flatMap((l) => per(l.id).e.map((x) => x.total));
-  const cmps = [["Trước (pre) so với Sau (post)", byTag("pre"), byTag("post")], ["Đối chứng so với Thực nghiệm", byTag("control"), byTag("experiment")]] as const;
+  const cmps = [["Trước (pre) so với Sau (post)", "pre", "post"], ["Đối chứng so với Thực nghiệm", "control", "experiment"]] as const;
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3"><h1>Thống kê</h1><a href="/api/export?kind=stats" className="inline-flex min-h-11 items-center rounded-sm border border-border-strong bg-surface px-4 font-medium hover:bg-primary-soft">Tải CSV</a></div>
       <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
-        {links.map((l) => { const { s, e, v } = per(l.id); const m = summarize(s, e, v); return (
+        {links.map((l) => { const x = stats.get(l.id); const n = x?.sessions ?? 0; return (
           <li key={l.id}>
             <a href={`/dashboard/stats?link=${l.id}`} className="flex min-h-11 flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-primary-soft">
               <span className="font-medium">{l.label} {l.tag && <span className="text-sm font-normal text-text-muted">· {TAG[l.tag]}</span>}</span>
-              <span className="tnum text-sm text-text-muted">{m.visits} lượt mở · {m.sessions} phiên · {m.completion}% xong · {m.enough ? `${m.totalAvg}/12` : "chưa đủ dữ liệu"}</span>
+              <span className="tnum text-sm text-text-muted">{x?.visits ?? 0} lượt mở · {n} phiên · {n ? Math.round(((x?.done ?? 0) / n) * 100) : 0}% xong · {n ? `${r1(x?.total_avg ?? 0)}/12` : "chưa đủ dữ liệu"}</span>
             </a>
           </li>); })}
       </ul>
-      {cmps.map(([title, a, b]) => { const c = compare([...a], [...b]); return c && (
+      {cmps.map(([title, ta, tb]) => { const c = compareStats(tags.get(ta), tags.get(tb)); return c && (
         <Section key={title} title={title}>
-          <p className="tnum">{TAG[title.startsWith("Trước") ? "pre" : "control"]}: TB {c.meanA}, SD {c.sdA}, n={c.nA}. {TAG[title.startsWith("Trước") ? "post" : "experiment"]}: TB {c.meanB}, SD {c.sdB}, n={c.nB}. Thống kê t ≈ {c.t ?? "—"}.</p>
+          <p className="tnum">{TAG[ta]}: TB {c.meanA}, SD {c.sdA}, n={c.nA}. {TAG[tb]}: TB {c.meanB}, SD {c.sdB}, n={c.nB}. Thống kê t ≈ {c.t ?? "—"}.</p>
           <p className="text-sm text-text-muted">t là ước lượng sơ bộ (hai mẫu độc lập). Mẫu nhỏ thì dùng Mann-Whitney khi báo cáo chính thức.</p>
         </Section>); })}
     </div>

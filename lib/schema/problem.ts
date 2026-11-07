@@ -13,6 +13,7 @@ export const problemSchema = z.object({
   common_errors: z.array(z.string()).default([]),
   hints: z.array(z.object({ level: z.number().int().min(1).max(3), text: z.string() })).min(3, "Cần đủ 3 mức gợi ý"),
   extension: z.string().default(""),
+  greeting: z.string().default(""), // lời chào đầu tiên AI tạo sẵn khi nạp đề, rỗng thì dùng câu dự phòng
   rubric: z
     .object({ identify: z.number(), plan: z.number(), calculate: z.number(), explain: z.number() })
     .default({ identify: 3, plan: 3, calculate: 3, explain: 3 }),

@@ -48,9 +48,21 @@ export function ImportPanel() {
 
   const tabCls = (t: string) => `min-h-11 flex-1 border-b-2 px-3 font-medium ${tab === t ? "border-primary text-primary" : "border-transparent text-text-muted"}`;
 
+  async function greetings() {
+    setBusy("Đang tạo lời chào..."); setMsg(null);
+    const { ok, data } = await post<{ made: number; failed: number }>("/api/problems", { action: "greetings" });
+    setBusy("");
+    if (!ok) return fail(data.error);
+    setMsg({ tone: data.failed ? "danger" : "success", text: `Đã tạo ${data.made} lời chào${data.failed ? `, ${data.failed} đề lỗi (bấm lại để thử tiếp)` : ""}.` });
+    router.refresh();
+  }
+
   if (!open) return (
     <div className="flex flex-col items-start gap-3">
-      <Button onClick={() => { setMsg(null); setOpen(true); }}>Thêm đề</Button>
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={() => { setMsg(null); setOpen(true); }}>Thêm đề</Button>
+        <Button variant="secondary" onClick={greetings} pending={busy || undefined}>Tạo lời chào cho các đề chưa có</Button>
+      </div>
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
     </div>
   );

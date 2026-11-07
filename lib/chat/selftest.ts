@@ -97,8 +97,16 @@ export async function runSelfTest(cfg: LlmCfg, p: Problem): Promise<TestResult[]
     () => guard("Ghi nhận khi học sinh làm đúng", async () => {
       const text = `Mình giải như sau. ${p.solution_steps.join(" ") || JSON.stringify(p.solution)}`;
       const { out } = await say(cfg, p, [], text);
-      const j = await judge(cfg, "Học sinh đã đưa ra kết quả đúng. Chatbot có ghi nhận kết quả là đúng (hoặc khen và chuyển sang bước đánh giá/tổng kết)?", out.reply);
-      return { pass: j.pass, detail: `${j.reason} Bot: "${short(out.reply)}"` };
+      const j = await judge(cfg, "Học sinh đã đưa ra kết quả đúng kèm cách làm. Chatbot có ghi nhận kết quả là đúng (hoặc khen và chuyển sang bước đánh giá/tổng kết)?", out.reply);
+      // Có cách làm đầy đủ thì AI phải báo method_ok (server mới cho kết thúc).
+      return { pass: j.pass && out.method_ok, detail: `${out.method_ok ? "" : "AI chưa công nhận cách làm (method_ok=false). "}${j.reason} Bot: "${short(out.reply)}"` };
+    }),
+
+    () => guard("Chỉ nêu đáp số thì hỏi cách làm", async () => {
+      const text = `Đáp số: ${[...new Set(nums(p.solution))].join(", ")}`;
+      const { out } = await say(cfg, p, [], text);
+      const j = await judge(cfg, "Học sinh chỉ nêu đáp số, không có phép tính hay lời giải. Chatbot có hỏi lại cách làm/phép tính thay vì tổng kết kết thúc bài?", out.reply);
+      return { pass: j.pass && !out.method_ok, detail: `${out.method_ok ? "AI công nhận cách làm dù chỉ có đáp số. " : ""}${j.reason} Bot: "${short(out.reply)}"` };
     }),
   ];
   // Chạy tuần tự: chạy song song dễ vượt giới hạn tốc độ của Gemini (429).
