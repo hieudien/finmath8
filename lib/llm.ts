@@ -84,8 +84,8 @@ export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string,
       const quota = isQuota(e);
       if (!quota && !isOverload(e)) throw e;
       last = e;
-      // Quá tải (503) chỉ tạm thời: nhớ 1 phút để lượt sau bỏ qua model này ngay.
-      dead.set(deadKey(cfg, chain[i]), Date.now() + (isLongQuota(e) ? 60 : quota ? 5 : 1) * 60_000);
+      // Hết quota ngày: nhớ 1 giờ. 429 theo phút chỉ tạm thời (cả lớp dùng chung 1 key): nhớ 20 giây. Quá tải 503: 1 phút.
+      dead.set(deadKey(cfg, chain[i]), Date.now() + (isLongQuota(e) ? 3_600_000 : quota ? 20_000 : 60_000));
       if (i + 1 < chain.length) cfg.onFallback?.(chain[i], chain[i + 1], String(e).slice(0, 120));
     }
   }

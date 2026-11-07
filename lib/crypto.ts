@@ -1,6 +1,10 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
-const key = () => createHash("sha256").update(process.env.APP_SECRET ?? "").digest();
+const key = () => {
+  const s = process.env.APP_SECRET;
+  if (!s) throw new Error("Thiếu APP_SECRET trong biến môi trường.");
+  return createHash("sha256").update(s).digest();
+};
 
 export function encrypt(plain: string) {
   const iv = randomBytes(12);

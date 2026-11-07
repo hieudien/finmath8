@@ -5,6 +5,7 @@ import { encrypt } from "@/lib/crypto";
 import { checkKey } from "@/lib/llm";
 import { modelOk, PROVIDERS } from "@/lib/models";
 import { log } from "@/lib/log";
+import { llmCfg } from "@/lib/teacher";
 
 const body = z.object({
   provider: z.enum(["gemini", "openai"]),
@@ -39,6 +40,7 @@ export const POST = api(async (req) => {
   if (key) row[col] = encrypt(key);
   const { error } = await admin().from("teacher_settings").upsert(row as never);
   if (error) return bad("Không lưu được cài đặt.", 500);
+  llmCfg.drop(u.id);
   await log({ actor: "teacher", action: "settings_changed", teacherId: u.id, meta: { provider, model, temperature, key_changed: !!key } });
   return Response.json({ ok: true, last4: key?.slice(-4) });
 });

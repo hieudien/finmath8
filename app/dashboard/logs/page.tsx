@@ -9,7 +9,7 @@ const LABEL: Record<string, string> = {
   problem_created: "Nạp đề", problem_updated: "Sửa đề", problem_deleted: "Xóa đề", problem_normalized: "Chuẩn hóa đề",
   link_created: "Tạo liên kết", link_toggled: "Bật/tắt liên kết", link_deleted: "Xóa liên kết",
   chat_session_started: "HS bắt đầu chat", chat_message: "Tin nhắn chat", chat_session_ended: "HS kết thúc chat",
-  eval_done: "Chấm điểm xong", survey_submitted: "HS đánh giá", answer_leak_blocked: "Chặn lộ đáp án", gemini_error: "Lỗi nhà cung cấp AI", model_fallback: "Tự đổi model do hết lượt", error: "Lỗi hệ thống (gửi mã lỗi cho admin)", problem_selftest: "Kiểm thử chatbot", export: "Tải dữ liệu",
+  eval_done: "Chấm điểm xong", survey_submitted: "HS đánh giá", answer_leak_blocked: "Chặn lộ đáp án", student_distress: "⚠ HS có dấu hiệu cần người lớn hỗ trợ", session_capped: "Chốt phiên do quá số lượt", session_off_topic_closed: "Chốt phiên do lạc đề liên tục", gemini_error: "Lỗi nhà cung cấp AI", model_fallback: "Tự đổi model do hết lượt", error: "Lỗi hệ thống (gửi mã lỗi cho admin)", problem_selftest: "Kiểm thử chatbot", export: "Tải dữ liệu",
 };
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ action?: string }> }) {

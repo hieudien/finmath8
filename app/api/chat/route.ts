@@ -3,28 +3,27 @@ import { createHash, randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { admin } from "@/lib/supabase/admin";
-import { hasKey, llmCfg } from "@/lib/teacher";
+import { llmCfg } from "@/lib/teacher";
+import { getLink } from "@/lib/links";
 import { finish, openingTurn, turn, type Session } from "@/lib/chat/engine";
-import { parseProblems, type Problem } from "@/lib/schema/problem";
+import { type Problem } from "@/lib/schema/problem";
 import { log } from "@/lib/log";
 import { failResponse } from "@/lib/errors";
+import { clientIp, limited } from "@/lib/ratelimit";
 
 const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("start"), slug: z.string().min(4), problemCode: z.string() }),
   z.object({ action: z.literal("message"), slug: z.string().min(4), sessionId: z.string().uuid(), text: z.string().trim().min(1).max(300) }),
   z.object({ action: z.literal("end"), slug: z.string().min(4), sessionId: z.string().uuid() }),
-  z.object({ action: z.literal("survey"), slug: z.string().min(4), sessionId: z.string().uuid(), likert: z.number().int().min(1).max(5) }),
+  z.object({ action: z.literal("survey"), slug: z.string().min(4), sessionId: z.string().uuid(), likert: z.number().int().min(1).max(5).optional(), confidence: z.number().int().min(1).max(5).optional() }),
 ]);
 
-// ponytail: giới hạn trong bộ nhớ 1 instance (IP chỉ băm, không lưu DB). Dùng Redis/Upstash khi chạy nhiều instance.
-const hits = new Map<string, number[]>();
-function limited(key: string) {
-  const now = Date.now();
-  const arr = (hits.get(key) ?? []).filter((t) => now - t < 60_000);
-  arr.push(now);
-  hits.set(key, arr);
-  return arr.length > 30;
-}
+export const maxDuration = 60; // AI có hạn chót 40 giây, chừa thêm thời gian ghi DB
+
+const MAX_SESSIONS_PER_DAY = 30; // mỗi trình duyệt (anon_id): học sinh thật chỉ dùng khoảng 10 phiên/ngày, chặn ai đó tạo phiên vô hạn để đốt key của giáo viên
+
+const MAX_SESSIONS_PER_LINK_PER_DAY = 2000; // trần cả liên kết: lớp thật ~40 em x ~10 phiên; chặn kẻ xóa cookie để vượt giới hạn từng trình duyệt
+
 
 const err = (error: string, status = 400) => Response.json({ error }, { status });
 
@@ -41,38 +40,43 @@ async function handle(req: Request) {
   if (!p.success) return err("Yêu cầu không hợp lệ.");
   const b = p.data;
 
-  const ip = (req.headers.get("x-forwarded-for") ?? "local").split(",")[0].trim();
-  const day = new Date().toISOString().slice(0, 10);
-  if (limited(createHash("sha256").update(ip + day + (process.env.APP_SECRET ?? "")).digest("hex"))) return err("Bạn gửi nhanh quá. Chờ một chút rồi thử lại.", 429);
-
-  const db = admin();
-  const { data: l } = await db.from("public_links").select("*").eq("slug", b.slug).maybeSingle();
-  const link = l as { id: string; teacher_id: string; active: boolean; expires_at: string | null; max_messages: number; problems_snapshot: unknown } | null;
-  if (!link || !link.active || (link.expires_at && new Date(link.expires_at) < new Date())) return err("Liên kết này đã đóng. Hỏi giáo viên của em.", 404);
-
   const store = await cookies();
   let anon = store.get("fm_anon")?.value;
   if (!anon || !/^[0-9a-f-]{36}$/.test(anon)) anon = randomUUID();
-  store.set("fm_anon", anon, { httpOnly: true, sameSite: "lax", maxAge: 60 * 60 * 24 * 365, path: "/" });
+  store.set("fm_anon", anon, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 60 * 60 * 24 * 365, path: "/" });
 
-  const problems = parseProblems(link.problems_snapshot).ok;
+  // Giới hạn theo học sinh (cookie) là chính. Giới hạn theo IP chỉ để chặn kẻ xóa cookie liên tục; cao vì cả trường dùng chung 1 IP.
+  const ip = clientIp(req);
+  const day = new Date().toISOString().slice(0, 10);
+  const ipKey = createHash("sha256").update(ip + day + (process.env.APP_SECRET ?? "")).digest("hex");
+  if (limited("a" + anon, 30) || limited("i" + ipKey, 1500) || (b.action === "start" && limited("s" + ipKey, 300))) return err("Bạn gửi nhanh quá. Chờ một chút rồi thử lại.", 429);
+
+  const db = admin();
+  const link = await getLink(b.slug);
+  if (!link || !link.active || (link.expires_at && new Date(link.expires_at) < new Date())) return err("Liên kết này đã đóng. Hỏi giáo viên của em.", 404);
+  const problems = link.problems;
 
   if (b.action === "start") {
     const prob = problems.find((x) => x.id === b.problemCode);
     if (!prob) return err("Không tìm thấy bài.", 404);
-    // Lượt mở bằng lời chào có sẵn không gọi AI: chỉ cần biết có key, không giải mã. Đề không có statement mới cần cấu hình đầy đủ.
-    const [cfg, keyed, { count }] = await Promise.all([
-      prob.statement ? null : llmCfg(link.teacher_id),
-      prob.statement ? hasKey(link.teacher_id) : true,
-      db.from("chat_sessions").select("id", { count: "exact", head: true }).eq("link_id", link.id),
+    // Lời chào có sẵn không gọi AI; đề không có statement mới gọi AI để mở bài. Cả hai cần key hợp lệ.
+    const cfg = await llmCfg(link.teacher_id);
+    if (!cfg) return err("Chatbot chưa sẵn sàng. Nhờ giáo viên kiểm tra cài đặt.", 503);
+    const since = new Date(Date.now() - 86_400_000).toISOString();
+    const [{ count: today }, { count: linkToday }] = await Promise.all([
+      db.from("chat_sessions").select("id", { count: "exact", head: true }).eq("anon_id", anon).gte("started_at", since),
+      db.from("chat_sessions").select("id", { count: "exact", head: true }).eq("link_id", link.id).gte("started_at", since),
+      db.rpc("next_seq", { p_link: link.id } as never),
     ]);
-    if (prob.statement ? !keyed : !cfg) return err("Chatbot chưa sẵn sàng. Nhờ giáo viên kiểm tra cài đặt.", 503);
-    const { data: s, error } = await db.from("chat_sessions").insert({ link_id: link.id, anon_id: anon, seq: (count ?? 0) + 1, problem_code: prob.id } as never).select("*").single();
+    if ((linkToday ?? 0) >= MAX_SESSIONS_PER_LINK_PER_DAY) return err("Liên kết này đã đạt giới hạn lượt dùng hôm nay. Báo giáo viên của em.", 429);
+    if ((today ?? 0) >= MAX_SESSIONS_PER_DAY) return err("Hôm nay em đã làm nhiều bài rồi. Nghỉ một chút, mai làm tiếp nhé.", 429);
+    const { data: seq } = await db.rpc("next_seq", { p_link: link.id } as never); // sau khi qua mọi giới hạn, để số thứ tự không bị hụt
+    const { data: s, error } = await db.from("chat_sessions").insert({ link_id: link.id, anon_id: anon, seq: (seq as number | null) ?? 1, problem_code: prob.id } as never).select("*").single();
     if (error || !s) throw new Error("Không tạo được phiên chat: " + (error?.message ?? "rỗng"));
     const sess = s as Session & { seq: number };
     try {
       const [r] = await Promise.all([
-        prob.statement ? openingTurn(sess, prob, link.teacher_id) : turn(cfg!, sess, prob, null, link.teacher_id),
+        prob.statement ? openingTurn(sess, prob) : turn(cfg, sess, prob, null, link.teacher_id, []),
         log({ actor: "student", action: "chat_session_started", teacherId: link.teacher_id, anonId: anon, linkId: link.id, meta: { problem: prob.id, seq: sess.seq } }),
       ]);
       return Response.json({ sessionId: sess.id, ...r });
@@ -87,8 +91,10 @@ async function handle(req: Request) {
   const prob = problems.find((x) => x.id === sess.problem_code) as Problem;
 
   if (b.action === "survey") {
-    check(await db.from("session_evals").update({ survey_likert: b.likert } as never).eq("session_id", sess.id));
-    await log({ actor: "student", action: "survey_submitted", teacherId: link.teacher_id, anonId: anon, linkId: link.id, meta: { likert: b.likert } });
+    const upd = { ...(b.likert && { survey_likert: b.likert }), ...(b.confidence && { confidence: b.confidence }) };
+    if (!Object.keys(upd).length) return err("Yêu cầu không hợp lệ.");
+    check(await db.from("session_evals").update(upd as never).eq("session_id", sess.id));
+    await log({ actor: "student", action: "survey_submitted", teacherId: link.teacher_id, anonId: anon, linkId: link.id, meta: { likert: b.likert, confidence: b.confidence } });
     return Response.json({ ok: true });
   }
 
@@ -103,12 +109,14 @@ async function handle(req: Request) {
       return Response.json({ ok: true, done: true });
     }
     if (sess.status !== "active") return err("Bài này đã kết thúc.", 409);
-    const { count } = await db.from("messages").select("id", { count: "exact", head: true }).eq("session_id", sess.id).eq("role", "student");
-    if ((count ?? 0) >= link.max_messages) return err("Đã đủ số tin nhắn cho bài này. Bấm Kết thúc bài.", 429);
+    // Một lần đọc cho cả giới hạn số tin, chống gửi dồn và ngữ cảnh của lượt này.
+    const { data: said } = await db.from("messages").select("content,ts").eq("session_id", sess.id).eq("role", "student").order("id");
+    const prior = (said ?? []) as { content: string; ts: string }[];
+    if (prior.length >= link.max_messages) return err("Đã đủ số tin nhắn cho bài này. Bấm Kết thúc bài.", 429);
     // Chống gửi dồn: cách tin trước ít nhất 2 giây trong cùng phiên.
-    const { data: last } = await db.from("messages").select("ts").eq("session_id", sess.id).eq("role", "student").order("id", { ascending: false }).limit(1).maybeSingle();
-    if (last && Date.now() - new Date((last as { ts: string }).ts).getTime() < 2000) return err("Bạn gửi nhanh quá. Chờ một chút rồi gửi lại nhé.", 429);
-    return Response.json(await turn(cfg, sess, prob, b.text, link.teacher_id));
+    const last = prior.at(-1);
+    if (last && Date.now() - new Date(last.ts).getTime() < 2000) return err("Bạn gửi nhanh quá. Chờ một chút rồi gửi lại nhé.", 429);
+    return Response.json(await turn(cfg, sess, prob, b.text, link.teacher_id, prior.map((m) => m.content)));
   } catch (e) {
     return geminiFail(e, link.teacher_id, anon, link.id);
   }

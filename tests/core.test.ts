@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { scrub } from "../lib/pii";
 import { decrypt, encrypt } from "../lib/crypto";
-import { leaks } from "../lib/chat/prompt";
+import { chatState, leaks } from "../lib/chat/prompt";
 import { parseProblems } from "../lib/schema/problem";
 import { friendly } from "../lib/errors";
 import { plain } from "../lib/plain";
-import { checkpoints, countDone, hasNum, stepOf, verify } from "../lib/chat/progress";
+import { checkpoints, countDone, hasNum, offStreak, OFF_REPLIES, sim, stepOf, tighten, verdict, verify } from "../lib/chat/progress";
 import { SEED } from "../lib/seed";
 
 describe("pii", () => {
@@ -21,8 +21,12 @@ describe("pii", () => {
 });
 
 describe("crypto", () => {
+  it("thieu secret thi bao loi", () => {
+    delete process.env.APP_SECRET;
+    expect(() => encrypt("x")).toThrow(/APP_SECRET/);
+  });
   it("khu hoi", () => {
-    process.env.APP_SECRET = "x";
+    process.env.APP_SECRET = "test-secret-0123456789";
     expect(decrypt(encrypt("AIza-key"))).toBe("AIza-key");
   });
 });
@@ -59,6 +63,41 @@ describe("progress", () => {
     expect(countDone(0b10101)).toBe(3);
     expect(stepOf(0, 5)).toBe(1);
     expect(stepOf(5, 5)).toBe(5);
+  });
+});
+
+describe("may kiem so hoc sinh", () => {
+  const p = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
+  const cps = checkpoints(p);
+  it("khop va khong khop", () => {
+    const v = verdict("x = 9 va con 7777", p, cps);
+    expect(v.match).toContain("9");
+    expect(v.miss).toContain("7777");
+    expect(verdict("em khong biet", p, cps)).toEqual({ match: [], miss: [] });
+  });
+  it("chatState chi them dong kiem khi co so", () => {
+    expect(chatState(cps, 0, 1)).not.toContain("Máy kiểm");
+    expect(chatState(cps, 0, 1, { match: ["9"], miss: [] })).toContain("khớp lời giải: 9");
+  });
+});
+
+describe("giao tiep: dai, lap, lac de", () => {
+  it("tighten giu cau dau va cau hoi cuoi, khong cat so thap phan", () => {
+    const long = "Đúng rồi, lãi suất là 0.85 phần trăm. " + "Từ này chỉ để làm dài thêm câu trả lời của bạn. ".repeat(6) + "Bạn tính tiếp số tiền lãi nhé?";
+    const t = tighten(long);
+    expect(t.startsWith("Đúng rồi, lãi suất là 0.85 phần trăm.")).toBe(true);
+    expect(t.endsWith("nhé?")).toBe(true);
+    expect(tighten("Ngắn thôi. Bạn tính nhé?")).toBe("Ngắn thôi. Bạn tính nhé?");
+  });
+  it("sim bat cau lap", () => {
+    expect(sim("Bạn viết phép tính ra số tiền còn thiếu nhé?", "Bạn viết phép tính ra số tiền còn thiếu nhé?")).toBe(1);
+    expect(sim("Bạn viết phép tính số tiền còn thiếu?", "Giải phương trình để tìm x nào?")).toBeLessThan(0.3);
+  });
+  it("thang lac de dem lien tiep", () => {
+    const m = (role: string, content: string) => ({ role, content });
+    expect(offStreak([m("bot", "x"), m("student", "a")])).toBe(0);
+    expect(offStreak([m("bot", OFF_REPLIES[0]), m("student", "hi"), m("bot", OFF_REPLIES[1]), m("student", "hi")])).toBe(2);
+    expect(offStreak([m("bot", OFF_REPLIES[0]), m("student", "ok"), m("bot", "binh thuong"), m("student", "hi")])).toBe(0);
   });
 });
 

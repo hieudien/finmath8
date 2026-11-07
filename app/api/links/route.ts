@@ -4,6 +4,7 @@ import { z } from "zod";
 import { admin } from "@/lib/supabase/admin";
 import { api, bad, requireUser } from "@/lib/auth";
 import { llmCfg } from "@/lib/teacher";
+import { getLink } from "@/lib/links";
 import { log } from "@/lib/log";
 
 const slug = () => randomBytes(8).toString("base64url").replace(/[-_]/g, "x").slice(0, 10).toLowerCase();
@@ -43,11 +44,13 @@ export const POST = api(async (req) => {
 
   if (b.action === "toggle") {
     check(await db.from("public_links").update({ active: b.active } as never).eq("id", b.id).eq("teacher_id", u.id));
+    getLink.clear();
     await log({ actor: "teacher", action: "link_toggled", teacherId: u.id, linkId: b.id, meta: { active: b.active } });
     return Response.json({ ok: true });
   }
 
   await log({ actor: "teacher", action: "link_deleted", teacherId: u.id, meta: { id: b.id } });
   check(await db.from("public_links").delete().eq("id", b.id).eq("teacher_id", u.id));
+  getLink.clear();
   return Response.json({ ok: true });
 });

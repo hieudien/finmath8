@@ -22,6 +22,47 @@ export function checkpoints(p: Problem): Cp[] {
   });
 }
 
+// Máy kiểm số học sinh vừa nêu: khớp số của lời giải / không khớp mốc nào. Chỉ nêu số chính học sinh viết nên không lộ đáp án.
+// ponytail: chỉ so số, không hiểu biểu thức. Cách giải khác đáng ra đúng sẽ bị báo "không khớp" (prompt dặn hỏi cách tính, không kết luận sai). Nâng cấp: parser biểu thức.
+export function verdict(text: string, p: Problem, cps: Cp[]) {
+  const given = new Set(numsIn(JSON.stringify([p.data, p.statement ?? ""])));
+  const sol = new Set([...numsIn(JSON.stringify(p.solution)), ...cps.flatMap((c) => c.anchors)]);
+  const mine = [...new Set(numsIn(text))].filter((n) => !given.has(n) && (n.length >= 3 || n.includes(".") || sol.has(n)));
+  return { match: mine.filter((n) => sol.has(n)), miss: mine.filter((n) => !sol.has(n)) };
+}
+
+const words = (t: string) => t.toLowerCase().match(/[\p{L}\d]+/gu) ?? [];
+// Reply quá 45 từ: giữ câu đầu + câu hỏi cuối. Không tách ở dấu chấm thập phân (cần khoảng trắng sau dấu câu).
+export function tighten(r: string) {
+  if (words(r).length <= 45) return r;
+  const ss = r.split(/(?<=[.!?])\s+/);
+  const q = ss.length > 1 && ss.at(-1)!.endsWith("?") ? ss.at(-1)! : "";
+  return q ? `${ss[0]} ${q}` : r;
+}
+// Độ giống 0..1 giữa hai câu (Jaccard theo tập từ): bot lặp lại câu trước thì > 0.8.
+export function sim(a: string, b: string) {
+  const x = new Set(words(a)), y = new Set(words(b));
+  const n = [...x].filter((w) => y.has(w)).length;
+  return x.size + y.size ? n / (x.size + y.size - n) : 0;
+}
+
+// Thang lạc đề: lần 1 nhắc nhẹ, lần 2 nhắc kèm mời làm tiếp, lần 3 chốt phiên. Đếm từ lịch sử (không cần cột DB mới).
+export const OFF_REPLIES = [
+  "Mình chỉ hỗ trợ bài toán này thôi nhé. Bạn quay lại bài và thử bước tiếp theo cùng mình nha?",
+  "Mình vẫn ở đây chờ bạn làm bài. Bạn thử viết bước tiếp theo, sai cũng không sao nhé?",
+  "Mình thấy bạn chưa muốn làm bài lúc này, nên mình dừng ở đây nhé. Khi nào sẵn sàng, bạn quay lại làm tiếp!",
+];
+export const SOS_REPLY = "Mình nghe bạn rồi. Chuyện này quan trọng hơn bài toán, bạn hãy nói với thầy cô hoặc người lớn bạn tin tưởng nhé. Khi nào sẵn sàng, mình cùng làm tiếp bài.";
+export function offStreak(history: { role: string; content: string }[]) {
+  let n = 0;
+  for (const m of [...history].reverse()) {
+    if (m.role !== "bot") continue;
+    if (!OFF_REPLIES.includes(m.content)) break;
+    n++;
+  }
+  return n;
+}
+
 // Bit 30 của mask = học sinh đã trình bày cách làm đúng (AI xác nhận, server kiểm bằng chứng). Không tính vào số mốc.
 export const METHOD = 1 << 30;
 export const countDone = (mask: number) => (mask & (METHOD - 1)).toString(2).replace(/0/g, "").length;

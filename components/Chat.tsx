@@ -17,6 +17,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   const [err, setErr] = useState("");
   const [done, setDone] = useState(false);
   const [rated, setRated] = useState(false);
+  const [sure, setSure] = useState(false); // đã tự đánh giá mức hiểu bài
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
   const started = useRef(false);
@@ -57,7 +58,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   // Quay lại danh sách đề. Phiên đang làm dở để nguyên ("Bỏ dở"), giống khi học sinh đóng tab.
   function back() {
     tok.current++;
-    setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setText(""); setErr(""); setBusy(false);
+    setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setSure(false); setText(""); setErr(""); setBusy(false);
   }
 
   async function finishNow() {
@@ -67,6 +68,11 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
     setBusy(false);
     if (!ok) return setErr(data.error ?? "Có lỗi.");
     setDone(true);
+  }
+
+  async function rateSure(n: number) {
+    setSure(true);
+    await post("/api/chat", { action: "survey", slug, sessionId: sid, confidence: n });
   }
 
   async function rate(n: number) {
@@ -123,7 +129,13 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
         {done ? (
           <div className="flex flex-col gap-3">
             <Alert tone="success">Em đã hoàn thành bài. Cảm ơn em.</Alert>
-            {rated ? <p className="text-sm text-text-muted">Đã ghi nhận đánh giá ẩn danh của em.</p> : (
+            {!sure && (
+              <fieldset>
+                <legend className="mb-2 text-sm">Em tự thấy mình hiểu bài này đến đâu? (1 = chưa hiểu, 5 = hiểu rõ)</legend>
+                <div className="flex gap-2">{[1, 2, 3, 4, 5].map((n) => <Button key={n} variant="secondary" className="flex-1 px-0" onClick={() => rateSure(n)} aria-label={`${n} điểm`}>{n}</Button>)}</div>
+              </fieldset>
+            )}
+            {rated ? sure && <p className="text-sm text-text-muted">Đã ghi nhận đánh giá ẩn danh của em.</p> : (
               <fieldset>
                 <legend className="mb-2 text-sm">Chatbot giúp em giải bài tốt hơn? (1 = không, 5 = rất nhiều)</legend>
                 <div className="flex gap-2">{[1, 2, 3, 4, 5].map((n) => <Button key={n} variant="secondary" className="flex-1 px-0" onClick={() => rate(n)} aria-label={`${n} điểm`}>{n}</Button>)}</div>

@@ -2,10 +2,12 @@ import { z } from "zod";
 import { api } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase/server";
 import { log } from "@/lib/log";
+import { clientIp, limited, tooMany } from "@/lib/ratelimit";
 
 const body = z.object({ email: z.string().email(), password: z.string().min(1) });
 
 export const POST = api(async (req) => {
+  if (limited("login" + clientIp(req), 10, 5 * 60_000)) return tooMany();
   const p = body.safeParse(await req.json().catch(() => null));
   if (!p.success) return Response.json({ error: "Nhập email và mật khẩu." }, { status: 400 });
   const sb = await supabaseServer();

@@ -4,6 +4,7 @@ import { api } from "@/lib/auth";
 import { admin } from "@/lib/supabase/admin";
 import { sendLinkMail } from "@/lib/mail";
 import { log } from "@/lib/log";
+import { clientIp, limited, tooMany } from "@/lib/ratelimit";
 import { siteUrl } from "@/lib/site";
 import { reportError } from "@/lib/errors";
 import { seedSampleProblems } from "@/lib/seed-account";
@@ -11,6 +12,7 @@ import { seedSampleProblems } from "@/lib/seed-account";
 const body = z.object({ email: z.string().email("Email không hợp lệ"), password: z.string().min(8, "Mật khẩu tối thiểu 8 ký tự") });
 
 export const POST = api(async (req) => {
+  if (limited("reg" + clientIp(req), 5, 60 * 60_000)) return tooMany();
   const p = body.safeParse(await req.json().catch(() => null));
   if (!p.success) return Response.json({ error: p.error.issues[0].message }, { status: 400 });
   const { email, password } = p.data;

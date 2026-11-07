@@ -4,37 +4,40 @@ import ChatLog from "@/components/ChatLog";
 import "katex/dist/katex.min.css";
 import { Empty } from "@/components/ui";
 import { check } from "@/lib/db";
-import { compareStats, r1, summarize, type Ev, type Sess } from "@/lib/stats";
+import { compareStats, r1, type Ev, type Sess, type Summary } from "@/lib/stats";
 
 type L = { id: string; label: string; tag: string | null };
 type LS = { link_id: string; sessions: number; done: number; total_avg: number; visits: number };
 type TS = { tag: string; n: number; mean: number; sd_pop: number; var_samp: number };
+const RECENT = 100;
 const TAG: Record<string, string> = { pre: "Trước", post: "Sau", experiment: "Thực nghiệm", control: "Đối chứng" };
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ link?: string }> }) {
   const { link } = await searchParams;
   const sb = await supabaseServer();
-  // Danh sách liên kết lấy số liệu đã gom từ view link_stats; chỉ khi mở 1 liên kết mới tải phiên và chấm điểm của riêng liên kết đó.
+  // Số liệu gom sẵn trong DB (view link_stats, hàm link_summary): PostgREST cắt 1000 dòng nên không tính ở phía app.
+  // Mở 1 liên kết chỉ tải danh sách 100 phiên gần nhất để hiện bảng và hội thoại.
   const res = await Promise.all([
     sb.from("public_links").select("id,label,tag").order("created_at", { ascending: false }),
     sb.from("link_stats").select("*"),
-    link ? sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code").eq("link_id", link).order("seq") : null,
-    link ? sb.from("session_evals").select("*, chat_sessions!inner(link_id)").eq("chat_sessions.link_id", link) : null,
+    link ? sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code").eq("link_id", link).order("seq", { ascending: false }).limit(RECENT) : null,
+    link ? sb.rpc("link_summary", { p_link: link } as never) : null,
     link ? null : sb.from("tag_stats").select("*"),
   ]);
   res.forEach((r) => r && check(r)); // lỗi đọc dữ liệu thì hiện trang báo lỗi, không để trang hiện số 0 gây hiểu nhầm
   const links = (res[0].data ?? []) as L[];
   const stats = new Map(((res[1].data ?? []) as LS[]).map((x) => [x.link_id, x]));
   const sessions = (res[2]?.data ?? []) as Sess[];
-  const evals = (res[3]?.data ?? []) as Ev[];
+  const summary = res[3]?.data as Summary | undefined;
+  const evals = sessions.length ? (((await sb.from("session_evals").select("*").in("session_id", sessions.map((x) => x.id))).data ?? []) as Ev[]) : [];
   const tags = new Map(((res[4]?.data ?? []) as TS[]).map((x) => [x.tag, { n: x.n, mean: x.mean, sd: x.sd_pop, v: x.var_samp }]));
 
   if (!links.length) return <div className="flex flex-col gap-6"><h1>Thống kê</h1><Empty text="Chưa có liên kết nào để thống kê." /></div>;
 
   const cur = links.find((l) => l.id === link);
-  if (cur) {
+  if (cur && summary) {
     const s = sessions, e = evals;
-    const m = summarize(s, e, stats.get(cur.id)?.visits ?? 0);
+    const m = { ...summary, visits: stats.get(cur.id)?.visits ?? 0, enough: summary.sessions > 0, completion: summary.sessions ? Math.round((summary.done / summary.sessions) * 100) : 0 };
     const evBy = new Map(e.map((x) => [x.session_id, x]));
     return (
       <div className="flex flex-col gap-6">
@@ -54,11 +57,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
             <Section title="Mức gợi ý cao nhất đã dùng"><BarBox data={m.hintDist} /></Section>
             <Section title="Lỗi thường gặp"><BarBox data={m.errors} horizontal /></Section>
             <Kpis items={[["Đúng kết luận", `${m.correctPct}%`], ["Thời gian TB (phút)", m.durationMin], ["Lần tăng gợi ý TB", m.hintAvg], ["Hài lòng (1–5)", m.likertAvg == null ? "—" : `${m.likertAvg} (${m.likertN})`]]} />
-            <Section title="Từng phiên (ẩn danh)">
+            <Section title={`Từng phiên (ẩn danh, ${s.length}/${m.sessions} phiên gần nhất)`}>
               <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface md:hidden">
                 {s.map((x) => { const ev = evBy.get(x.id); return (
                   <li key={x.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                    <span className="min-w-0"><span className="block font-medium">HS #{x.seq} · {x.problem_code}</span><span className="block text-sm text-text-muted tnum">{ev ? `Gợi ý tối đa mức ${ev.max_hint_level} · ${Math.round(ev.duration_s / 60)} phút` : "Chưa chấm"}</span></span>
+                    <span className="min-w-0"><span className="block font-medium">HS #{x.seq} · {x.problem_code}</span><span className="block text-sm text-text-muted tnum">{ev ? `Gợi ý tối đa mức ${ev.max_hint_level} · ${Math.round(ev.duration_s / 60)} phút${ev.confidence ? ` · Tự thấy hiểu ${ev.confidence}/5` : ""}` : "Chưa chấm"}</span></span>
                     <span className="shrink-0 text-right"><span className="tnum block font-bold">{ev ? `${ev.total}/12` : "—"}</span><span className="block whitespace-nowrap text-sm text-text-muted">{ev ? (ev.final_correct ? "Đúng" : "Chưa đúng") : x.status === "active" ? "Đang làm" : "Bỏ dở"}</span></span>
                   </li>); })}
               </ul>

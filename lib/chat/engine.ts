@@ -2,7 +2,7 @@ import { check } from "@/lib/db";
 import { admin } from "@/lib/supabase/admin";
 import { askJson, type LlmCfg } from "@/lib/llm";
 import { chatState, chatSystem, evalSchema, evalSystem, gateSchema, gateSystem, leaks, turnSchema } from "@/lib/chat/prompt";
-import { METHOD, checkpoints, countDone, hasNum, norm, stepOf, verify } from "@/lib/chat/progress";
+import { METHOD, checkpoints, countDone, hasNum, norm, offStreak, OFF_REPLIES, SOS_REPLY, sim, stepOf, tighten, verdict, verify } from "@/lib/chat/progress";
 import { GREETING_FALLBACK } from "@/lib/greeting";
 import { scrub } from "@/lib/pii";
 import { log } from "@/lib/log";
@@ -11,36 +11,35 @@ import type { Problem } from "@/lib/schema/problem";
 export type Session = { id: string; link_id: string; anon_id: string; step: number; hint_level: number; progress?: number; started_at: string; status: string };
 type Msg = { role: "student" | "bot"; content: string; hint_level: number | null };
 
-const REDIRECT = "Mình chỉ hỗ trợ bài toán này thôi nhé. Bạn quay lại bài và thử bước tiếp theo cùng mình nha?";
+const SOS = /tự tử|muốn chết|tự (làm )?đau|tự hại|bị (đánh|bắt nạt|bạo hành)/i; // dấu hiệu cần người lớn: không gọi AI, trả câu mẫu và gắn cờ cho giáo viên
+const IDK = /không biết|ko biết|chịu|bó tay|khó quá|không hiểu|giải (giúp|hộ)|cho (mình )?đáp án/i;
+const MAX_TURNS = 20; // trần số tin học sinh mỗi phiên: quá mức này mà chưa xong thì chốt phiên, không để lặp vô hạn
+const CLOSING = "Bạn đã tự giải xong bài này, cách làm của bạn hợp lý. Làm tốt lắm!";
 const INJECT = /ignore (all |previous |the )?(instruction|prompt)|system prompt|prompt (của|cua) (bạn|mày)|bỏ qua (mọi |các |tất cả )?(hướng dẫn|chỉ dẫn|quy tắc|lệnh)|quên (mọi |các )?(hướng dẫn|quy tắc)|đóng vai|jailbreak|developer mode/i;
 
-export async function turn(cfg: LlmCfg, s: Session, p: Problem, studentText: string | null, teacherId: string) {
+// prior: các tin học sinh đã gửi trước đó trong phiên (route đã đọc sẵn để kiểm tra giới hạn, khỏi đọc lại).
+export async function turn(cfg: LlmCfg, s: Session, p: Problem, studentText: string | null, teacherId: string, prior: string[]) {
   const db = admin();
   // Chỉ gửi 8 tin gần nhất: tiến độ đã lưu ở s.progress nên không cần cả hội thoại.
-  const [{ data }, { data: all }] = await Promise.all([
-    db.from("messages").select("role,content,hint_level").eq("session_id", s.id).order("id", { ascending: false }).limit(8),
-    db.from("messages").select("content").eq("session_id", s.id).eq("role", "student").order("id"), // toàn bộ tin học sinh: số đã nêu ở lượt trước vẫn tính
-  ]);
+  const { data } = await db.from("messages").select("role,content,hint_level").eq("session_id", s.id).order("id", { ascending: false }).limit(8);
   const history = ((data ?? []) as Msg[]).reverse();
-  const prior = ((all ?? []) as { content: string }[]).map((m) => m.content);
   const clean = studentText === null ? null : scrub(studentText);
 
   while (history[0]?.role === "bot") history.shift(); // lượt đầu gửi AI phải là của học sinh
   const cps = checkpoints(p);
   const mask0 = s.progress ?? 0;
   const said = [...prior, clean ?? ""].join("\n");
-  const off = clean !== null && INJECT.test(clean); // cố đổi vai/lấy prompt: không gọi AI
+  const sos = clean !== null && SOS.test(clean);
+  const off = sos || (clean !== null && INJECT.test(clean)); // cố đổi vai/lấy prompt hoặc cần người lớn: không gọi AI
+  const v = clean === null ? undefined : verdict(clean, p, cps);
   // Trạng thái đổi theo lượt gắn vào cuối tin học sinh để system prompt giữ nguyên (cache được).
   const turns = [
     ...history.map((m) => ({ role: (m.role === "student" ? "user" : "model") as "user" | "model", text: m.content })),
     { role: "user" as const, text: `${clean ?? "(Học sinh vừa mở bài. Hãy chào ngắn và hỏi mốc đầu tiên.)"}
-${chatState(cps, mask0, s.hint_level)}` },
+${chatState(cps, mask0, s.hint_level, v)}` },
   ];
   // Lưu tin học sinh song song với lúc chờ AI: bớt một vòng chờ DB.
-  const saveStudent = clean === null ? null : Promise.all([
-    db.from("messages").insert({ session_id: s.id, role: "student", content: clean } as never).then(check),
-    log({ actor: "student", action: "chat_message", teacherId, anonId: s.anon_id, linkId: s.link_id, meta: { role: "student", len: clean.length } }),
-  ]);
+  const saveStudent = clean === null ? null : Promise.resolve(db.from("messages").insert({ session_id: s.id, role: "student", content: clean } as never)).then(check);
   const out = off ? null : await askJson(cfg, chatSystem(p, cps), turns, turnSchema, { maxTokens: 400, deadlineMs: 40_000 }).catch(async (e) => { await saveStudent?.catch(() => {}); throw e; });
   await saveStudent;
 
@@ -64,26 +63,48 @@ ${chatState(cps, mask0, s.hint_level)}` },
   const done = countDone(mask);
   const finished = onTopic && done >= cps.length && !!(mask & METHOD);
   const step = finished ? 5 : Math.min(4, stepOf(done, cps.length));
-  const hint = onTopic && !progressed && out!.struggling ? Math.min(3, s.hint_level + 1) : s.hint_level;
+  // Tăng mức gợi ý theo tín hiệu server (số không khớp, "không biết") chứ không chỉ cờ struggling do AI tự báo. Tối đa mức 4.
+  const stuck = onTopic && !progressed && (out!.struggling || (v?.miss.length ?? 0) > 0 || IDK.test(clean ?? ""));
+  const hint = stuck ? Math.min(4, s.hint_level + 1) : s.hint_level;
 
+  // Lạc đề: thang 3 bậc theo số lần liên tiếp (nhắc nhẹ, nhắc kèm mời, chốt phiên). Cần người lớn thì trả câu mẫu và gắn cờ, không tính vào thang.
+  const streak = offStreak(history);
+  const closeOff = !onTopic && !sos && !out?.distress && streak >= 2;
+  const cry = sos || (!onTopic && !!out?.distress);
   // Bot chỉ được nói số kết quả/trung gian mà học sinh đã tự nêu. Vi phạm -> AI viết lại; vẫn lộ thì dùng câu trung tính.
-  let reply = onTopic ? out!.reply : REDIRECT;
+  let reply = onTopic ? tighten(out!.reply) : cry ? SOS_REPLY : OFF_REPLIES[Math.min(streak, 2)];
+  if (cry) await log({ actor: "system", action: "student_distress", teacherId, anonId: s.anon_id, linkId: s.link_id });
   // AI viết lời tổng kết (không có câu hỏi) nhưng server chưa xác nhận cách làm: không để bot chào kết trong khi phiên còn mở, hỏi lại cách làm.
   if (onTopic && !finished && done >= cps.length && !reply.includes("?")) reply = "Kết quả của bạn đúng rồi. Bạn tính ra kết quả đó bằng phép tính nào? Viết phép tính ra nhé.";
+  // Bot lặp lại câu trước (giống > 80%): thử lại một lần, bắt diễn đạt/hỏi từ góc khác.
+  else if (onTopic && !finished && history.filter((m) => m.role === "bot").slice(-2).some((m) => sim(m.content, reply) > 0.8)) {
+    const retry = await askJson(cfg, chatSystem(p, cps), [...turns.slice(0, -1), { role: "user", text: `${turns.at(-1)!.text}\n[Lưu ý: câu trả lời trước của bạn bị lặp. Diễn đạt khác, hỏi từ góc khác cùng mốc, vẫn tuân thủ mọi quy tắc.]` }], turnSchema, { maxTokens: 400, deadlineMs: 20_000 }).catch(() => null);
+    if (retry?.reply) reply = tighten(retry.reply);
+  }
+  // Lời kết phải là lời kết: không câu hỏi, không mời làm thêm. AI lỡ viết thế thì dùng câu kết mẫu.
+  if (finished && /\?|làm thêm|bài (khác|tiếp)|mở rộng/i.test(reply)) reply = CLOSING;
   const given = [p.data, p.statement, said, cps.filter((c) => mask >> c.id & 1).map((c) => c.must)];
   if (leaks(reply, p.solution, given, p.solution_steps)) {
     const g = await askJson(cfg, gateSystem(p, reply), [{ role: "user", text: turns.map((t) => `${t.role === "user" ? "HS" : "Bot"}: ${t.text}`).join("\n") }], gateSchema, { maxTokens: 250, deadlineMs: 15_000 }).catch(() => null);
     reply = g && !leaks(g.reply, p.solution, given, p.solution_steps) ? g.reply : "Mình thấy bạn đang đi đúng hướng. Bạn thử viết tiếp bước tính tiếp theo của mình nhé?";
     await log({ actor: "system", action: "answer_leak_blocked", teacherId, anonId: s.anon_id, linkId: s.link_id });
   }
+  // Đủ trần lượt mà chưa xong: chốt phiên, nêu tiến độ và gợi ý cho lần sau (câu mẫu, không gọi AI, không có câu hỏi).
+  const capped = !finished && !closeOff && !cry && prior.length + 1 >= MAX_TURNS;
+  if (capped) {
+    const nxt = cps.find((c) => !(mask >> c.id & 1));
+    const h = nxt && p.hints.find((x) => x.level === nxt.id + 1)?.text;
+    reply = `Mình dừng bài ở đây nhé, bài này khá dài. Bạn đã xong ${done}/${cps.length} mốc.${h && !leaks(h, p.solution, given, p.solution_steps) ? ` Lần sau thử lại từ chỗ này: ${h}` : ""}`;
+    await log({ actor: "system", action: "session_capped", teacherId, anonId: s.anon_id, linkId: s.link_id, meta: { done } });
+  }
   await Promise.all([
     db.from("messages").insert({ session_id: s.id, role: "bot", content: reply, step, hint_level: hint } as never).then(check),
     db.from("chat_sessions").update({ step, hint_level: hint, progress: mask } as never).eq("id", s.id).then(check),
-    log({ actor: "student", action: "chat_message", teacherId, anonId: s.anon_id, linkId: s.link_id, meta: { role: "bot", len: reply.length, step, done } }),
   ]);
 
-  if (finished) await finish(cfg, s, p, teacherId);
-  return { reply, step, done: finished };
+  if (closeOff) await log({ actor: "system", action: "session_off_topic_closed", teacherId, anonId: s.anon_id, linkId: s.link_id });
+  if (finished || capped || closeOff) await finish(cfg, s, p, teacherId);
+  return { reply, step, done: finished || capped || closeOff };
 }
 
 export async function finish(cfg: LlmCfg, s: Session, p: Problem, teacherId: string) {
@@ -111,12 +132,8 @@ export async function finish(cfg: LlmCfg, s: Session, p: Problem, teacherId: str
 }
 
 // Lời mở đầu không gọi AI lúc chat: dùng câu chào AI đã tạo sẵn khi nạp đề (p.greeting). Tiết kiệm 1 lượt/phiên.
-export async function openingTurn(s: Session, p: Problem, teacherId: string) {
+export async function openingTurn(s: Session, p: Problem) {
   const reply = p.greeting || GREETING_FALLBACK;
-  const [ins] = await Promise.all([
-    admin().from("messages").insert({ session_id: s.id, role: "bot", content: reply, step: 1, hint_level: 1 } as never),
-    log({ actor: "student", action: "chat_message", teacherId, anonId: s.anon_id, linkId: s.link_id, meta: { role: "bot", len: reply.length, step: 1, static: true } }),
-  ]);
-  check(ins);
+  check(await admin().from("messages").insert({ session_id: s.id, role: "bot", content: reply, step: 1, hint_level: 1 } as never));
   return { reply, step: 1, done: false };
 }

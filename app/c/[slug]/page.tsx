@@ -29,7 +29,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
     );
   }
   const linkId = l.id;
-  after(async () => { await admin().from("link_visits").insert({ link_id: linkId } as never); }); // không chặn việc hiển thị trang
+  after(async () => { await admin().rpc("bump_visit", { p_link: linkId } as never); }); // không chặn việc hiển thị trang
   // greeting: lời chào hiện ngay khi bấm chọn bài, khỏi chờ server. Đề không có statement thì để AI mở bài (rỗng).
   const problems = parseProblems(l.problems_snapshot).ok.map((p) => ({ id: p.id, title: p.title, statement: p.statement ?? "", greeting: p.statement ? p.greeting || GREETING_FALLBACK : "" }));
   return <Chat slug={slug} label={l.label} problems={problems} />;
