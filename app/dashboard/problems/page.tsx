@@ -14,7 +14,7 @@ export default async function Page() {
       <ImportPanel />
       <section aria-labelledby="lst" className="flex flex-col gap-3">
         <h2 id="lst">Đã nạp ({rows.length})</h2>
-        {rows.length === 0 ? <Empty text="Chưa có đề nào. Nạp JSON, dán văn bản hoặc thêm đề mẫu ở trên." /> : (
+        {rows.length === 0 ? <Empty text="Chưa có đề nào. Bấm Thêm đề để nạp JSON, dán văn bản hoặc thêm đề mẫu." /> : (
           <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
             {rows.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">

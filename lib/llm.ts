@@ -1,5 +1,5 @@
-import { GoogleGenAI } from "@google/genai";
-import type { z } from "zod";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { z } from "zod";
 import { PROVIDERS, type Provider } from "@/lib/models";
 
 export type LlmCfg = {
@@ -7,17 +7,34 @@ export type LlmCfg = {
   key: string;
   model: string;
   temperature: number;
+  think?: boolean; // true: để model suy nghĩ sâu (chậm hơn). Mặc định tắt: chat cần nhanh
+  maxTokens?: number; // giới hạn độ dài trả lời, tránh model nói dài
+  onUsage?: (model: string, inTok: number, outTok: number) => void; // ghi nhận mỗi lượt gọi thành công để thống kê hạn mức
+  onQuota?: (model: string, q: QuotaInfo) => void; // model chạm giới hạn: ghi lại loại và mức giới hạn nếu nhà cung cấp báo
   onFallback?: (from: string, to: string, reason: string) => void; // để ghi nhật ký khi tự đổi model
 };
+export type QuotaInfo = { kind: "day" | "minute" | "unknown"; limit: number | null };
 type Turn = { role: "user" | "model"; text: string };
 
-async function callGemini(cfg: LlmCfg, system: string, turns: Turn[]) {
+// Structured output của Gemini: ép đúng khung JSON, khỏi mô tả định dạng trong prompt và khỏi gọi lại khi JSON sai.
+const DROP = new Set(["$schema", "default", "minimum", "maximum", "additionalProperties"]);
+const clean = (n: unknown): unknown => Array.isArray(n) ? n.map(clean) : n && typeof n === "object" ? Object.fromEntries(Object.entries(n).filter(([k]) => !DROP.has(k)).map(([k, v]) => [k, clean(v)])) : n;
+const jsonSchema = (schema: z.ZodType) => { try { return clean(z.toJSONSchema(schema, { io: "input" })); } catch { return undefined; } };
+
+async function callGemini(cfg: LlmCfg, system: string, turns: Turn[], schema?: z.ZodType) {
   const ai = new GoogleGenAI({ apiKey: cfg.key });
-  const res = await ai.models.generateContent({
-    model: cfg.model,
-    contents: turns.map((t) => ({ role: t.role, parts: [{ text: t.text }] })),
-    config: { systemInstruction: system, responseMimeType: "application/json", temperature: cfg.temperature },
-  });
+  const base = { systemInstruction: system, responseMimeType: "application/json", responseJsonSchema: schema && jsonSchema(schema), temperature: cfg.temperature, maxOutputTokens: cfg.maxTokens };
+  const run = (extra: object) => ai.models.generateContent({ model: cfg.model, contents: turns.map((t) => ({ role: t.role, parts: [{ text: t.text }] })), config: { ...base, ...extra } });
+  // Tắt suy nghĩ để trả lời nhanh; model không hỗ trợ mức này (báo lỗi liên quan "thinking") thì gọi lại như thường.
+  let res;
+  try {
+    res = await run(cfg.think ? {} : { thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } });
+  } catch (e) {
+    if (cfg.think || !/thinking/i.test(String(e))) throw e;
+    res = await run({});
+  }
+  const u = res.usageMetadata;
+  cfg.onUsage?.(cfg.model, u?.promptTokenCount ?? 0, (u?.candidatesTokenCount ?? 0) + (u?.thoughtsTokenCount ?? 0));
   return res.text ?? "";
 }
 
@@ -38,7 +55,8 @@ async function callOpenAI(cfg: LlmCfg, system: string, turns: Turn[], json = tru
     if (json && r.status === 400 && /response_format|json_object/i.test(t)) return callOpenAI(cfg, system, turns, false); // model không hỗ trợ JSON mode: dựa vào prompt
     throw new Error(`OpenAI ${r.status}: ${t.slice(0, 300)}`);
   }
-  const j = (await r.json()) as { choices?: { message?: { content?: string } }[] };
+  const j = (await r.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+  cfg.onUsage?.(cfg.model, j.usage?.prompt_tokens ?? 0, j.usage?.completion_tokens ?? 0);
   return j.choices?.[0]?.message?.content ?? "";
 }
 
@@ -46,22 +64,42 @@ async function callOpenAI(cfg: LlmCfg, system: string, turns: Turn[], json = tru
 // ponytail: bộ nhớ của 1 instance. Dùng bảng DB/Redis nếu chạy nhiều instance.
 const dead = new Map<string, number>();
 const deadKey = (c: LlmCfg, model: string) => `${c.provider}:${c.key.slice(-8)}:${model}`;
-const isQuota = (e: unknown) => /PerDay|insufficient_quota|RESOURCE_EXHAUSTED|429|no longer available|404/i.test(String(e));
-const isLongQuota = (e: unknown) => /PerDay|insufficient_quota|no longer available|404/i.test(String(e));
+const isQuota = (e: unknown) => /PerDay|insufficient_quota|RESOURCE_EXHAUSTED|429|no longer available|404/i.test(String(e));
+const isOverload = (e: unknown) => /\b50\d\b|UNAVAILABLE|overload|high demand/i.test(String(e));
+const isLongQuota = (e: unknown) => /PerDay|insufficient_quota|no longer available|404/i.test(String(e));
+
+// Gemini 429 thường kèm quotaId (vd ...PerDay...) và quotaValue (mức giới hạn): đọc ra để biết hạn mức thật mà không cần nhập tay.
+export function parseQuota(e: unknown): QuotaInfo {
+  const s = String(e);
+  const v = /"quotaValue"\s*:\s*"?(\d+)/.exec(s)?.[1] ?? /\blimit:\s*(\d+)/i.exec(s)?.[1];
+  return { kind: /PerDay|Daily/i.test(s) ? "day" : /PerMinute/i.test(s) ? "minute" : "unknown", limit: v ? Number(v) : null };
+}
 
 // Hết quota (hoặc model không còn) thì tự thử model kế tiếp của cùng nhà cung cấp, tối đa 4 model.
-export async function askJson<T extends z.ZodType>(cfg: LlmCfg, system: string, turns: Turn[], schema: T): Promise<z.infer<T>> {
+export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string, turns: Turn[], schema: T, opts: { think?: boolean; maxTokens?: number; deadlineMs?: number } = {}): Promise<z.infer<T>> {
+  const cfg = { ...cfg0, ...opts };
+  const deadline = Date.now() + (opts.deadlineMs ?? Infinity); // chat đặt hạn chót để trả lỗi thân thiện trước khi trình duyệt tự báo timeout
   const all = [cfg.model, ...PROVIDERS[cfg.provider].models.map((m) => m.id).filter((id) => id !== cfg.model)].slice(0, 4);
   const alive = all.filter((m) => (dead.get(deadKey(cfg, m)) ?? 0) < Date.now());
   const chain = alive.length ? alive : [cfg.model];
   let last: unknown;
   for (let i = 0; i < chain.length; i++) {
+    const left = deadline - Date.now();
+    if (left <= 0) throw last ?? new Error("AI_TIMEOUT: quá thời gian chờ AI");
     try {
-      return await askOne({ ...cfg, model: chain[i] }, system, turns, schema);
+      const run = askOne({ ...cfg, model: chain[i] }, system, turns, schema);
+      if (left === Infinity) return await run;
+      let timer: ReturnType<typeof setTimeout>;
+      const timeout = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error("AI_TIMEOUT: quá thời gian chờ AI")), left); });
+      return await Promise.race([run, timeout]).finally(() => clearTimeout(timer));
     } catch (e) {
-      if (!isQuota(e)) throw e;
+      if (/AI_TIMEOUT/.test(String(e))) throw last && isQuota(last) ? last : e;
+      const quota = isQuota(e);
+      if (!quota && !isOverload(e)) throw e;
       last = e;
-      dead.set(deadKey(cfg, chain[i]), Date.now() + (isLongQuota(e) ? 60 : 2) * 60_000);
+      if (quota) cfg.onQuota?.(chain[i], parseQuota(e));
+      // Quá tải (503) chỉ tạm thời: nhớ 1 phút để lượt sau bỏ qua model này ngay.
+      dead.set(deadKey(cfg, chain[i]), Date.now() + (isLongQuota(e) ? 60 : quota ? 5 : 1) * 60_000);
       if (i + 1 < chain.length) cfg.onFallback?.(chain[i], chain[i + 1], String(e).slice(0, 120));
     }
   }
@@ -72,7 +110,7 @@ async function askOne<T extends z.ZodType>(cfg: LlmCfg, system: string, turns: T
   let lastErr = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     const t = lastErr ? [...turns, { role: "user" as const, text: `JSON trước không hợp lệ (${lastErr}). Trả lại JSON đúng định dạng.` }] : turns;
-    const text = await withRetry(() => (cfg.provider === "openai" ? callOpenAI(cfg, system, t) : callGemini(cfg, system, t)));
+    const text = await withRetry(() => (cfg.provider === "openai" ? callOpenAI(cfg, system, t) : callGemini(cfg, system, t, schema)));
     try {
       const parsed = schema.safeParse(JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, "")));
       if (parsed.success) return parsed.data;
@@ -104,8 +142,9 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
       return await fn();
     } catch (e) {
       const s = String(e);
-      if (i >= 2 || /PerDay|insufficient_quota/.test(s) || !/429|RESOURCE_EXHAUSTED|\b50\d\b|UNAVAILABLE|overload|fetch failed/i.test(s)) throw e;
-      await new Promise((r) => setTimeout(r, 4000 * (i + 1)));
+      // 429 / hết quota: không chờ, askJson đổi sang model khác ngay. Chỉ thử lại lỗi tạm thời (5xx, quá tải, mạng).
+      if (i >= 1 || /PerDay|insufficient_quota|429|RESOURCE_EXHAUSTED/.test(s) || !/\b50\d\b|UNAVAILABLE|overload|fetch failed/i.test(s)) throw e;
+      await new Promise((r) => setTimeout(r, 1500)); // thử lại đúng 1 lần, rồi askJson đổi model
     }
   }
 }

@@ -19,7 +19,7 @@ const BLOCKS: [string, string[]][] = [
   ]],
   ["Bảo mật và đạo đức", [
     "Học sinh không đăng nhập, không nhập tên. Hệ thống không lưu IP hay tên, và tự che số điện thoại, email, tên khi học sinh lỡ gõ.",
-    "Thống kê chỉ hiện chi tiết khi có từ 3 phiên trở lên.",
+    "Thống kê hiện ngay khi có phiên chat đầu tiên; số liệu càng chính xác khi có nhiều học sinh.",
     "Nhắc học sinh không chia sẻ thông tin cá nhân với chatbot.",
   ]],
 ];

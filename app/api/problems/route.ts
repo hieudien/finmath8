@@ -12,7 +12,7 @@ import { missingAnswers } from "@/lib/answer-check";
 
 const NORMALIZE_SYSTEM = `Bạn chuẩn hóa đề Toán lớp 8 (tình huống tài chính) từ văn bản thô sang JSON. Chỉ trả JSON một đối tượng đúng mẫu:
 {"id":"TCxx","title":string,"grade":8,"topic":string,"statement":string (nguyên văn đề bài cho học sinh),"learning_objectives":[string],"data":{số liệu, tỉ lệ dạng thập phân 0.x},"solution":{đáp án chuẩn bằng số},"solution_steps":[lời giải từng bước, mỗi bước 1–2 câu có phép tính, bước cuối là kết luận],"common_errors":[string],"hints":[{"level":1,"text":..},{"level":2,"text":..},{"level":3,"text":..}],"extension":string,"rubric":{"identify":3,"plan":3,"calculate":3,"explain":3}}
-Quy tắc: tự giải đề, tính đáp án thật cẩn thận, đừng bịa số không có trong đề. Gợi ý mức 1 chỉ hỏi định hướng; mức 2 gợi ý cách giải; mức 3 nêu bước tính đầu tiên, KHÔNG nêu kết quả cuối. Nếu văn bản có nhiều đề, chỉ chuẩn hóa đề đầu. Nếu thiếu id, dùng "TC99".`;
+Quy tắc: công thức, phương trình có ký hiệu toán đặt trong $...$ theo LaTeX (ví dụ $x^2$, $120000 + 40000x = 480000$), KHÔNG dùng \\( \\) hay \\[ \\]. Tự giải đề, tính đáp án thật cẩn thận, đừng bịa số không có trong đề. Gợi ý mức 1 chỉ hỏi định hướng; mức 2 gợi ý cách giải; mức 3 nêu bước tính đầu tiên, KHÔNG nêu kết quả cuối. Nếu văn bản có nhiều đề, chỉ chuẩn hóa đề đầu. Nếu thiếu id, dùng "TC99".`;
 
 async function save(teacherId: string, list: Problem[]) {
   const db = admin();
@@ -68,7 +68,7 @@ export const POST = api(async (req) => {
     const prob = pp.data;
     const out = await askJson(cfg, 'Viết lời giải từng bước (3–8 bước) cho bài Toán lớp 8. Mỗi bước 1–2 câu, nêu rõ phép tính và kết quả trung gian, bước cuối là kết luận. Lời giải PHẢI ra đúng đáp án đã cho trong "solution". Chỉ trả JSON {"steps": [string]}.', [{ role: "user", text: `${prob.statement ?? prob.title}
 Dữ liệu: ${JSON.stringify(prob.data)}
-Đáp án: ${JSON.stringify(prob.solution)}` }], z.object({ steps: z.array(z.string().min(3)).min(2).max(12) }));
+Đáp án: ${JSON.stringify(prob.solution)}` }], z.object({ steps: z.array(z.string().min(3)).min(2).max(12) }), { think: true });
     // Kiểm tra: mọi số lớn trong đáp án phải xuất hiện trong lời giải, nếu không thì không lưu (AI giải lệch đáp án).
     const missing = missingAnswers(prob.solution, out.steps);
     if (missing.length) return bad(`AI viết lời giải chưa khớp đáp án của đề (thiếu ${missing.join(", ")}). Bấm thử lại, hoặc kiểm tra lại đáp án trong đề.`);
@@ -96,7 +96,7 @@ Dữ liệu: ${JSON.stringify(prob.data)}
   if (b.action === "normalize") {
     const cfg = await llmCfg(u.id);
     if (!cfg) return bad("Chưa có API key. Vào Cài đặt để nhập.");
-    const out = await askJson(cfg, NORMALIZE_SYSTEM, [{ role: "user", text: b.text }], problemSchema);
+    const out = await askJson(cfg, NORMALIZE_SYSTEM, [{ role: "user", text: b.text }], problemSchema, { think: true });
     // Lời giải lệch đáp án thì bỏ lời giải (giáo viên có thể bấm "Tạo lời giải bằng AI" sau).
     if (out.solution_steps.length && missingAnswers(out.solution, out.solution_steps).length) out.solution_steps = [];
     await log({ actor: "teacher", action: "problem_normalized", teacherId: u.id, meta: { code: out.id, chars: b.text.length } });

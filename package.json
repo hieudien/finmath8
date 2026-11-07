@@ -13,6 +13,7 @@
     "@google/genai": "^3.0.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.0",
+    "katex": "^0.19.1",
     "next": "15.5.29",
     "nodemailer": "^10.3.1",
     "react": "19.1.0",
@@ -24,6 +25,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@types/katex": "^0.16.8",
     "@types/node": "^22",
     "@types/nodemailer": "^8.0.2",
     "@types/react": "^19",

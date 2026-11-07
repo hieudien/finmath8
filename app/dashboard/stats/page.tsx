@@ -1,8 +1,9 @@
 import { supabaseServer } from "@/lib/supabase/server";
 import { BarBox, LineBox } from "@/components/Charts";
 import { Empty } from "@/components/ui";
+import { MathText } from "@/components/MathText";
 import { check } from "@/lib/db";
-import { compare, K_MIN, summarize, type Ev, type Sess } from "@/lib/stats";
+import { compare, summarize, type Ev, type Sess } from "@/lib/stats";
 
 type L = { id: string; label: string; tag: string | null };
 const TAG: Record<string, string> = { pre: "Trước", post: "Sau", experiment: "Thực nghiệm", control: "Đối chứng" };
@@ -48,7 +49,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
         </div>
         <Kpis items={[["Lượt mở", m.visits], ["Phiên chat", m.sessions], ["Hoàn thành", `${m.completion}%`], ["Điểm TB / 12", m.enough ? m.totalAvg : "—"]]} />
         {!m.enough ? (
-          <p className="rounded-lg border border-border bg-surface p-4">Mới có {m.sessions} phiên. Cần ít nhất {K_MIN} phiên mới hiện chi tiết, để không đoán ra từng học sinh.</p>
+          <p className="rounded-lg border border-border bg-surface p-4">Chưa có phiên chat nào. Số liệu sẽ hiện khi học sinh bắt đầu làm bài.</p>
         ) : (
           <>
             <Section title="Số phiên theo ngày"><LineBox data={m.daily} /></Section>
@@ -90,7 +91,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
                       {list.map((m, i) => (
                         <li key={i} className={`max-w-[90%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm ${m.role === "bot" ? "self-start border border-border" : "self-end bg-primary-soft"}`}>
                           <span className="block text-xs text-text-muted">{m.role === "bot" ? "Chatbot" : "Học sinh"} · {new Date(m.ts).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</span>
-                          {m.content}
+                          <MathText text={m.content} />
                         </li>
                       ))}
                       {list.length === 0 && <li className="text-sm text-text-muted">Chưa có tin nhắn.</li>}

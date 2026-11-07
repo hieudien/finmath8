@@ -3,7 +3,7 @@ import { mean, standardDeviation, tTestTwoSample } from "simple-statistics";
 export type Sess = { id: string; link_id: string; seq: number; status: string; started_at: string; problem_code: string };
 export type Ev = { session_id: string; identify: number; plan: number; calculate: number; explain: number; total: number; final_correct: boolean; max_hint_level: number; hint_count: number; errors: string[]; duration_s: number; survey_likert: number | null };
 
-export const K_MIN = 3; // dưới ngưỡng này không hiện số liệu theo phiên: tránh đoán ra từng học sinh
+export const K_MIN = 1; // luôn cho xem thống kê khi đã có ít nhất 1 phiên
 
 const avg = (xs: number[]) => (xs.length ? mean(xs) : 0);
 export const r1 = (n: number) => Math.round(n * 10) / 10;

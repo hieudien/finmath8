@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Brand from "@/components/Brand";
 import { Alert, Button, post } from "@/components/ui";
+import { MathText } from "@/components/MathText";
 
 type P = { id: string; title: string; statement: string };
 type M = { role: "student" | "bot"; text: string };
@@ -46,7 +47,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
     setMsgs((m) => [...m, { role: "student", text: t }]);
     const { ok, data } = await post<R>("/api/chat", { action: "message", slug, sessionId: sid, text: t });
     setBusy(false);
-    if (!ok) return setErr(data.error ?? "Có lỗi.");
+    if (!ok) { setMsgs((m) => m.slice(0, -1)); setText(t); return setErr(data.error ?? "Có lỗi. Bạn thử gửi lại nhé."); } // trả tin về ô nhập để không mất
     setStep(data.step ?? step);
     setMsgs((m) => [...m, { role: "bot", text: data.reply ?? "" }]);
     if (data.done) setDone(true);
@@ -103,11 +104,11 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 py-4" role="log" aria-live="polite">
-        {prob.statement && <p className="mb-4 rounded-sm border border-border bg-surface px-3 py-2 text-sm">{prob.statement}</p>}
+        {prob.statement && <p className="mb-4 rounded-sm border border-border bg-surface px-3 py-2 text-sm"><MathText text={prob.statement} /></p>}
         <ul className="flex flex-col gap-3">
           {msgs.map((m, i) => (
             <li key={i} className={`max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 ${m.role === "bot" ? "self-start bg-surface border border-border" : "self-end bg-primary text-on-primary"}`}>
-              <span className="sr-only">{m.role === "bot" ? "Chatbot: " : "Em: "}</span>{m.text}
+              <span className="sr-only">{m.role === "bot" ? "Chatbot: " : "Em: "}</span><MathText text={m.text} />
             </li>
           ))}
           {busy && <li className="self-start"><div className="skeleton h-9 w-40" aria-label={sid ? "Chatbot đang trả lời" : "Đang mở bài"} /></li>}
@@ -131,9 +132,10 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
           <form onSubmit={send} className="flex flex-col gap-2">
             <label htmlFor="msg" className="sr-only">Câu trả lời của em</label>
             <div className="flex items-end gap-2">
-              <textarea id="msg" rows={3} value={text} onChange={(e) => setText(e.target.value)} disabled={busy || !sid} maxLength={1000} placeholder={sid ? "Nhập câu trả lời của em. Enter để xuống dòng, bấm Gửi để gửi." : "Đang mở bài, chờ một chút..."} className="min-h-11 flex-1 resize-y rounded-sm border border-border-strong bg-surface px-3 py-2 text-base" />
+              <textarea id="msg" rows={3} value={text} onChange={(e) => setText(e.target.value)} disabled={busy || !sid} maxLength={300} placeholder={sid ? "Nhập câu trả lời của bạn. Enter để xuống dòng, bấm Gửi để gửi." : "Đang mở bài, chờ một chút..."} className="min-h-11 flex-1 resize-y rounded-sm border border-border-strong bg-surface px-3 py-2 text-base" />
               <Button type="submit" disabled={!text.trim() || !sid} pending={busy ? (sid ? "Đang gửi..." : "Đang mở bài...") : undefined}>Gửi</Button>
             </div>
+            <p className={`text-right text-xs tnum ${text.length >= 270 ? "text-danger" : "text-text-muted"}`} aria-live="off">{text.length}/300</p>
             <Button variant="ghost" type="button" onClick={finishNow} disabled={busy || !sid || msgs.length < 3} className="self-start text-sm">Kết thúc bài</Button>
             <p className="text-xs text-text-muted">FinMath 8 · Ẩn danh: đừng gõ tên, lớp, trường hay số điện thoại.</p>
           </form>

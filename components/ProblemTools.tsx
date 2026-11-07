@@ -13,9 +13,10 @@ export function ImportPanel() {
   const [preview, setPreview] = useState("");
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState<Msg>(null);
+  const [open, setOpen] = useState(false);
   const file = useRef<HTMLInputElement>(null);
 
-  const done = (n: number) => { setMsg({ tone: "success", text: `Đã lưu ${n} đề.` }); setRaw(""); setPreview(""); router.refresh(); };
+  const done = (n: number) => { setMsg({ tone: "success", text: `Đã lưu ${n} đề.` }); setRaw(""); setPreview(""); setOpen(false); router.refresh(); };
   const fail = (t?: string) => setMsg({ tone: "danger", text: t ?? "Có lỗi." });
 
   async function saveJson() {
@@ -47,9 +48,19 @@ export function ImportPanel() {
 
   const tabCls = (t: string) => `min-h-11 flex-1 border-b-2 px-3 font-medium ${tab === t ? "border-primary text-primary" : "border-transparent text-text-muted"}`;
 
+  if (!open) return (
+    <div className="flex flex-col items-start gap-3">
+      <Button onClick={() => { setMsg(null); setOpen(true); }}>Thêm đề</Button>
+      {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
+    </div>
+  );
+
   return (
     <section className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 md:p-6" aria-labelledby="imp">
-      <h2 id="imp">Nạp đề mới</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 id="imp">Thêm đề mới</h2>
+        <Button variant="ghost" onClick={() => setOpen(false)}>Đóng</Button>
+      </div>
       <div role="tablist" className="flex border-b border-border">
         <button role="tab" aria-selected={tab === "json"} className={tabCls("json")} onClick={() => { setTab("json"); setPreview(""); }}>JSON</button>
         <button role="tab" aria-selected={tab === "text"} className={tabCls("text")} onClick={() => { setTab("text"); setPreview(""); }}>Văn bản</button>
@@ -58,7 +69,7 @@ export function ImportPanel() {
       {!preview && (
         <>
           <TextArea label={tab === "json" ? "Nội dung JSON (một đề hoặc mảng nhiều đề)" : "Dán đề bài dạng văn bản"} rows={8} value={raw} onChange={(e) => setRaw(e.target.value)}
-            hint={tab === "json" ? "Cần: id, title, solution, hints (3 mức). Có thể thêm statement là đề bài hiển thị cho học sinh." : "Chatbot sẽ chuẩn hóa thành JSON. Em xem lại trước khi lưu."} />
+            hint={tab === "json" ? "Cần: id, title, solution, hints (3 mức). Có thể thêm statement là đề bài hiển thị cho học sinh." : "Chatbot sẽ chuẩn hóa thành JSON. Bạn xem lại trước khi lưu."} />
           <div className="flex flex-col gap-2 sm:flex-row">
             {tab === "json" ? (
               <>

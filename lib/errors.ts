@@ -15,13 +15,15 @@ export function friendly(e: unknown, who: Who = "teacher"): Friendly {
   const s = String((e as Error)?.message ?? e);
   const t = who === "teacher";
   if (/PerDay|insufficient_quota|RESOURCE_EXHAUSTED|\b429\b|quota/i.test(s))
-    return { known: true, status: 503, message: t ? "Nhà cung cấp AI báo hết hạn mức hoặc hết số dư của API key. Kiểm tra gói hoặc thanh toán của key, hoặc chờ sang ngày mới rồi thử lại." : "Chatbot tạm nghỉ vì hết lượt dùng AI. Em báo giáo viên giúp nhé." };
+    return { known: true, status: 503, message: t ? "AI chạm giới hạn: nhà cung cấp báo hết hạn mức hoặc hết số dư của API key. Kiểm tra gói hoặc thanh toán của key, hoặc chờ sang ngày mới rồi thử lại." : "AI đã chạm giới hạn lượt dùng nên chưa trả lời được. Bạn chờ một lúc rồi thử lại, hoặc báo giáo viên giúp nhé." };
+  if (/AI_TIMEOUT/.test(s))
+    return { known: true, status: 503, message: t ? "AI phản hồi quá chậm (có thể đang quá tải). Thử lại sau ít phút." : "AI đang quá tải hoặc phản hồi chậm. Bạn chờ khoảng 1 phút rồi bấm Gửi lại nhé, tin của bạn vẫn còn trong ô nhập." };
   if (/API key not valid|API_KEY_INVALID|invalid_api_key|Incorrect API key|\b401\b|\b403\b|PERMISSION_DENIED|UNAUTHENTICATED/i.test(s))
     return { known: true, status: 503, message: t ? "API key không hợp lệ hoặc đã bị thu hồi. Vào Cài đặt và nhập key mới." : "Chatbot chưa dùng được vì cài đặt AI của giáo viên có vấn đề. Em báo giáo viên giúp nhé." };
   if (/model.*(not found|does not exist|no longer available)|\b404\b.*model|NOT_FOUND/i.test(s))
     return { known: true, status: 503, message: t ? "Model AI đã chọn không còn dùng được. Vào Cài đặt và chọn model khác." : "Chatbot đang được giáo viên cập nhật. Em thử lại sau nhé." };
   if (/\b50\d\b|UNAVAILABLE|overload|high demand|fetch failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|timeout|network/i.test(s))
-    return { known: true, status: 503, message: "Dịch vụ AI đang quá tải hoặc mất kết nối. Chờ vài phút rồi thử lại." };
+    return { known: true, status: 503, message: t ? "Dịch vụ AI đang quá tải hoặc mất kết nối. Chờ vài phút rồi thử lại." : "AI đang quá tải (nhiều bạn dùng cùng lúc). Bạn chờ khoảng 1 phút rồi bấm Gửi lại nhé, tin của bạn vẫn còn trong ô nhập." };
   if (/sai định dạng/i.test(s))
     return { known: true, status: 502, message: "AI trả lời chưa đúng định dạng. Bấm thử lại. Nếu vẫn lỗi, đổi sang model khác ở Cài đặt." };
   return { known: false, status: 500, message: t ? "Có lỗi xảy ra ngoài dự kiến." : "Chatbot gặp lỗi ngoài dự kiến." };

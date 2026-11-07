@@ -5,6 +5,7 @@ import { problemSchema } from "@/lib/schema/problem";
 import { entries, problemToText } from "@/lib/problem-text";
 import { ExplainButton, ViewTools } from "@/components/ProblemViewTools";
 import { Alert } from "@/components/ui";
+import { MathText } from "@/components/MathText";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -56,7 +57,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <ViewTools text={problemToText(p)} />
 
       <Section title="Đề bài">
-        {p.statement ? <p className="max-w-prose whitespace-pre-wrap">{p.statement}</p> : <Alert tone="warning">Đề chưa có phần nội dung bài (statement). Chatbot sẽ tự nêu tình huống từ dữ kiện.</Alert>}
+        {p.statement ? <p className="max-w-prose"><MathText text={p.statement} /></p> : <Alert tone="warning">Đề chưa có phần nội dung bài (statement). Chatbot sẽ tự nêu tình huống từ dữ kiện.</Alert>}
       </Section>
 
       {Object.keys(p.data).length > 0 && <Section title="Dữ kiện"><Rows items={entries(p.data)} /></Section>}
@@ -65,7 +66,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
         {p.solution_steps.length ? (
           <ol className="flex max-w-prose flex-col gap-2">
             {p.solution_steps.map((s, i) => (
-              <li key={i} className="flex gap-3"><span className="tnum w-14 shrink-0 font-medium text-primary">Bước {i + 1}</span><span>{s}</span></li>
+              <li key={i} className="flex gap-3"><span className="tnum w-14 shrink-0 font-medium text-primary">Bước {i + 1}</span><MathText text={s} /></li>
             ))}
           </ol>
         ) : (
@@ -79,16 +80,16 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <Section title="Kết quả"><Rows items={entries(p.solution)} /></Section>
 
       {p.common_errors.length > 0 && (
-        <Section title="Sai lầm thường gặp"><ul className="list-disc space-y-1 pl-5">{p.common_errors.map((e, i) => <li key={i}>{e}</li>)}</ul></Section>
+        <Section title="Sai lầm thường gặp"><ul className="list-disc space-y-1 pl-5">{p.common_errors.map((e, i) => <li key={i}><MathText text={e} /></li>)}</ul></Section>
       )}
 
       <Section title="Gợi ý cho học sinh">
         <ol className="flex flex-col gap-2">
-          {hints.map((h) => <li key={h.level} className="flex gap-3"><span className="tnum w-14 shrink-0 font-medium text-primary">Mức {h.level}</span><span>{h.text}</span></li>)}
+          {hints.map((h) => <li key={h.level} className="flex gap-3"><span className="tnum w-14 shrink-0 font-medium text-primary">Mức {h.level}</span><MathText text={h.text} /></li>)}
         </ol>
       </Section>
 
-      {p.extension && <Section title="Câu hỏi mở rộng"><p className="max-w-prose">{p.extension}</p></Section>}
+      {p.extension && <Section title="Câu hỏi mở rộng"><p className="max-w-prose"><MathText text={p.extension} /></p></Section>}
     </article>
   );
 }

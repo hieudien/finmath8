@@ -9,12 +9,12 @@ const LABEL: Record<string, string> = {
   problem_created: "Nạp đề", problem_updated: "Sửa đề", problem_deleted: "Xóa đề", problem_normalized: "Chuẩn hóa đề",
   link_created: "Tạo liên kết", link_toggled: "Bật/tắt liên kết", link_deleted: "Xóa liên kết",
   chat_session_started: "HS bắt đầu chat", chat_message: "Tin nhắn chat", chat_session_ended: "HS kết thúc chat",
-  eval_done: "Chấm điểm xong", survey_submitted: "HS đánh giá", answer_leak_blocked: "Chặn lộ đáp án", gemini_error: "Lỗi nhà cung cấp AI", model_fallback: "Tự đổi model do hết lượt", error: "Lỗi hệ thống (gửi mã lỗi cho admin)", problem_selftest: "Kiểm thử chatbot", export: "Tải dữ liệu",
+  eval_done: "Chấm điểm xong", quota_hit: "AI chạm giới hạn", survey_submitted: "HS đánh giá", answer_leak_blocked: "Chặn lộ đáp án", gemini_error: "Lỗi nhà cung cấp AI", model_fallback: "Tự đổi model do hết lượt", error: "Lỗi hệ thống (gửi mã lỗi cho admin)", problem_selftest: "Kiểm thử chatbot", export: "Tải dữ liệu",
 };
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ action?: string }> }) {
   const { action } = await searchParams;
-  let q = (await supabaseServer()).from("activity_logs").select("id,ts,actor_type,action,anon_id,link_id,meta").order("id", { ascending: false }).limit(200);
+  let q = (await supabaseServer()).from("activity_logs").select("id,ts,actor_type,action,anon_id,link_id,meta").neq("action", "ai_call").order("id", { ascending: false }).limit(200);
   if (action) q = q.eq("action", action);
   const rows = ((await q).data ?? []) as Row[];
   const fmt = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "medium", timeZone: "Asia/Ho_Chi_Minh" });

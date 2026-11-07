@@ -11,7 +11,7 @@ import { failResponse } from "@/lib/errors";
 
 const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("start"), slug: z.string().min(4), problemCode: z.string() }),
-  z.object({ action: z.literal("message"), slug: z.string().min(4), sessionId: z.string().uuid(), text: z.string().trim().min(1).max(1000) }),
+  z.object({ action: z.literal("message"), slug: z.string().min(4), sessionId: z.string().uuid(), text: z.string().trim().min(1).max(300) }),
   z.object({ action: z.literal("end"), slug: z.string().min(4), sessionId: z.string().uuid() }),
   z.object({ action: z.literal("survey"), slug: z.string().min(4), sessionId: z.string().uuid(), likert: z.number().int().min(1).max(5) }),
 ]);
@@ -99,6 +99,9 @@ async function handle(req: Request) {
     if (sess.status !== "active") return err("Bài này đã kết thúc.", 409);
     const { count } = await db.from("messages").select("id", { count: "exact", head: true }).eq("session_id", sess.id).eq("role", "student");
     if ((count ?? 0) >= link.max_messages) return err("Đã đủ số tin nhắn cho bài này. Bấm Kết thúc bài.", 429);
+    // Chống gửi dồn: cách tin trước ít nhất 2 giây trong cùng phiên.
+    const { data: last } = await db.from("messages").select("ts").eq("session_id", sess.id).eq("role", "student").order("id", { ascending: false }).limit(1).maybeSingle();
+    if (last && Date.now() - new Date((last as { ts: string }).ts).getTime() < 2000) return err("Bạn gửi nhanh quá. Chờ một chút rồi gửi lại nhé.", 429);
     return Response.json(await turn(cfg, sess, prob, b.text, link.teacher_id));
   } catch (e) {
     return geminiFail(e, link.teacher_id, anon, link.id);

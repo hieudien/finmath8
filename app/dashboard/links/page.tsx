@@ -1,6 +1,8 @@
 import { supabaseServer } from "@/lib/supabase/server";
 import { CreateLink, LinkActions } from "@/components/LinkTools";
 import { Empty, LinkButton } from "@/components/ui";
+import { MathText } from "@/components/MathText";
+import { parseProblems } from "@/lib/schema/problem";
 
 type L = { id: string; slug: string; label: string; tag: string | null; active: boolean; created_at: string; problems_snapshot: unknown[] };
 const TAG: Record<string, string> = { pre: "Trước", post: "Sau", experiment: "Thực nghiệm", control: "Đối chứng" };
@@ -13,6 +15,7 @@ export default async function Page() {
   ]);
   const problems = ((pr ?? []) as { id: string; code: string; content: { title: string } }[]).map((p) => ({ id: p.id, code: p.code, title: p.content.title }));
   const links = (ln ?? []) as L[];
+  const idOf = new Map(((pr ?? []) as { id: string; code: string }[]).map((p) => [p.code, p.id]));
   const fmt = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" });
   return (
     <div className="flex flex-col gap-6">
@@ -34,6 +37,18 @@ export default async function Page() {
                     <a className="inline-flex min-h-11 items-center text-sm text-primary underline" href={`/dashboard/stats?link=${l.id}`}>Thống kê</a>
                   </div>
                 </div>
+                <details className="rounded-sm border border-border px-3">
+                  <summary className="min-h-11 cursor-pointer py-2 font-medium">Xem {l.problems_snapshot.length} đề trong liên kết</summary>
+                  <ul className="flex flex-col divide-y divide-border pb-2">
+                    {parseProblems(l.problems_snapshot).ok.map((p) => (
+                      <li key={p.id} className="flex flex-col gap-1 py-3">
+                        <p className="font-medium"><span className="tnum text-text-muted">{p.id}</span> {p.title}</p>
+                        {p.statement && <p className="max-w-prose text-sm"><MathText text={p.statement} /></p>}
+                        {idOf.has(p.id) && <a className="inline-flex min-h-11 items-center text-sm text-primary underline" href={`/dashboard/problems/${idOf.get(p.id)}`}>Xem lời giải và gợi ý</a>}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
                 <LinkActions id={l.id} slug={l.slug} active={l.active} />
               </li>
             ))}

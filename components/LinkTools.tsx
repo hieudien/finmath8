@@ -10,6 +10,7 @@ export function CreateLink({ problems }: { problems: P[] }) {
   const [sel, setSel] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [open, setOpen] = useState(false);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -18,12 +19,17 @@ export function CreateLink({ problems }: { problems: P[] }) {
     const { ok, data } = await post("/api/links", { action: "create", label: f.get("label"), tag: f.get("tag") || null, problemIds: sel, maxMessages: Number(f.get("max")) });
     setBusy(false);
     if (!ok) return setErr(data.error ?? "Có lỗi.");
-    setSel([]); (e.target as HTMLFormElement).reset(); router.refresh();
+    setSel([]); (e.target as HTMLFormElement).reset(); setOpen(false); router.refresh();
   }
+
+  if (!open) return <Button onClick={() => setOpen(true)} className="self-start">Thêm liên kết</Button>;
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 md:p-6">
-      <h2>Tạo liên kết mới</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2>Tạo liên kết mới</h2>
+        <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Đóng</Button>
+      </div>
       <Field label="Tên liên kết" name="label" required placeholder="Ví dụ: Lớp 8A, tiết 12" hint="Chỉ giáo viên thấy tên này." />
       <fieldset className="flex flex-col gap-1">
         <legend className="mb-1 font-medium">Chọn đề cho học sinh</legend>

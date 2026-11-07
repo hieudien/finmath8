@@ -16,6 +16,8 @@ export async function llmCfg(teacherId: string): Promise<LlmCfg | null> {
     key: decrypt(enc),
     model: s.model,
     temperature: s.temperature,
+    onUsage: (model, inTok, outTok) => void log({ actor: "system", action: "ai_call", teacherId, meta: { model, in: inTok, out: outTok } }),
+    onQuota: (model, q) => void log({ actor: "system", action: "quota_hit", teacherId, meta: { model, kind: q.kind, limit: q.limit } }),
     onFallback: (from, to, reason) => void log({ actor: "system", action: "model_fallback", teacherId, meta: { from, to, reason } }),
   };
 }
