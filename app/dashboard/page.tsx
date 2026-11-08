@@ -1,10 +1,10 @@
 import { supabaseServer, currentUser } from "@/lib/supabase/server";
 import { LinkButton } from "@/components/ui";
 import { check } from "@/lib/db";
-import { r1 } from "@/lib/stats";
+import { r1, who } from "@/lib/stats";
 
 type L = { id: string; label: string; active: boolean };
-type Sess = { id: string; link_id: string; seq: number; status: string; started_at: string; problem_code: string };
+type Sess = { id: string; link_id: string; seq: number; status: string; started_at: string; problem_code: string; student_code: string | null; student_name: string | null };
 type Ov = { sessions: number; done: number; evals: number; total_avg: number; correct_pct: number; duration_s: number; hint_avg: number };
 const STATUS: Record<string, string> = { active: "Đang làm", done: "Hoàn thành" };
 
@@ -16,7 +16,7 @@ export default async function Page() {
     sb.from("teacher_settings").select("*").eq("teacher_id", u.id).maybeSingle(),
     sb.from("problems").select("id", { count: "exact", head: true }).is("deleted_at", null),
     sb.from("public_links").select("id,label,active").order("created_at", { ascending: false }),
-    sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code").order("started_at", { ascending: false }).limit(5),
+    sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code,student_code,student_name").order("started_at", { ascending: false }).limit(5),
     sb.from("overview_stats").select("*").maybeSingle(),
     sb.from("error_counts").select("name,value").order("value", { ascending: false }).limit(3),
   ]);
@@ -73,7 +73,7 @@ export default async function Page() {
             <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
               {recent.map((x) => (
                 <li key={x.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-                  <span className="min-w-0"><span className="font-medium">HS #{x.seq} · {x.problem_code}</span> <span className="text-sm text-text-muted">· {label.get(x.link_id) ?? "Liên kết đã xóa"}</span></span>
+                  <span className="min-w-0"><span className="font-medium">{who(x)} · {x.problem_code}</span> <span className="text-sm text-text-muted">· {label.get(x.link_id) ?? "Liên kết đã xóa"}</span></span>
                   <span className="text-sm text-text-muted">{STATUS[x.status] ?? "Bỏ dở"} · {fmt.format(new Date(x.started_at))}</span>
                 </li>
               ))}

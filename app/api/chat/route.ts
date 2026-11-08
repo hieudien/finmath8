@@ -12,8 +12,8 @@ import { failResponse } from "@/lib/errors";
 import { clientIp, limited } from "@/lib/ratelimit";
 
 const body = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("start"), slug: z.string().min(4), problemCode: z.string() }),
-  z.object({ action: z.literal("message"), slug: z.string().min(4), sessionId: z.string().uuid(), text: z.string().trim().min(1).max(300) }),
+  z.object({ action: z.literal("start"), slug: z.string().min(4), problemCode: z.string(), studentCode: z.string().trim().toUpperCase().regex(/^[A-Z0-9._-]{1,20}$/), studentName: z.string().trim().min(2).max(60) }),
+  z.object({ action: z.literal("message"), slug: z.string().min(4), sessionId: z.string().uuid(), text: z.string().trim().min(1).max(500) }),
   z.object({ action: z.literal("end"), slug: z.string().min(4), sessionId: z.string().uuid() }),
   z.object({ action: z.literal("survey"), slug: z.string().min(4), sessionId: z.string().uuid(), likert: z.number().int().min(1).max(5).optional(), confidence: z.number().int().min(1).max(5).optional() }),
 ]);
@@ -71,7 +71,7 @@ async function handle(req: Request) {
     if ((linkToday ?? 0) >= MAX_SESSIONS_PER_LINK_PER_DAY) return err("Liên kết này đã đạt giới hạn lượt dùng hôm nay. Báo giáo viên của em.", 429);
     if ((today ?? 0) >= MAX_SESSIONS_PER_DAY) return err("Hôm nay em đã làm nhiều bài rồi. Nghỉ một chút, mai làm tiếp nhé.", 429);
     const { data: seq } = await db.rpc("next_seq", { p_link: link.id } as never); // sau khi qua mọi giới hạn, để số thứ tự không bị hụt
-    const { data: s, error } = await db.from("chat_sessions").insert({ link_id: link.id, anon_id: anon, seq: (seq as number | null) ?? 1, problem_code: prob.id } as never).select("*").single();
+    const { data: s, error } = await db.from("chat_sessions").insert({ link_id: link.id, anon_id: anon, seq: (seq as number | null) ?? 1, problem_code: prob.id, student_code: b.studentCode, student_name: b.studentName } as never).select("*").single();
     if (error || !s) throw new Error("Không tạo được phiên chat: " + (error?.message ?? "rỗng"));
     const sess = s as Session & { seq: number };
     try {

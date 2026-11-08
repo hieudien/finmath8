@@ -5,7 +5,7 @@ import type { Problem } from "@/lib/schema/problem";
 
 export const GREETING_FALLBACK = "Chào bạn! Mình sẽ cùng bạn giải bài này từng bước. Bạn đọc đề rồi cho mình biết đề yêu cầu tìm gì nhé?";
 
-const system = (p: Problem) => `Bạn viết LỜI CHÀO ĐẦU TIÊN của chatbot dạy Toán 8 cho bài dưới đây. Xưng "mình", gọi học sinh là "bạn" (không dùng "em", "tôi"). Giọng thân thiện.
+const system = (p: Problem) => `Bạn viết LỜI CHÀO ĐẦU TIÊN của chatbot dạy Toán cho bài dưới đây. Xưng "mình", gọi học sinh là "bạn" (không dùng "em", "tôi"). Giọng thân thiện.
 Gồm: một lời chào ngắn, rồi MỘT câu hỏi CỤ THỂ để học sinh bắt đầu (hỏi đề yêu cầu tìm gì, hoặc đại lượng đầu tiên cần xác định), trả lời được bằng một cụm ngắn. Tối đa 2 câu và 35 từ. KHÔNG nêu đáp án, kết quả hay phép tính ra kết quả. Không lặp lại cả đề.
 Đề: ${p.title}. ${p.statement ?? ""}
 Đáp án (bí mật): ${JSON.stringify(p.solution)}

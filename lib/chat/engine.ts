@@ -2,7 +2,7 @@ import { check } from "@/lib/db";
 import { admin } from "@/lib/supabase/admin";
 import { askJson, type LlmCfg } from "@/lib/llm";
 import { chatState, chatSystem, evalSchema, evalSystem, leaks, turnSchema } from "@/lib/chat/prompt";
-import { METHOD, checkpoints, countDone, hasNum, norm, offStreak, OFF_REPLIES, SOS_REPLY, stepOf, tighten, verdict, verify } from "@/lib/chat/progress";
+import { ASK_METHOD, ASK_NEXT, earlyClose, METHOD, checkpoints, countDone, hasNum, norm, offStreak, OFF_REPLIES, SOS_REPLY, stepOf, tighten, verdict, verify } from "@/lib/chat/progress";
 import { GREETING_FALLBACK } from "@/lib/greeting";
 import { scrub } from "@/lib/pii";
 import { log } from "@/lib/log";
@@ -81,7 +81,7 @@ ${chatState(cps, mask0, s.hint_level, v)}` },
   let reply = onTopic ? tighten(out!.reply) : cry ? SOS_REPLY : OFF_REPLIES[Math.min(streak, 2)];
   if (cry) await log({ actor: "system", action: "student_distress", teacherId, anonId: s.anon_id, linkId: s.link_id });
   // AI viết lời tổng kết (không có câu hỏi) nhưng server chưa xác nhận cách làm: không để bot chào kết trong khi phiên còn mở, hỏi lại cách làm.
-  if (onTopic && !finished && done >= cps.length && !reply.includes("?")) reply = "Kết quả của bạn đúng rồi. Bạn tính ra kết quả đó bằng phép tính nào? Viết phép tính ra nhé.";
+  if (onTopic && !finished && earlyClose(reply)) reply = done >= cps.length ? ASK_METHOD : ASK_NEXT;
   // ponytail: không còn gọi AI lần hai khi bot lặp câu trước (tốn 2-3s mỗi lần). Nếu lặp nhiều, thêm câu mẫu thay phiên dựa vào sim().
   // Lời kết phải là lời kết: không câu hỏi, không mời làm thêm. AI lỡ viết thế thì dùng câu kết mẫu.
   if (finished && /\?|làm thêm|bài (khác|tiếp)|mở rộng/i.test(reply)) reply = CLOSING;

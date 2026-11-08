@@ -1,4 +1,4 @@
-# FinMath 8 — Plan web app (Next.js + Supabase)
+# MathStep AI — Plan web app (Next.js + Supabase)
 
 Nguồn: `Tóm tắt báo cáo tạo chatbot.docx`. Mục tiêu: giáo viên nạp đề → bấm tạo link public → HS chat với chatbot gợi mở (Polya 5 bước, 3 mức gợi ý) → GV xem thống kê ẩn danh.
 

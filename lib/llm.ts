@@ -11,7 +11,7 @@ export type LlmCfg = {
   maxTokens?: number; // giới hạn độ dài trả lời, tránh model nói dài
   onFallback?: (from: string, to: string, reason: string) => void; // để ghi nhật ký khi tự đổi model
 };
-type Turn = { role: "user" | "model"; text: string };
+type Turn = { role: "user" | "model"; text: string; image?: { mime: string; b64: string } };
 
 // Structured output của Gemini: ép đúng khung JSON, khỏi mô tả định dạng trong prompt và khỏi gọi lại khi JSON sai.
 const DROP = new Set(["$schema", "default", "minimum", "maximum", "additionalProperties"]);
@@ -21,7 +21,7 @@ const jsonSchema = (schema: z.ZodType) => { try { return clean(z.toJSONSchema(sc
 async function callGemini(cfg: LlmCfg, system: string, turns: Turn[], schema?: z.ZodType) {
   const ai = new GoogleGenAI({ apiKey: cfg.key });
   const base = { systemInstruction: system, responseMimeType: "application/json", responseJsonSchema: schema && jsonSchema(schema), temperature: cfg.temperature, maxOutputTokens: cfg.maxTokens };
-  const run = (extra: object) => ai.models.generateContent({ model: cfg.model, contents: turns.map((t) => ({ role: t.role, parts: [{ text: t.text }] })), config: { ...base, ...extra } });
+  const run = (extra: object) => ai.models.generateContent({ model: cfg.model, contents: turns.map((t) => ({ role: t.role, parts: [{ text: t.text }, ...(t.image ? [{ inlineData: { mimeType: t.image.mime, data: t.image.b64 } }] : [])] })), config: { ...base, ...extra } });
   // Tắt suy nghĩ để trả lời nhanh; model không hỗ trợ mức này (báo lỗi liên quan "thinking") thì gọi lại như thường.
   let res;
   try {
@@ -37,7 +37,7 @@ async function callGemini(cfg: LlmCfg, system: string, turns: Turn[], schema?: z
 async function callOpenAI(cfg: LlmCfg, system: string, turns: Turn[], json = true): Promise<string> {
   const body: Record<string, unknown> = {
     model: cfg.model,
-    messages: [{ role: "system", content: system }, ...turns.map((t) => ({ role: t.role === "model" ? "assistant" : "user", content: t.text }))],
+    messages: [{ role: "system", content: system }, ...turns.map((t) => ({ role: t.role === "model" ? "assistant" : "user", content: t.image ? [{ type: "text", text: t.text }, { type: "image_url", image_url: { url: `data:${t.image.mime};base64,${t.image.b64}` } }] : t.text }))],
   };
   if (json) body.response_format = { type: "json_object" }; // yêu cầu prompt có chữ "JSON": mọi prompt của app đều có
   const r = await fetch("https://api.openai.com/v1/chat/completions", {

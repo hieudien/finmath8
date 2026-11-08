@@ -1,10 +1,11 @@
+import Link from "next/link";
 import { supabaseServer } from "@/lib/supabase/server";
-import { BarBox, LineBox } from "@/components/ChartsLazy";
+// import { BarBox, LineBox } from "@/components/ChartsLazy"; // bỏ comment cùng 5 biểu đồ đang ẩn
 import ChatLog from "@/components/ChatLog";
 import "katex/dist/katex.min.css";
 import { Empty } from "@/components/ui";
 import { check } from "@/lib/db";
-import { compareStats, r1, type Ev, type Sess, type Summary } from "@/lib/stats";
+import { compareStats, r1, who, type Ev, type Sess, type Summary } from "@/lib/stats";
 
 type L = { id: string; label: string; tag: string | null };
 type LS = { link_id: string; sessions: number; done: number; total_avg: number; visits: number };
@@ -20,7 +21,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
   const res = await Promise.all([
     sb.from("public_links").select("id,label,tag").order("created_at", { ascending: false }),
     sb.from("link_stats").select("*"),
-    link ? sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code").eq("link_id", link).order("seq", { ascending: false }).limit(RECENT) : null,
+    link ? sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code,student_code,student_name").eq("link_id", link).order("seq", { ascending: false }).limit(RECENT) : null,
     link ? sb.rpc("link_summary", { p_link: link } as never) : null,
     link ? null : sb.from("tag_stats").select("*"),
   ]);
@@ -44,24 +45,26 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
         <div>
           <a href="/dashboard/stats" className="text-sm text-primary underline">Tất cả liên kết</a>
           <h1>{cur.label}</h1>
-          <p className="text-text-muted">Học sinh ẩn danh: không lưu tên, lớp, IP. Mỗi phiên chỉ có số thứ tự.</p>
+          <p className="text-text-muted">Mỗi phiên gắn với mã và tên học sinh tự nhập. Xem từng học sinh ở mục <Link href="/dashboard/students" className="text-primary underline">Học sinh</Link>.</p>
         </div>
         <Kpis items={[["Lượt mở", m.visits], ["Phiên chat", m.sessions], ["Hoàn thành", `${m.completion}%`], ["Điểm TB / 12", m.enough ? m.totalAvg : "—"]]} />
         {!m.enough ? (
           <p className="rounded-lg border border-border bg-surface p-4">Chưa có phiên chat nào. Số liệu sẽ hiện khi học sinh bắt đầu làm bài.</p>
         ) : (
           <>
+            {/* Tạm ẩn 5 biểu đồ; bỏ comment để hiện lại:
             <Section title="Số phiên theo ngày"><LineBox data={m.daily} /></Section>
             <Section title="Điểm trung bình theo tiêu chí (0–3)"><BarBox data={m.rubric} max={3} /></Section>
             <Section title="Phân bố tổng điểm (0–12)"><BarBox data={m.totalDist} /></Section>
             <Section title="Mức gợi ý cao nhất đã dùng"><BarBox data={m.hintDist} /></Section>
             <Section title="Lỗi thường gặp"><BarBox data={m.errors} horizontal /></Section>
+            */}
             <Kpis items={[["Đúng kết luận", `${m.correctPct}%`], ["Thời gian TB (phút)", m.durationMin], ["Lần tăng gợi ý TB", m.hintAvg], ["Hài lòng (1–5)", m.likertAvg == null ? "—" : `${m.likertAvg} (${m.likertN})`]]} />
-            <Section title={`Từng phiên (ẩn danh, ${s.length}/${m.sessions} phiên gần nhất)`}>
+            <Section title={`Từng phiên (${s.length}/${m.sessions} phiên gần nhất)`}>
               <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface md:hidden">
                 {s.map((x) => { const ev = evBy.get(x.id); return (
                   <li key={x.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                    <span className="min-w-0"><span className="block font-medium">HS #{x.seq} · {x.problem_code}</span><span className="block text-sm text-text-muted tnum">{ev ? `Gợi ý tối đa mức ${ev.max_hint_level} · ${Math.round(ev.duration_s / 60)} phút${ev.confidence ? ` · Tự thấy hiểu ${ev.confidence}/5` : ""}` : "Chưa chấm"}</span></span>
+                    <span className="min-w-0"><span className="block font-medium">{who(x)} · {x.problem_code}</span><span className="block text-sm text-text-muted tnum">{ev ? `Gợi ý tối đa mức ${ev.max_hint_level} · ${Math.round(ev.duration_s / 60)} phút${ev.confidence ? ` · Tự thấy hiểu ${ev.confidence}/5` : ""}` : "Chưa chấm"}</span></span>
                     <span className="shrink-0 text-right"><span className="tnum block font-bold">{ev ? `${ev.total}/12` : "—"}</span><span className="block whitespace-nowrap text-sm text-text-muted">{ev ? (ev.final_correct ? "Đúng" : "Chưa đúng") : x.status === "active" ? "Đang làm" : "Bỏ dở"}</span></span>
                   </li>); })}
               </ul>
@@ -71,7 +74,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
                   <tbody className="tnum">
                     {s.map((x) => { const ev = evBy.get(x.id); return (
                       <tr key={x.id} className="border-b border-border">
-                        <td className="py-2 pr-2">HS #{x.seq}</td><td className="pr-2">{x.problem_code}</td>
+                        <td className="py-2 pr-2">{who(x)}</td><td className="pr-2">{x.problem_code}</td>
                         <td className="pr-2">{ev ? `${ev.total}/12` : "—"}</td><td className="pr-2">{ev ? `Mức ${ev.max_hint_level}` : "—"}</td>
                         <td className="pr-2">{ev ? Math.round(ev.duration_s / 60) : "—"}</td>
                         <td>{ev ? (ev.final_correct ? "Đúng" : "Chưa đúng") : x.status === "active" ? "Đang làm" : "Bỏ dở"}</td>
@@ -80,10 +83,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
                 </table>
               </div>
             </Section>
-            <Section title="Hội thoại của học sinh (ẩn danh)">
-              <p className="text-sm text-text-muted">Tin nhắn đã được che số điện thoại, email, tên. Bấm vào từng học sinh để xem.</p>
+            <Section title="Hội thoại của học sinh">
+              <p className="text-sm text-text-muted">Tin nhắn đã được che số điện thoại và email. Bấm vào từng học sinh để xem.</p>
               <div className="flex flex-col gap-2">
-                {s.map((x) => { const ev = evBy.get(x.id); return <ChatLog key={x.id} id={x.id} title={`HS #${x.seq} · ${x.problem_code}${ev ? ` · ${ev.total}/12` : ""}`} />; })}
+                {s.map((x) => { const ev = evBy.get(x.id); return <ChatLog key={x.id} id={x.id} title={`${who(x)} · ${x.problem_code}${ev ? ` · ${ev.total}/12` : ""}`} />; })}
               </div>
               <a href="/api/export?kind=chat" className="inline-flex min-h-11 items-center self-start rounded-sm border border-border-strong bg-surface px-4 font-medium hover:bg-primary-soft">Tải toàn bộ hội thoại (CSV)</a>
             </Section>

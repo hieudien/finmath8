@@ -11,9 +11,9 @@ import { log } from "@/lib/log";
 import { missingAnswers } from "@/lib/answer-check";
 import { makeGreeting } from "@/lib/greeting";
 
-const NORMALIZE_SYSTEM = `Bạn chuẩn hóa đề Toán lớp 8 (tình huống tài chính) từ văn bản thô sang JSON. Chỉ trả JSON một đối tượng đúng mẫu:
-{"id":"TCxx","title":string,"grade":8,"topic":string,"statement":string (nguyên văn đề bài cho học sinh),"learning_objectives":[string],"data":{số liệu, tỉ lệ dạng thập phân 0.x},"solution":{đáp án chuẩn bằng số},"solution_steps":[lời giải từng bước, mỗi bước 1–2 câu có phép tính, bước cuối là kết luận],"common_errors":[string],"hints":[{"level":1,"text":..},{"level":2,"text":..},{"level":3,"text":..}],"extension":string,"rubric":{"identify":3,"plan":3,"calculate":3,"explain":3}}
-Quy tắc: công thức, phương trình có ký hiệu toán đặt trong $...$ theo LaTeX (ví dụ $x^2$, $120000 + 40000x = 480000$), KHÔNG dùng \\( \\) hay \\[ \\]. Tự giải đề, tính đáp án thật cẩn thận, đừng bịa số không có trong đề. Gợi ý mức 1 chỉ hỏi định hướng; mức 2 gợi ý cách giải; mức 3 nêu bước tính đầu tiên, KHÔNG nêu kết quả cuối. Nếu văn bản có nhiều đề, chỉ chuẩn hóa đề đầu. Nếu thiếu id, dùng "TC99".`;
+const NORMALIZE_SYSTEM = `Bạn chuẩn hóa một đề Toán từ văn bản thô sang JSON. Đề có thể thuộc bất kỳ chủ đề và lớp nào (giải phương trình, hình học, tỉ lệ, tình huống thực tế...). Chỉ trả JSON một đối tượng đúng mẫu:
+{"id":"BTxx","title":string,"grade":số lớp (đoán theo đề, mặc định 8),"topic":string,"skills":[2–5 kỹ năng/kiến thức chính cần dùng, mỗi mục một cụm ngắn],"statement":string (nguyên văn đề bài cho học sinh),"learning_objectives":[string],"data":{số liệu đề cho, nếu có; tỉ lệ dạng thập phân 0.x},"solution":{đáp án chuẩn. Số thì dạng số, ví dụ {"x":3}; nhiều nghiệm {"x1":2,"x2":-3}; vô nghiệm hoặc đáp án chữ {"ket_luan":"vô nghiệm"}},"solution_steps":[lời giải từng bước, mỗi bước 1–2 câu có phép tính, bước cuối là kết luận],"common_errors":[sai lầm học sinh hay mắc với đề này],"hints":[{"level":1,"text":..},{"level":2,"text":..},{"level":3,"text":..}],"extension":string,"rubric":{"identify":3,"plan":3,"calculate":3,"explain":3}}
+Quy tắc: công thức, phương trình có ký hiệu toán đặt trong $...$ theo LaTeX (ví dụ $x^2$, $2x + 3 = 11$), KHÔNG dùng \( \) hay \[ \]. Tự giải đề, tính đáp án thật cẩn thận, đừng bịa số không có trong đề. Gợi ý mức 1 chỉ hỏi định hướng; mức 2 gợi ý cách giải; mức 3 nêu bước tính đầu tiên, KHÔNG nêu kết quả cuối. Nếu văn bản có nhiều đề, chỉ chuẩn hóa đề đầu. Nếu thiếu id, dùng "BT99".`;
 
 async function save(teacherId: string, list: Problem[]) {
   const db = admin();
@@ -36,6 +36,7 @@ async function save(teacherId: string, list: Problem[]) {
 const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("import_json"), raw: z.string().min(2) }),
   z.object({ action: z.literal("normalize"), text: z.string().min(20, "Văn bản quá ngắn.") }),
+  z.object({ action: z.literal("read_image"), image: z.string().max(6_000_000, "Ảnh quá lớn.").regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/, "Chỉ nhận ảnh png, jpeg, webp.") }),
   z.object({ action: z.literal("save"), problems: z.array(z.unknown()).min(1) }),
   z.object({ action: z.literal("seed") }),
   z.object({ action: z.literal("greetings") }),
@@ -68,7 +69,7 @@ export const POST = api(async (req) => {
     const pp = problemSchema.safeParse(row.content);
     if (!pp.success) return bad("Đề này lưu sai định dạng nên không tạo được lời giải. Hãy nạp lại đề.");
     const prob = pp.data;
-    const out = await askJson(cfg, 'Viết lời giải từng bước (3–8 bước) cho bài Toán lớp 8. Mỗi bước 1–2 câu, nêu rõ phép tính và kết quả trung gian, bước cuối là kết luận. Lời giải PHẢI ra đúng đáp án đã cho trong "solution". Chỉ trả JSON {"steps": [string]}.', [{ role: "user", text: `${prob.statement ?? prob.title}
+    const out = await askJson(cfg, 'Viết lời giải từng bước (3–8 bước) cho bài Toán. Mỗi bước 1–2 câu, nêu rõ phép tính và kết quả trung gian, bước cuối là kết luận. Lời giải PHẢI ra đúng đáp án đã cho trong "solution". Chỉ trả JSON {"steps": [string]}.', [{ role: "user", text: `${prob.statement ?? prob.title}
 Dữ liệu: ${JSON.stringify(prob.data)}
 Đáp án: ${JSON.stringify(prob.solution)}` }], z.object({ steps: z.array(z.string().min(3)).min(2).max(12) }), { think: true });
     // Kiểm tra: mọi số lớn trong đáp án phải xuất hiện trong lời giải, nếu không thì không lưu (AI giải lệch đáp án).
@@ -116,12 +117,26 @@ Dữ liệu: ${JSON.stringify(prob.data)}
     return Response.json({ ok: true, results });
   }
 
+  if (b.action === "read_image") {
+    const cfg = await llmCfg(u.id);
+    if (!cfg) return bad("Chưa có API key. Vào Cài đặt để nhập.");
+    const [head, b64] = b.image.split(",");
+    const mime = head.slice(5, head.indexOf(";"));
+    const out = await askJson(cfg, 'Chép lại NGUYÊN VĂN mọi chữ và công thức trong ảnh (đây là ảnh chụp đề Toán), không giải, bỏ qua hình vẽ. Công thức đặt trong $...$ theo LaTeX; hệ phương trình dùng cases, mỗi phương trình một hàng, các hàng cách nhau bằng 2 dấu ¦¦. QUAN TRỌNG: trong công thức, thay MỌI dấu gạch chéo ngược của LaTeX bằng ký tự ¦ (ví dụ ¦begin{cases}, ¦frac{1}{2}, ¦Delta), KHÔNG dùng dấu gạch chéo ngược. Chỉ trả JSON {"statement": string}.', [{ role: "user", text: "Đọc đề trong ảnh.", image: { mime, b64 } }], z.object({ statement: z.string() }), { deadlineMs: 50_000, attemptMs: 20_000 });
+    // Model hay viết sai dấu \ trong JSON (\begin thành ký tự điều khiển, \\ thành \), nên prompt bảo dùng ¦ thay \ rồi đổi lại ở đây.
+    out.statement = out.statement.replaceAll("¦", "\\");
+    if (!out.statement.trim()) { console.error("read_image: statement rỗng", mime, b64.length); return bad("Không thấy đề bài trong ảnh. Thử ảnh rõ hơn."); }
+    await log({ actor: "teacher", action: "problem_image_read", teacherId: u.id, meta: { chars: out.statement.length } });
+    return Response.json({ ok: true, statement: out.statement.trim() });
+  }
+
   if (b.action === "normalize") {
     const cfg = await llmCfg(u.id);
     if (!cfg) return bad("Chưa có API key. Vào Cài đặt để nhập.");
     const out = await askJson(cfg, NORMALIZE_SYSTEM, [{ role: "user", text: b.text }], problemSchema, { think: true });
     // Lời giải lệch đáp án thì bỏ lời giải (giáo viên có thể bấm "Tạo lời giải bằng AI" sau).
     if (out.solution_steps.length && missingAnswers(out.solution, out.solution_steps).length) out.solution_steps = [];
+    out.reviewed = false; // AI tạo: giáo viên phải duyệt trong trình sửa đề
     out.greeting = await makeGreeting(cfg, out).catch(() => ""); // lỗi AI thì để trống, chat dùng câu dự phòng; có thể bấm tạo lại sau
     await log({ actor: "teacher", action: "problem_normalized", teacherId: u.id, meta: { code: out.id, chars: b.text.length } });
     return Response.json({ ok: true, problem: out });

@@ -60,7 +60,8 @@ export function ImportPanel() {
   if (!open) return (
     <div className="flex flex-col items-start gap-3">
       <div className="flex flex-wrap gap-2">
-        <Button onClick={() => { setMsg(null); setOpen(true); }}>Thêm đề</Button>
+        <Link href="/dashboard/problems/new" className="inline-flex min-h-11 items-center justify-center rounded-sm bg-primary px-4 font-medium text-on-primary hover:bg-primary-hover">Tạo đề mới</Link>
+        <Button variant="secondary" onClick={() => { setMsg(null); setOpen(true); }}>Nạp JSON / dán văn bản</Button>
         <Button variant="secondary" onClick={greetings} pending={busy || undefined}>Tạo lời chào cho các đề chưa có</Button>
       </div>
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
@@ -135,6 +136,7 @@ export function ProblemActions({ id, code }: { id: string; code: string }) {
     <>
       <div className="flex flex-wrap items-center gap-2">
         <Link href={`/dashboard/problems/${id}`} className="inline-flex min-h-11 items-center justify-center rounded-sm bg-primary px-4 font-medium text-on-primary hover:bg-primary-hover">Xem đề</Link>
+        <Link href={`/dashboard/problems/${id}/edit`} className="inline-flex min-h-11 items-center justify-center rounded-sm border border-border-strong bg-surface px-4 font-medium hover:bg-primary-soft">Sửa</Link>
         <Button variant="secondary" onClick={run} pending={busy ? "Đang kiểm thử (khoảng 30 giây)..." : undefined}>Kiểm thử chatbot</Button>
         <Confirm label={`Xóa ${code}`} message="Đề sẽ bị xóa khỏi danh sách. Liên kết đã tạo vẫn dùng bản chụp đề cũ." onConfirm={async () => { await post("/api/problems", { action: "delete", id }); router.refresh(); }} />
       </div>

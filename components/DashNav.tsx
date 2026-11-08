@@ -15,6 +15,7 @@ const ITEMS = [
   ["/dashboard/problems", "Đề bài"],
   ["/dashboard/links", "Liên kết"],
   ["/dashboard/stats", "Thống kê"],
+  ["/dashboard/students", "Học sinh"],
   ["/dashboard/logs", "Nhật ký"],
   ["/dashboard/settings", "Cài đặt"],
   ["/dashboard/guide", "Hướng dẫn"],
@@ -72,7 +73,7 @@ export default function DashNav({ email }: { email: string }) {
     <>
       {/* Mobile: thanh trên + menu burger */}
       <header className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border bg-surface px-4 py-2 md:hidden">
-        <Link href="/dashboard" aria-label="FinMath 8, về tổng quan"><Brand size="sm" /></Link>
+        <Link href="/dashboard" aria-label="MathStep AI, về tổng quan"><Brand size="sm" /></Link>
         <button
           ref={burger}
           type="button"
@@ -117,7 +118,7 @@ export default function DashNav({ email }: { email: string }) {
 
       {/* Desktop: thanh bên */}
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-1 border-r border-border bg-surface p-4 md:flex">
-        <Link href="/dashboard" className="mb-4" aria-label="FinMath 8, về tổng quan"><Brand /></Link>
+        <Link href="/dashboard" className="mb-4" aria-label="MathStep AI, về tổng quan"><Brand /></Link>
         <nav aria-label="Chính" className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-1">{ITEMS.map(([h, l]) => link(h, l, "flex min-h-11 items-center rounded-sm px-3"))}</nav>
         <div className="mt-auto flex shrink-0 flex-col gap-2 border-t border-border pt-3">
           <p className="truncate text-sm text-text-muted" title={email}>{email}</p>

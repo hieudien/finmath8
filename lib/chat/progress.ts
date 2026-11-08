@@ -1,9 +1,12 @@
 import type { Problem } from "@/lib/schema/problem";
+import { plain } from "@/lib/plain";
 
 // Chuẩn hóa số: bỏ dấu phân cách nghìn, dấu phẩy thập phân -> chấm. "300.000" -> 300000, "0,85" -> 0.85
 // Học sinh hay gõ "90k", "90 nghìn": đổi thành 90000.
+// Công thức LaTeX (\frac{1}{2}, x^{2}) đổi sang chữ thường trước; phân số số nguyên đổi thành số thập phân (\frac{1}{2} -> 0.5) để so được với đáp án.
+const latex = (t: string) => plain(t.replace(/\\frac(?:\{(-?\d+)\}|(\d))(?:\{(\d+)\}|(\d))/g, (m, a1?: string, a2?: string, b1?: string, b2?: string) => { const a = a1 ?? a2!, b = b1 ?? b2!; return +b ? String(+(Number(a) / Number(b)).toFixed(4)) : m; }));
 export const norm = (t: string) =>
-  t.replace(/(?<=\d)[.,\s](?=\d{3}\b)/g, "").replace(/(?<=\d),(?=\d)/g, ".")
+  latex(t).replace(/(?<=\d)[.,\s](?=\d{3}\b)/g, "").replace(/(?<=\d),(?=\d)/g, ".")
     .replace(/(\d+(?:\.\d+)?)\s*(?:k|nghìn|ngàn)\b/gi, (_, n: string) => String(Math.round(Number(n) * 1000)));
 export const numsIn = (t: string) => norm(t).match(/\d+(\.\d+)?/g) ?? [];
 export const hasNum = (text: string, n: string) => new RegExp(`(?<!\\d)${n}(?!\\d)`).test(norm(text));
@@ -45,6 +48,11 @@ export function sim(a: string, b: string) {
   const n = [...x].filter((w) => y.has(w)).length;
   return x.size + y.size ? n / (x.size + y.size - n) : 0;
 }
+
+// Lời kết sớm: AI chúc mừng/báo xong khi server chưa xác nhận xong. Bot phải hỏi tiếp thay vì kết.
+export const earlyClose = (reply: string) => !reply.includes("?") || /giải xong|chúc mừng|làm tốt lắm|hoàn thành bài/i.test(reply);
+export const ASK_METHOD = "Kết quả của bạn đúng rồi. Bạn tính ra kết quả đó bằng phép tính nào? Viết phép tính ra nhé.";
+export const ASK_NEXT = "Bài này chưa xong đâu nhé. Bạn thử viết bước tiếp theo của mình được không?";
 
 // Thang lạc đề: lần 1 nhắc nhẹ, lần 2 nhắc kèm mời làm tiếp, lần 3 chốt phiên. Đếm từ lịch sử (không cần cột DB mới).
 export const OFF_REPLIES = [

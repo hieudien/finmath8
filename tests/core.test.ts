@@ -5,7 +5,7 @@ import { chatState, leaks } from "../lib/chat/prompt";
 import { parseProblems } from "../lib/schema/problem";
 import { friendly } from "../lib/errors";
 import { plain } from "../lib/plain";
-import { checkpoints, countDone, hasNum, offStreak, OFF_REPLIES, sim, stepOf, tighten, verdict, verify } from "../lib/chat/progress";
+import { earlyClose, checkpoints, countDone, hasNum, offStreak, OFF_REPLIES, sim, stepOf, tighten, verdict, verify } from "../lib/chat/progress";
 import { SEED } from "../lib/seed";
 
 describe("pii", () => {
@@ -125,5 +125,32 @@ describe("loi AI than thien", () => {
     expect(friendly('ApiError: {"error":{"code":503,"status":"UNAVAILABLE"}}', "student").message).toMatch(/quá tải/);
     expect(friendly('429 RESOURCE_EXHAUSTED quota', "student").message).toMatch(/chạm giới hạn/);
     expect(friendly('429 RESOURCE_EXHAUSTED quota', "teacher").message).toMatch(/chạm giới hạn/);
+  });
+});
+
+describe("latex trong tin hoc sinh", () => {
+  it("phan so, so mu duoc chuan hoa de so voi dap an", () => {
+    expect(hasNum(String.raw`x = $\frac{1}{2}$`, "0.5")).toBe(true);
+    expect(hasNum(String.raw`$\frac{-3}{4}$`, "0.75")).toBe(true);
+    expect(hasNum(String.raw`$x=\frac12+3^2$`, "0.5")).toBe(true); // MathLive viết \frac12 không ngoặc
+    expect(hasNum("$x^{2} = 9$", "2")).toBe(false); // so mu khong tinh la so rieng
+    expect(hasNum("$x = 12$", "12")).toBe(true);
+  });
+});
+
+describe("read_image", () => {
+  const re = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+  it("chi nhan anh base64", () => {
+    expect(re.test("data:image/png;base64,iVBORw0=")).toBe(true);
+    expect(re.test("data:image/svg+xml;base64,AAAA")).toBe(false);
+    expect(re.test("data:text/html;base64,AAAA")).toBe(false);
+  });
+});
+
+describe("loi ket som", () => {
+  it("chan loi chuc mung khi chua xong", () => {
+    expect(earlyClose("Bài toán đã được giải xong. Chúc mừng bạn!")).toBe(true);
+    expect(earlyClose("Chúc mừng! Bạn đã đúng, giờ giải thích cách làm?")).toBe(true);
+    expect(earlyClose("Bạn viết bước tiếp theo nhé?")).toBe(false);
   });
 });

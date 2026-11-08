@@ -11,7 +11,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const { data } = await admin().from("public_links").select("label").eq("slug", slug).maybeSingle();
   const label = (data as { label: string } | null)?.label;
-  return { title: label ? `${label} · FinMath 8` : "FinMath 8", robots: { index: false } };
+  return { title: label ? `${label} · MathStep AI` : "MathStep AI", robots: { index: false } };
 }
 
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {

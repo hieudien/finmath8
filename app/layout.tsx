@@ -9,8 +9,8 @@ const font = Be_Vietnam_Pro({
 });
 
 export const metadata: Metadata = {
-  title: "FinMath 8",
-  description: "Chatbot gợi mở giúp học sinh lớp 8 giải bài Toán tình huống tài chính.",
+  title: "MathStep AI",
+  description: "Chatbot gợi mở giúp học sinh tự giải bài Toán từng bước.",
 };
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };

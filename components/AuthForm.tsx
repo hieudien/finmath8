@@ -39,7 +39,7 @@ export default function AuthForm({ mode, notice }: { mode: Mode; notice?: string
 
   return (
     <main className="mx-auto flex min-h-[100dvh] w-full max-w-sm flex-col justify-center gap-6 px-4 py-8">
-      <Link href="/" aria-label="FinMath 8, về trang chủ"><Brand /></Link>
+      <Link href="/" aria-label="MathStep AI, về trang chủ"><Brand /></Link>
       <h1>{c.title}</h1>
       {notice && <Alert tone="warning">{notice}</Alert>}
       {sent ? (

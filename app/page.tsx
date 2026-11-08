@@ -24,7 +24,7 @@ export default function Home() {
 
       <main className="flex flex-col gap-12 py-8">
         <section className="flex flex-col gap-4">
-          <h1>Chatbot giúp học sinh lớp 8 tự giải bài Toán tài chính</h1>
+          <h1>Chatbot giúp học sinh tự giải Toán từng bước</h1>
           <p className="max-w-prose text-lg text-text-muted">
             Chatbot không đưa đáp án. Nó hỏi từng bước theo cách giải của Polya và tăng gợi ý theo 3 mức, để học sinh tự nghĩ.
             Giáo viên nạp đề, bấm tạo liên kết, gửi cho lớp.
@@ -52,10 +52,10 @@ export default function Home() {
         </section>
 
         <section className="flex flex-col gap-3" aria-labelledby="tk">
-          <h2 id="tk">Thống kê ẩn danh cho từng liên kết</h2>
+          <h2 id="tk">Thống kê theo từng học sinh và từng liên kết</h2>
           <p className="max-w-prose">
             Thầy cô thấy lượt dùng, điểm theo 4 tiêu chí (nhận diện, lập kế hoạch, tính toán, giải thích), mức gợi ý đã dùng và lỗi thường gặp.
-            Hệ thống không lưu tên, lớp hay IP của học sinh, và tự che số điện thoại, email, tên nếu học sinh lỡ gõ.
+            Học sinh nhập mã và họ tên khi vào bài; hệ thống không lưu lớp hay IP, và tự che số điện thoại, email nếu học sinh lỡ gõ trong tin nhắn.
           </p>
         </section>
 
@@ -68,7 +68,7 @@ export default function Home() {
       </main>
 
       <footer className="mt-auto border-t border-border py-6 text-sm text-text-muted">
-        FinMath 8: dữ liệu chỉ dùng cho nghiên cứu sư phạm.
+        MathStep AI: dữ liệu chỉ dùng cho nghiên cứu sư phạm.
       </footer>
     </div>
   );

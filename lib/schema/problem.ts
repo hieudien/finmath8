@@ -3,8 +3,10 @@ import { z } from "zod";
 export const problemSchema = z.object({
   id: z.string().min(1, "Thiếu id (vd TC01)"),
   title: z.string().min(1, "Thiếu title"),
-  grade: z.number().default(8),
+  grade: z.number().int().min(1).max(12).default(8),
   topic: z.string().default(""),
+  skills: z.array(z.string()).default([]), // kỹ năng/kiến thức chính của đề, để gom điểm yếu của học sinh theo kỹ năng
+  reviewed: z.boolean().default(true), // false: AI vừa tạo, giáo viên chưa duyệt; đề chưa duyệt không đưa vào liên kết
   statement: z.string().optional(),
   learning_objectives: z.array(z.string()).default([]),
   data: z.record(z.string(), z.unknown()).default({}),

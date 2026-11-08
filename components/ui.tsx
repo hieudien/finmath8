@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
+import { createPortal } from "react-dom";
+import { useEffect, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 
 const BTN = "inline-flex min-h-11 items-center justify-center gap-2 rounded-sm px-4 text-base font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 const VARIANT = {
@@ -10,10 +11,28 @@ const VARIANT = {
   ghost: "text-primary hover:bg-primary-soft",
 };
 
-export function Button({ variant = "primary", pending, children, className = "", ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof VARIANT; pending?: string }) {
+// Lớp phủ toàn trang khi tác vụ dài đang chạy: chặn chuột và bàn phím ở mọi chỗ khác.
+function BlockOverlay({ text }: { text: string }) {
+  useEffect(() => {
+    const others = [...document.body.children].filter((el) => !el.hasAttribute("data-block-overlay")) as HTMLElement[];
+    const prev = others.map((el) => el.inert);
+    others.forEach((el) => { el.inert = true; });
+    return () => others.forEach((el, i) => { el.inert = prev[i]; });
+  }, []);
+  return createPortal(
+    <div data-block-overlay role="status" aria-live="polite" className="fixed inset-0 z-50 flex cursor-wait flex-col items-center justify-center gap-3 bg-black/50 text-lg font-medium text-white">
+      <span className="spinner h-8 w-8" />
+      {text}
+    </div>,
+    document.body,
+  );
+}
+
+export function Button({ variant = "primary", pending, block = true, children, className = "", ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof VARIANT; pending?: string; block?: boolean }) {
   return (
     <button {...p} disabled={p.disabled || !!pending} className={`${BTN} ${VARIANT[variant]} ${className}`}>
       {pending ?? children}
+      {pending && block && <BlockOverlay text={pending} />}
     </button>
   );
 }

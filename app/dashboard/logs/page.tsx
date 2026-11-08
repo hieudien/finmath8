@@ -43,7 +43,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ a
                 <span className="tnum text-sm text-text-muted">{fmt.format(new Date(r.ts))}</span>
               </p>
               <p className="break-anywhere text-sm text-text-muted">
-                {r.actor_type === "teacher" ? "Giáo viên" : r.actor_type === "student" ? "Học sinh ẩn danh" : "Hệ thống"}
+                {r.actor_type === "teacher" ? "Giáo viên" : r.actor_type === "student" ? "Học sinh" : "Hệ thống"}
                 {Object.keys(r.meta).length > 0 && ` · ${JSON.stringify(r.meta)}`}
               </p>
             </li>

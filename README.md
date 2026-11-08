@@ -1,8 +1,8 @@
-# FinMath 8
+# MathStep AI
 
 Chatbot gợi mở giúp học sinh lớp 8 tự giải các bài Toán tình huống tài chính (tiết kiệm, khuyến mãi, lãi suất, trả góp, ngân sách...).
 
-Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải quyết vấn đề của Polya, tăng gợi ý theo 3 mức khi học sinh kẹt, và chỉ kết thúc bài khi học sinh đã nêu kết quả cùng cách làm. Giáo viên nạp đề, tạo liên kết công khai và xem thống kê ẩn danh. Học sinh vào bằng liên kết, không cần tài khoản.
+Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải quyết vấn đề của Polya, tăng gợi ý theo 3 mức khi học sinh kẹt, và chỉ kết thúc bài khi học sinh đã nêu kết quả cùng cách làm. Giáo viên nạp đề, tạo liên kết công khai và xem thống kê theo từng học sinh. Học sinh vào bằng liên kết, chỉ nhập mã và tên, không cần tài khoản.
 
 ## Cách hoạt động
 

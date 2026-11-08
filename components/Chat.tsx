@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Brand from "@/components/Brand";
-import { Alert, Button, post } from "@/components/ui";
+import { Alert, Button, Field, post } from "@/components/ui";
 import { MathText } from "@/components/MathText";
+import FormulaButton from "@/components/FormulaButton";
 
 type P = { id: string; title: string; statement: string; greeting: string };
 type M = { role: "student" | "bot"; text: string };
@@ -10,7 +11,7 @@ type R = { sessionId?: string; reply?: string; step?: number; done?: boolean };
 
 
 export default function Chat({ slug, label, problems }: { slug: string; label: string; problems: P[] }) {
-  const [prob, setProb] = useState<P | null>(problems.length === 1 ? problems[0] : null);
+  const [prob, setProb] = useState<P | null>(null);
   const [sid, setSid] = useState<string>();
   const [msgs, setMsgs] = useState<M[]>([]);
   const [busy, setBusy] = useState(false);
@@ -20,7 +21,12 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   const [sure, setSure] = useState(false); // đã tự đánh giá mức hiểu bài
   const [text, setText] = useState("");
   const [showStmt, setShowStmt] = useState(true); // đề bài ghim phía trên; học sinh có thể thu gọn khi cần thêm chỗ
+  const [who, setWho] = useState<{ code: string; name: string } | null>(null); // thông tin học sinh, nhập một lần rồi nhớ trong trình duyệt
+  const [ready, setReady] = useState(false);
+  const [fCode, setFCode] = useState("");
+  const [fName, setFName] = useState("");
   const end = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
   const started = useRef(false);
   const tok = useRef(0); // mỗi lần mở bài/quay lại tăng 1: phản hồi của lần cũ đến muộn thì bỏ
 
@@ -30,7 +36,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
     const my = ++tok.current;
     setProb(p); setBusy(!p.greeting); setErr("");
     if (p.greeting) setMsgs([{ role: "bot", text: p.greeting }]); // hiện lời chào ngay; server tạo phiên song song, có sid thì mở ô nhập
-    const { ok, data } = await post<R>("/api/chat", { action: "start", slug, problemCode: p.id });
+    const { ok, data } = await post<R>("/api/chat", { action: "start", slug, problemCode: p.id, studentCode: who?.code, studentName: who?.name });
     if (my !== tok.current) return;
     setBusy(false);
     if (!ok) { setErr(data.error ?? "Có lỗi."); started.current = false; setMsgs([]); if (problems.length > 1) setProb(null); return; } // lỗi: bỏ lời chào đã hiện, nhiều đề thì về danh sách (lỗi hiện ở đó)
@@ -39,9 +45,31 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   }
 
   useEffect(() => {
-    if (problems.length === 1 && !started.current) { started.current = true; start(problems[0]); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    try { const v = JSON.parse(localStorage.getItem("ms_student") ?? "null"); if (v?.code && v?.name) setWho(v); } catch {}
+    setReady(true);
   }, []);
+
+  useEffect(() => {
+    if (who && problems.length === 1 && !started.current) { started.current = true; start(problems[0]); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [who]);
+
+  function saveWho(e: React.FormEvent) {
+    e.preventDefault();
+    const code = fCode.trim().toUpperCase(), name = fName.trim().replace(/\s+/g, " ");
+    if (!/^[A-Z0-9._-]{1,20}$/.test(code)) return setErr("Mã học sinh gồm chữ và số, tối đa 20 ký tự.");
+    if (name.length < 2) return setErr("Bạn nhập họ và tên nhé.");
+    setErr("");
+    const v = { code, name };
+    try { localStorage.setItem("ms_student", JSON.stringify(v)); } catch {}
+    setWho(v);
+  }
+
+  function changeWho() {
+    try { localStorage.removeItem("ms_student"); } catch {}
+    started.current = false; tok.current++;
+    setWho(null); setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setSure(false); setErr("");
+  }
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -81,12 +109,31 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
     await post("/api/chat", { action: "survey", slug, sessionId: sid, likert: n });
   }
 
+  if (!ready) return null;
+  if (!who) {
+    return (
+      <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col gap-4 px-4 py-8">
+        <Brand tagline />
+        <h1>{label}</h1>
+        <p className="text-text-muted">Nhập mã học sinh và họ tên để bắt đầu. Giáo viên sẽ xem kết quả để biết bạn cần hỗ trợ phần nào.</p>
+        <form onSubmit={saveWho} className="flex flex-col gap-3">
+          <Field label="Mã học sinh" value={fCode} onChange={(e) => setFCode(e.target.value)} maxLength={20} autoComplete="off" required />
+          <Field label="Họ và tên" value={fName} onChange={(e) => setFName(e.target.value)} maxLength={60} autoComplete="name" required />
+          {err && <Alert tone="danger">{err}</Alert>}
+          <Button type="submit" disabled={!fCode.trim() || !fName.trim()}>Tiếp tục</Button>
+        </form>
+      </main>
+    );
+  }
+
+  if (!prob && problems.length === 1) return err ? <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col gap-4 px-4 py-8"><Brand tagline /><Alert tone="danger">{err}</Alert><Button variant="secondary" type="button" onClick={changeWho}>Đổi thông tin</Button></main> : null;
   if (!prob) {
     return (
       <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col gap-4 px-4 py-8">
         <Brand tagline />
         <h1>{label}</h1>
-        <p className="text-text-muted">Chọn một bài để bắt đầu. Chatbot sẽ gợi ý từng bước, em hãy tự suy nghĩ trước khi xin gợi ý.</p>
+        <p className="text-text-muted">Xin chào <b>{who.name}</b> ({who.code}). Chọn một bài để bắt đầu. Chatbot sẽ gợi ý từng bước, bạn hãy tự suy nghĩ trước khi xin gợi ý.</p>
+        <Button variant="ghost" type="button" onClick={changeWho} className="-ml-3 self-start text-sm">Đổi thông tin</Button>
         {err && <Alert tone="danger">{err}</Alert>}
         <ul className="flex flex-col gap-2">
           {problems.map((p) => (
@@ -145,7 +192,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
                 <div className="flex gap-2">{[1, 2, 3, 4, 5].map((n) => <Button key={n} variant="secondary" className="flex-1 px-0" onClick={() => rateSure(n)} aria-label={`${n} điểm`}>{n}</Button>)}</div>
               </fieldset>
             )}
-            {rated ? sure && <p className="text-sm text-text-muted">Đã ghi nhận đánh giá ẩn danh của em.</p> : (
+            {rated ? sure && <p className="text-sm text-text-muted">Đã ghi nhận đánh giá của bạn.</p> : (
               <fieldset>
                 <legend className="mb-2 text-sm">Chatbot giúp em giải bài tốt hơn? (1 = không, 5 = rất nhiều)</legend>
                 <div className="flex gap-2">{[1, 2, 3, 4, 5].map((n) => <Button key={n} variant="secondary" className="flex-1 px-0" onClick={() => rate(n)} aria-label={`${n} điểm`}>{n}</Button>)}</div>
@@ -156,12 +203,16 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
           <form onSubmit={send} className="flex flex-col gap-2">
             <label htmlFor="msg" className="sr-only">Câu trả lời của em</label>
             <div className="flex items-end gap-2">
-              <textarea id="msg" rows={3} value={text} onChange={(e) => setText(e.target.value)} disabled={busy || !sid} maxLength={300} placeholder={sid ? "Nhập câu trả lời của bạn. Enter để xuống dòng, bấm Gửi để gửi." : "Đang mở bài, chờ một chút..."} className="min-h-11 flex-1 resize-y rounded-sm border border-border-strong bg-surface px-3 py-2 text-base" />
-              <Button type="submit" disabled={!text.trim() || !sid} pending={busy ? (sid ? "Đang gửi..." : "Đang mở bài...") : undefined}>Gửi</Button>
+              <textarea id="msg" ref={box} rows={3} value={text} onChange={(e) => setText(e.target.value)} disabled={busy || !sid} maxLength={500} placeholder={sid ? "Nhập câu trả lời của bạn. Enter để xuống dòng, bấm Gửi để gửi." : "Đang mở bài, chờ một chút..."} className="min-h-11 flex-1 resize-y rounded-sm border border-border-strong bg-surface px-3 py-2 text-base" />
+              <Button type="submit" block={false} disabled={!text.trim() || !sid} pending={busy ? (sid ? "Đang gửi..." : "Đang mở bài...") : undefined}>Gửi</Button>
             </div>
-            <p className={`text-right text-xs tnum ${text.length >= 270 ? "text-danger" : "text-text-muted"}`} aria-live="off">{text.length}/300</p>
-            <Button variant="ghost" type="button" onClick={finishNow} disabled={busy || !sid || msgs.length < 3} className="self-start text-sm">Kết thúc bài</Button>
-            <p className="text-xs text-text-muted">FinMath 8 · Ẩn danh: đừng gõ tên, lớp, trường hay số điện thoại.</p>
+            <p className={`text-right text-xs tnum ${text.length >= 450 ? "text-danger" : "text-text-muted"}`} aria-live="off">{text.length}/500</p>
+            {text.includes("$") && <div className="rounded-sm border border-border bg-primary-soft px-3 py-2 text-sm"><span className="block text-xs text-text-muted">Xem trước</span><MathText text={text} /></div>}
+            <div className="flex flex-wrap items-center gap-2">
+              <FormulaButton target={box} value={text} onChange={setText} disabled={busy || !sid} />
+              <Button variant="ghost" type="button" onClick={finishNow} disabled={busy || !sid || msgs.length < 3} className="text-sm">Kết thúc bài</Button>
+            </div>
+            <p className="text-xs text-text-muted">MathStep AI · Giáo viên xem được bài làm của bạn. Đừng gõ số điện thoại hay email.</p>
           </form>
         )}
       </footer>

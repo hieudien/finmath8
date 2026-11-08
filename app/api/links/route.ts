@@ -33,6 +33,7 @@ export const POST = api(async (req) => {
     const { data } = await db.from("problems").select("content").eq("teacher_id", u.id).is("deleted_at", null).in("id", b.problemIds);
     const snap = ((data ?? []) as { content: unknown }[]).map((r) => r.content);
     if (!snap.length) return bad("Không tìm thấy đề đã chọn.");
+    if (snap.some((c) => (c as { reviewed?: boolean }).reviewed === false)) return bad("Có đề AI tạo chưa duyệt. Mở đề, kiểm tra rồi lưu trước khi tạo liên kết.");
     const { data: row, error } = await db.from("public_links").insert({
       teacher_id: u.id, slug: slug(), label: b.label, tag: b.tag, problems_snapshot: snap, max_messages: b.maxMessages,
     } as never).select("id,slug").single();
