@@ -1,45 +1,51 @@
 # MathStep AI
 
-Chatbot gợi mở giúp học sinh lớp 8 tự giải các bài Toán tình huống tài chính (tiết kiệm, khuyến mãi, lãi suất, trả góp, ngân sách...).
+Chatbot gợi mở giúp học sinh tự giải Toán từng bước, cho mọi lớp và mọi dạng đề (giải phương trình, hình học, tỉ lệ, bài toán thực tế, tình huống tài chính...).
 
-Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải quyết vấn đề của Polya, tăng gợi ý theo 3 mức khi học sinh kẹt, và chỉ kết thúc bài khi học sinh đã nêu kết quả cùng cách làm. Giáo viên nạp đề, tạo liên kết công khai và xem thống kê theo từng học sinh. Học sinh vào bằng liên kết, chỉ nhập mã và tên, không cần tài khoản.
+Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải quyết vấn đề của Polya, tăng gợi ý theo mức khi học sinh kẹt, và chỉ kết thúc bài khi học sinh đã nêu kết quả cùng cách làm. Giáo viên tạo đề, gửi liên kết công khai và theo dõi điểm mạnh, điểm yếu của từng học sinh. Học sinh vào bằng liên kết, chỉ nhập mã và họ tên, không cần tài khoản.
 
 ## Cách hoạt động
 
 1. Giáo viên đăng ký, nhập API key của Google Gemini hoặc OpenAI trong Cài đặt (key được mã hóa AES-256-GCM, không trả về trình duyệt).
-2. Giáo viên nạp đề bằng JSON hoặc dán văn bản để AI chuẩn hóa. Khi nạp đề, AI cũng tạo sẵn câu chào đầu tiên cho bài.
+2. Giáo viên tạo đề: soạn trực tiếp, dán văn bản, nạp JSON hoặc chụp ảnh đề. AI điền đáp án, lời giải, gợi ý và câu chào đầu tiên; giáo viên kiểm tra rồi lưu.
 3. Giáo viên chọn một hoặc nhiều đề, tạo liên kết công khai và gửi cho học sinh.
-4. Học sinh chọn đề, chat với bot, có thể quay lại danh sách đề, và đánh giá chatbot cuối bài.
-5. Hệ thống chấm năng lực theo 4 tiêu chí (nhận diện, lập kế hoạch, tính toán, giải thích), giáo viên xem thống kê và nội dung hội thoại đã lọc thông tin cá nhân.
+4. Học sinh mở liên kết, nhập mã và họ tên (nhớ trong trình duyệt), chọn đề, chat với bot, tự đánh giá mức hiểu bài và mức hài lòng cuối bài.
+5. Hệ thống chấm theo 4 tiêu chí (nhận diện, lập kế hoạch, tính toán, giải thích). Giáo viên xem thống kê theo liên kết, hồ sơ từng học sinh và nội dung hội thoại.
 
 ## Tính năng
 
 **Giáo viên**
-- Nạp đề: JSON (kiểm tra bằng Zod, báo lỗi theo trường) hoặc văn bản thô chuẩn hóa bằng AI, có xem trước và chỉnh sửa. Đề mẫu TC01–TC10 có sẵn (`de-mau-10.json`).
-- AI tạo lời giải từng bước và câu chào đầu tiên cho đề; kiểm tra lời giải khớp đáp án.
-- Kiểm thử chatbot cho từng đề: không lộ đáp án, che thông tin cá nhân, kéo học sinh về bài, không xác nhận đáp án sai, tăng gợi ý dần, ghi nhận khi làm đúng, hỏi cách làm khi chỉ có đáp số.
+- Trình tạo và sửa đề: tiêu đề, lớp, chủ đề, kỹ năng, đề bài, đáp án (JSON), lời giải từng bước, 3 mức gợi ý, sai lầm thường gặp, câu chào.
+- Đọc đề từ ảnh (chụp hoặc dán Ctrl+V) bằng AI; nạp JSON (kiểm tra bằng Zod, báo lỗi theo trường) hoặc dán văn bản để AI chuẩn hóa. Đề mẫu có sẵn trong `de-mau-10.json`.
+- Soạn công thức bằng bàn phím toán MathLive, xem trước KaTeX ngay trong ô nhập.
+- Đề do AI tạo có cờ `reviewed = false`: phải mở đề, tick xác nhận đáp án đúng rồi lưu mới được đưa vào liên kết.
+- AI tạo lời giải từng bước và kiểm tra lời giải khớp đáp án.
+- Kiểm thử chatbot cho từng đề: không lộ đáp án, che thông tin cá nhân, kéo học sinh về bài, không xác nhận đáp án sai, tăng gợi ý dần, hỏi cách làm khi chỉ có đáp số.
 - Liên kết công khai: bật/tắt, hạn dùng, giới hạn số tin, nhãn nhóm (trước, sau, thực nghiệm, đối chứng).
-- Thống kê: số phiên, tỉ lệ hoàn thành, điểm rubric, lỗi thường gặp, mức gợi ý, so sánh giữa các nhóm, xem hội thoại từng phiên. Xuất CSV.
+- Trang **Học sinh**: gom theo mã học sinh; điểm trung bình 4 tiêu chí, kỹ năng cần củng cố, lỗi hay mắc, danh sách bài đã làm (kể cả bài bỏ dở) và nút **AI phân tích và đề xuất cải thiện**.
+- Thống kê theo liên kết: số phiên, tỉ lệ hoàn thành, điểm, mức gợi ý, thời gian, so sánh giữa các nhóm, xem hội thoại từng phiên. Xuất CSV (có mã và tên học sinh).
 - Nhật ký hoạt động chỉ thêm, không sửa; hướng dẫn sử dụng cho giáo viên.
 
 **Học sinh**
-- Không cần tài khoản, không hỏi tên, lớp hay trường.
-- Câu chào hiện ngay khi mở bài; bot hỏi một câu cụ thể mỗi lượt.
-- Công thức hiển thị bằng KaTeX.
+- Không cần tài khoản. Nhập mã học sinh (chữ, số, `._-`, tối đa 20 ký tự) và họ tên một lần; có nút Đổi thông tin.
+- Câu chào hiện ngay khi mở bài; đề bài ghim phía trên; bot hỏi một câu cụ thể mỗi lượt.
+- Nút **Công thức** để gõ phân số, căn, số mũ; công thức hiển thị bằng KaTeX.
+- Gợi ý 4 mức: định hướng, chỉ cách giải, nêu bước kế tiếp, làm mẫu bằng số khác.
 
 **Chat engine** ([lib/chat](lib/chat))
 - Tiến độ theo mốc lời giải; server tự xác minh mốc có số, mốc còn lại cần trích dẫn nguyên văn từ tin của học sinh.
-- Chỉ kết thúc khi đủ mốc và học sinh đã trình bày cách làm (`method_ok`, server kiểm tra bằng chứng).
-- Chặn lộ đáp án: nếu câu trả lời của bot chứa số kết quả học sinh chưa nêu, AI viết lại.
-- Chặn đổi vai và lấy prompt, lọc thông tin cá nhân trước khi lưu và trước khi gửi AI.
-- Tự đổi sang model khác của cùng nhà cung cấp khi hết lượt hoặc quá tải.
+- Công thức LaTeX trong tin nhắn được chuẩn hóa (ví dụ `\frac{1}{2}` thành 0.5) trước khi so với đáp án.
+- Chỉ kết thúc khi đủ mốc và học sinh đã trình bày cách làm. Lời chúc mừng hoặc lời kết sớm của AI bị thay bằng câu hỏi tiếp.
+- Chặn lộ đáp án và chặn bot tự giải hộ bước học sinh phải làm; chặn đổi vai và lấy prompt.
+- Lọc thông tin cá nhân trước khi lưu và trước khi gửi AI.
+- Tự đổi sang model khác của cùng nhà cung cấp khi hết lượt hoặc quá tải; giới hạn tốc độ và số phiên mỗi ngày.
 
 ## Công nghệ
 
 - Next.js 15 (App Router, Turbopack), React 19, TypeScript, Tailwind CSS 4
 - Supabase: Postgres, Auth, RLS
 - Google Gemini (`@google/genai`) hoặc OpenAI, dùng key của giáo viên
-- Zod, KaTeX, Recharts, simple-statistics, Nodemailer (Gmail SMTP)
+- Zod, KaTeX, MathLive, Recharts, simple-statistics, Nodemailer (Gmail SMTP)
 - Vitest
 
 ## Cấu trúc thư mục
@@ -48,17 +54,19 @@ Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải q
 app/
   page.tsx                  trang giới thiệu
   (auth)/                   đăng ký, đăng nhập, quên và đặt lại mật khẩu
-  dashboard/                tổng quan, đề, liên kết, thống kê, nhật ký, cài đặt, hướng dẫn
+  dashboard/                tổng quan, đề (tạo, sửa), liên kết, thống kê, học sinh, nhật ký, cài đặt, hướng dẫn
   c/[slug]/                 trang chat của học sinh
-  api/                      auth, chat, chat-log, export, links, problems, settings
-components/                 giao diện (Chat, ProblemTools, ...)
+  api/                      auth, chat, chat-log, export, links, problems, settings, students
+components/                 giao diện (Chat, ProblemEditor, MathTextArea, FormulaDialog, ...)
 lib/
   chat/                     engine, prompt, tiến độ, kiểm thử chatbot
   schema/problem.ts         schema Zod của đề
-  llm.ts, models.ts         gọi AI, danh sách model, tự đổi model
+  students.ts               hồ sơ học sinh
+  llm.ts, models.ts         gọi AI (kể cả ảnh), danh sách model, tự đổi model
   greeting.ts               tạo câu chào đầu tiên
   pii.ts, crypto.ts, log.ts lọc thông tin cá nhân, mã hóa key, nhật ký
-supabase/migrations/        001–007
+public/mathlive-fonts/      font của MathLive
+supabase/migrations/        001–011
 tests/                      Vitest
 ```
 
@@ -87,12 +95,16 @@ Tạo file `.env` (không commit) với các biến sau:
 
 ## Cơ sở dữ liệu
 
-Chạy các file trong `supabase/migrations/` theo thứ tự số (`001_init.sql` đến `007_drop_usage.sql`) trên project Supabase.
+Chạy các file trong `supabase/migrations/` theo thứ tự số (`001_init.sql` đến `011_students.sql`) trên project Supabase. File `011` thêm mã và tên học sinh vào `chat_sessions`, view `student_stats` và bảng `student_advice`.
 
 ## Triển khai
 
 Triển khai trên Vercel, khai báo các biến môi trường ở trên. Bản kế hoạch ban đầu nằm ở [PLAN.md](PLAN.md).
 
-## Ẩn danh
+## Quyền riêng tư và dữ liệu
 
-Học sinh chỉ có một mã ngẫu nhiên trong cookie. Hệ thống không lưu IP, tên, lớp hay trình duyệt. Tin nhắn được lọc thông tin cá nhân (số điện thoại, email, tên) trước khi lưu. Giáo viên chỉ thấy "HS #n" của từng liên kết.
+- **Lưu:** mã và họ tên học sinh tự nhập, nội dung hội thoại, điểm chấm. Giáo viên chỉ thấy học sinh thuộc liên kết của mình (RLS).
+- **Không lưu:** lớp, trường, IP, thông tin trình duyệt.
+- **Tự che:** số điện thoại và email trong tin nhắn, trước khi lưu và trước khi gửi AI. Tên và mã học sinh không được gửi cho AI khi chat.
+- **API key** của giáo viên được mã hóa AES-256-GCM, không trả về trình duyệt.
+- Dữ liệu chỉ dùng cho nghiên cứu sư phạm.
