@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
-import { useEffect, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
+import { useEffect, useId, useState, useTransition, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 
 const BTN = "inline-flex min-h-11 items-center justify-center gap-2 rounded-sm px-4 text-base font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 const VARIANT = {
@@ -34,6 +35,33 @@ function BlockOverlay({ text }: { text: string }) {
     document.body,
   );
 }
+
+// Tải lại dữ liệu trang. pending giữ đến khi dữ liệu mới về và hiện xong (router.refresh() trần thì không chờ được), để nút không hết quay trước khi danh sách đổi.
+export function useRefresh() {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  return [pending, () => start(() => router.refresh())] as const;
+}
+
+const BADGE = {
+  neutral: "bg-primary-soft text-text-muted",
+  info: "bg-primary-soft text-primary",
+  success: "bg-success/10 text-success",
+  warn: "bg-warning-soft text-warning",
+  danger: "bg-danger/10 text-danger",
+} as const;
+
+// Nhãn nhỏ dạng viên thuốc để mắt bắt nhanh mã, điểm, trạng thái.
+export function Badge({ tone = "neutral", mono, children }: { tone?: keyof typeof BADGE; mono?: boolean; children: ReactNode }) {
+  return <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${mono ? "font-mono" : ""} ${BADGE[tone]}`}>{children}</span>;
+}
+
+// "Chưa trả lời" nổi bật nhất để giáo viên thấy ngay phiên học sinh chưa làm gì; "Đang làm" khác "Bỏ dở".
+const STATE_TONE: Record<string, keyof typeof BADGE> = { "Chưa trả lời": "warn", "Đúng": "success", "Chưa đúng": "danger", "Hoàn thành": "success", "Đang làm": "info" };
+export const StatusBadge = ({ text }: { text: string }) => <Badge tone={STATE_TONE[text] ?? "neutral"}>{text}</Badge>;
+
+// Điểm /12 tô màu theo mức: từ 9 trở lên xanh, từ 5 vàng, dưới 5 đỏ.
+export const ScoreBadge = ({ total }: { total: number }) => <Badge tone={total >= 9 ? "success" : total >= 5 ? "warn" : "danger"}>{total}/12</Badge>;
 
 export function Button({ variant = "primary", pending, block = true, children, className = "", ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof VARIANT; pending?: string; block?: boolean }) {
   return (
@@ -106,9 +134,14 @@ export function Skeleton({ lines = 3 }: { lines?: number }) {
   );
 }
 
-export function Confirm({ label, message, onConfirm, confirmLabel = "Xóa" }: { label: string; message: string; onConfirm: () => Promise<void> | void; confirmLabel?: string }) {
+export function Confirm({ label, message, onConfirm, confirmLabel = "Xóa" }: { label: string; message: string; onConfirm: () => Promise<string | void> | string | void; confirmLabel?: string }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [rp, refresh] = useRefresh();
+  const [sent, setSent] = useState(false);
+  // Đóng hộp thoại khi đã xóa xong VÀ danh sách đã tải lại.
+  useEffect(() => { if (sent && !busy && !rp) { setSent(false); setOpen(false); } }, [sent, busy, rp]);
   return (
     <>
       <Button variant="ghost" onClick={() => setOpen(true)} className="text-danger">{label}</Button>
@@ -117,9 +150,16 @@ export function Confirm({ label, message, onConfirm, confirmLabel = "Xóa" }: { 
           <div className="w-full max-w-md rounded-t-lg bg-surface p-6 sm:rounded-lg" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
             <h2>{label}?</h2>
             <p className="mt-2 text-text-muted">{message}</p>
+            {err && <p role="alert" className="mt-3 text-danger">{err}</p>}
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button variant="secondary" autoFocus onClick={() => setOpen(false)}>Hủy</Button>
-              <Button variant="danger" pending={busy ? "Đang xử lý..." : undefined} onClick={async () => { setBusy(true); try { await onConfirm(); } finally { setBusy(false); setOpen(false); } }}>{confirmLabel}</Button>
+              <Button variant="danger" pending={busy || rp ? "Đang xử lý..." : undefined} onClick={async () => {
+                setBusy(true); setErr("");
+                try {
+                  const e = await onConfirm();
+                  if (e) setErr(e); else { setSent(true); refresh(); }
+                } catch { setErr("Có lỗi."); } finally { setBusy(false); }
+              }}>{confirmLabel}</Button>
             </div>
           </div>
         </div>

@@ -2,10 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadStudent } from "@/lib/students";
-import { r1 } from "@/lib/stats";
+import { fmtTime, r1, sessionState, studentMsgs } from "@/lib/stats";
 import { shortId } from "@/lib/sid";
 import AdviceButton from "@/components/AdviceButton";
 import ChatLog from "@/components/ChatLog";
+import { MathText } from "@/components/MathText";
 import "katex/dist/katex.min.css";
 
 type Advice = { content: { weak_areas: string[]; suggestions: string[]; practice: string[] }; sessions: number; updated_at: string };
@@ -13,7 +14,7 @@ type Advice = { content: { weak_areas: string[]; suggestions: string[]; practice
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return <section className="flex flex-col gap-2 border-t border-border pt-4"><h2>{title}</h2>{children}</section>;
 }
-const List = ({ items }: { items: string[] }) => <ul className="list-disc space-y-1 pl-5">{items.map((x, i) => <li key={i}>{x}</li>)}</ul>;
+const List = ({ items }: { items: string[] }) => <ul className="list-disc space-y-1 pl-5">{items.map((x, i) => <li key={i}><MathText text={x} /></li>)}</ul>;
 
 export default async function Page({ params }: { params: Promise<{ code: string }> }) {
   const raw = (await params).code;
@@ -23,6 +24,7 @@ export default async function Page({ params }: { params: Promise<{ code: string 
   const sb = await supabaseServer();
   const [prof, adv] = await Promise.all([loadStudent(sb, code), sb.from("student_advice").select("content,sessions,updated_at").eq("student_code", code).maybeSingle()]);
   if (!prof) notFound();
+  const msgs = await studentMsgs(sb, prof.attempts.map((a) => a.id));
   const advice = adv.data as Advice | null;
   const fmt = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" });
   return (
@@ -61,7 +63,7 @@ export default async function Page({ params }: { params: Promise<{ code: string 
         <ul className="flex flex-col gap-2">
           {prof.attempts.map((a) => (
             <li key={a.id} className="flex flex-col gap-2">
-              <ChatLog id={a.id} title={`${shortId(a.id)} · ${a.title} · ${fmt.format(new Date(a.started_at))} · ${a.ev ? `${a.ev.total}/12, ${a.ev.final_correct ? "đúng" : "chưa đúng"}` : a.status === "active" ? "đang làm" : "bỏ dở"}${a.revealed ? ` · giải hộ ${a.revealed} bước` : ""}`} />
+              <ChatLog id={a.id} head={{ sid: shortId(a.id), time: fmtTime(a.started_at), problem: a.title, total: a.ev?.total, state: sessionState(a, a.ev, msgs.get(a.id)), helped: a.revealed }} />
             </li>
           ))}
         </ul>

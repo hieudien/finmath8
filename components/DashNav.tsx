@@ -16,7 +16,6 @@ const ITEMS = [
   ["/dashboard/links", "Liên kết"],
   ["/dashboard/stats", "Thống kê"],
   ["/dashboard/students", "Học sinh"],
-  ["/dashboard/logs", "Nhật ký"],
   ["/dashboard/settings", "Cài đặt"],
   ["/dashboard/guide", "Hướng dẫn"],
 ] as const;

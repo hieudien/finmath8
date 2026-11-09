@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Alert, Button, post } from "@/components/ui";
+import { Alert, Button, post, useRefresh } from "@/components/ui";
 
 export function ViewTools({ text }: { text: string }) {
   const [done, setDone] = useState(false);
@@ -36,7 +35,7 @@ export function ViewTools({ text }: { text: string }) {
 
 // Nút gọi AI cho một đề: mặc định tạo lời giải từng bước ("explain"); action "step_guides" tạo chỉ dẫn và gợi ý riêng từng bước.
 export function ExplainButton({ id, action = "explain", label = "Tạo lời giải bằng AI", busyLabel = "AI đang viết lời giải..." }: { id: string; action?: "explain" | "step_guides" | "fill"; label?: string; busyLabel?: string }) {
-  const router = useRouter();
+  const [rp, refresh] = useRefresh();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [warn, setWarn] = useState("");
@@ -48,10 +47,10 @@ export function ExplainButton({ id, action = "explain", label = "Tạo lời gi�
           setErr(""); setWarn("");
           const { ok, data } = await post<{ noQuiz?: boolean; rewrote?: boolean }>("/api/problems", { action, id });
           setBusy(false);
-          if (ok) { if (data.rewrote) setWarn("Lời giải cũ có bước quá chung chung nên AI đã viết lại lời giải và tạo trắc nghiệm. Hãy xem lại lời giải mới."); else if (data.noQuiz) setWarn("Đã tạo chỉ dẫn và gợi ý, nhưng AI chưa tạo được trắc nghiệm hợp lệ (có bước quá chung chung). Đề này chạy kiểu Từng bước. Bấm thử lại hoặc sửa lời giải cho rõ kết quả từng bước."); router.refresh(); }
+          if (ok) { if (data.rewrote) setWarn("Lời giải cũ có bước quá chung chung nên AI đã viết lại lời giải và tạo trắc nghiệm. Hãy xem lại lời giải mới."); else if (data.noQuiz) setWarn("Đã tạo chỉ dẫn và gợi ý, nhưng AI chưa tạo được trắc nghiệm hợp lệ (có bước quá chung chung). Đề này chạy kiểu Từng bước. Bấm thử lại hoặc sửa lời giải cho rõ kết quả từng bước."); refresh(); }
           else setErr(data.error ?? "Có lỗi.");
         }}
-        pending={busy ? busyLabel : undefined}
+        pending={busy ? busyLabel : rp ? "Đang cập nhật..." : undefined}
         className="self-start"
       >
         {label}

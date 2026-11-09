@@ -32,7 +32,7 @@ export const GET = api(async (req) => {
   const sb = await supabaseServer();
   let rows: Record<string, unknown>[] = [];
   if (kind === "logs") {
-    rows = ((await sb.from("activity_logs").select("ts,actor_type,action,meta").neq("action", "ai_usage").order("id", { ascending: false }).limit(5000)).data ?? []) as Record<string, unknown>[];
+    rows = ((await sb.from("activity_logs").select("ts,actor_type,action,meta").neq("action", "ai_call").neq("action", "ai_usage").order("id", { ascending: false }).limit(5000)).data ?? []) as Record<string, unknown>[];
   } else if (kind === "stats") {
     const [s, e] = await Promise.all([
       all<{ id: string; link_id: string; seq: number; problem_code: string; status: string; student_code: string | null; student_name: string | null }>((a, z) => sb.from("chat_sessions").select("id,link_id,seq,problem_code,status,student_code,student_name").order("started_at").order("id").range(a, z)),

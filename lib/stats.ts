@@ -1,4 +1,5 @@
 import { mean, standardDeviation, sampleVariance } from "simple-statistics";
+import type { supabaseServer } from "@/lib/supabase/server";
 
 export type Sess = { id: string; link_id: string; seq: number; status: string; started_at: string; problem_code: string; student_code: string | null; student_name: string | null; revealed?: number };
 export const bits = (n: number) => n.toString(2).replace(/0/g, "").length; // số bit 1 của mặt nạ (số bước được giải hộ)
@@ -28,3 +29,23 @@ export function compare(a: number[], b: number[]) {
   const g = (x: number[]): G | undefined => x.length < 2 ? undefined : { n: x.length, mean: mean(x), sd: standardDeviation(x), v: sampleVariance(x) };
   return compareStats(g(a), g(b));
 }
+
+// Số tin học sinh đã gửi theo phiên (không tính lời chào của bot). Đếm bản ghi con trong DB nên không dính giới hạn 1000 dòng.
+// Lỗi đọc thì trả map thiếu: phiên không có trong map là "chưa biết", không gắn nhãn "Chưa trả lời".
+export async function studentMsgs(sb: Awaited<ReturnType<typeof supabaseServer>>, ids: string[]) {
+  const out = new Map<string, number>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await sb.from("chat_sessions").select("id,messages(count)").in("id", ids.slice(i, i + 100)).eq("messages.role", "student");
+    if (error) continue;
+    for (const r of (data ?? []) as unknown as { id: string; messages: { count: number }[] | null }[]) out.set(r.id, r.messages?.[0]?.count ?? 0);
+  }
+  return out;
+}
+
+// Trạng thái hiển thị của một phiên: đã chấm thì nêu kết quả; chưa chấm mà học sinh chưa nhắn gì là "Chưa trả lời".
+export function sessionState(x: { status: string }, ev: { final_correct: boolean } | null | undefined, msgs: number | undefined) {
+  if (ev) return ev.final_correct ? "Đúng" : "Chưa đúng";
+  if (msgs === 0) return "Chưa trả lời";
+  return x.status === "active" ? "Đang làm" : "Bỏ dở";
+}
+export const fmtTime = (iso: string) => new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(iso));

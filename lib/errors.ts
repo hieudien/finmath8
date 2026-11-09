@@ -29,7 +29,7 @@ export function friendly(e: unknown, who: Who = "teacher"): Friendly {
   return { known: false, status: 500, message: t ? "Có lỗi xảy ra ngoài dự kiến." : "Chatbot gặp lỗi ngoài dự kiến." };
 }
 
-// Ghi lỗi vào nhật ký (giáo viên thấy ở trang Nhật ký) và trả mã lỗi ngắn để người dùng gửi cho admin.
+// Ghi lỗi vào nhật ký (giáo viên thấy ở Cài đặt, mục Nhật ký) và trả mã lỗi ngắn để người dùng gửi cho admin.
 export async function reportError(e: unknown, where: string, ctx: Ctx = {}) {
   const ref = Array.from(globalThis.crypto.getRandomValues(new Uint8Array(3)), (byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase();
   console.error(`[${ref}] ${where}`, e);

@@ -3,12 +3,13 @@ import { supabaseServer } from "@/lib/supabase/server";
 // import { BarBox, LineBox } from "@/components/ChartsLazy"; // bỏ comment cùng 5 biểu đồ đang ẩn
 import ChatLog from "@/components/ChatLog";
 import "katex/dist/katex.min.css";
-import { Empty } from "@/components/ui";
+import { Badge, Empty, ScoreBadge, StatusBadge } from "@/components/ui";
 import { check } from "@/lib/db";
 import { shortId } from "@/lib/sid";
-import { bits, compareStats, r1, who, type Ev, type Sess, type Summary } from "@/lib/stats";
+import { bits, compareStats, fmtTime, r1, sessionState, studentMsgs, who, type Ev, type Sess, type Summary } from "@/lib/stats";
 
-const helped = (x: Sess) => (x.revealed ? ` · giải hộ ${bits(x.revealed)} bước` : ""); // bước bot đã hiện lời giải vì học sinh kẹt: không tính là tự làm
+const helpedN = (x: Sess) => (x.revealed ? bits(x.revealed) : 0); // số bước bot đã hiện lời giải vì học sinh kẹt: không tính là tự làm
+const Helped = ({ x }: { x: Sess }) => helpedN(x) > 0 ? <Badge tone="warn">Giải hộ {helpedN(x)} bước</Badge> : null;
 
 type L = { id: string; label: string; tag: string | null };
 type LS = { link_id: string; sessions: number; done: number; total_avg: number; visits: number };
@@ -43,6 +44,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
     const s = sessions, e = evals;
     const m = { ...summary, visits: stats.get(cur.id)?.visits ?? 0, enough: summary.sessions > 0, completion: summary.sessions ? Math.round((summary.done / summary.sessions) * 100) : 0 };
     const evBy = new Map(e.map((x) => [x.session_id, x]));
+    const msgs = await studentMsgs(sb, s.map((x) => x.id));
+    const stateOf = (x: Sess) => sessionState(x, evBy.get(x.id), msgs.get(x.id));
     return (
       <div className="flex flex-col gap-6">
         <div>
@@ -66,21 +69,25 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
             <Section title={`Từng phiên (${s.length}/${m.sessions} phiên gần nhất)`}>
               <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface md:hidden">
                 {s.map((x) => { const ev = evBy.get(x.id); return (
-                  <li key={x.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                    <span className="min-w-0"><span className="block font-medium">{who(x)} · {x.problem_code}</span><span className="block text-sm text-text-muted tnum">{ev ? `Gợi ý tối đa mức ${ev.max_hint_level} · ${Math.round(ev.duration_s / 60)} phút${ev.confidence ? ` · Tự thấy hiểu ${ev.confidence}/5` : ""}` : "Chưa chấm"} · Mã <span className="font-mono">{shortId(x.id)}</span></span></span>
-                    <span className="shrink-0 text-right"><span className="tnum block font-bold">{ev ? `${ev.total}/12` : "—"}</span><span className="block whitespace-nowrap text-sm text-text-muted">{ev ? (ev.final_correct ? "Đúng" : "Chưa đúng") : x.status === "active" ? "Đang làm" : "Bỏ dở"}{helped(x)}</span></span>
+                  <li key={x.id} className="flex items-start justify-between gap-3 px-4 py-3">
+                    <span className="flex min-w-0 flex-col gap-1">
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="font-medium">{who(x)}</span><Badge tone="info">{x.problem_code}</Badge></span>
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-muted tnum"><Badge mono>{shortId(x.id)}</Badge>{fmtTime(x.started_at)}</span>
+                      {ev && <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-muted tnum"><Badge>Gợi ý mức {ev.max_hint_level}</Badge><Badge>{Math.round(ev.duration_s / 60)} phút</Badge>{ev.confidence ? <Badge>Tự thấy hiểu {ev.confidence}/5</Badge> : null}</span>}
+                    </span>
+                    <span className="flex shrink-0 flex-col items-end gap-1">{ev ? <ScoreBadge total={ev.total} /> : <span className="text-text-muted">—</span>}<StatusBadge text={stateOf(x)} /><Helped x={x} /></span>
                   </li>); })}
               </ul>
               <div className="hidden overflow-x-auto md:block">
                 <table className="w-full min-w-[34rem] text-left text-sm">
-                  <thead><tr className="border-b border-border-strong"><th className="py-2 pr-2">Mã phiên</th><th className="pr-2">Học sinh</th><th className="pr-2">Bài</th><th className="pr-2">Điểm</th><th className="pr-2">Gợi ý tối đa</th><th className="pr-2">Phút</th><th>Kết quả</th></tr></thead>
+                  <thead><tr className="border-b border-border-strong"><th className="py-2 pr-2">Mã phiên</th><th className="pr-2">Bắt đầu</th><th className="pr-2">Học sinh</th><th className="pr-2">Đề</th><th className="pr-2">Điểm</th><th className="pr-2">Gợi ý tối đa</th><th className="pr-2">Phút</th><th>Trạng thái</th></tr></thead>
                   <tbody className="tnum">
                     {s.map((x) => { const ev = evBy.get(x.id); return (
                       <tr key={x.id} className="border-b border-border">
-                        <td className="py-2 pr-2 font-mono">{shortId(x.id)}</td><td className="pr-2">{who(x)}</td><td className="pr-2">{x.problem_code}</td>
-                        <td className="pr-2">{ev ? `${ev.total}/12` : "—"}</td><td className="pr-2">{ev ? `Mức ${ev.max_hint_level}` : "—"}</td>
+                        <td className="py-2 pr-2"><Badge mono>{shortId(x.id)}</Badge></td><td className="pr-2 whitespace-nowrap">{fmtTime(x.started_at)}</td><td className="pr-2">{who(x)}</td><td className="pr-2"><Badge tone="info">{x.problem_code}</Badge></td>
+                        <td className="pr-2">{ev ? <ScoreBadge total={ev.total} /> : "—"}</td><td className="pr-2">{ev ? `Mức ${ev.max_hint_level}` : "—"}</td>
                         <td className="pr-2">{ev ? Math.round(ev.duration_s / 60) : "—"}</td>
-                        <td>{ev ? (ev.final_correct ? "Đúng" : "Chưa đúng") : x.status === "active" ? "Đang làm" : "Bỏ dở"}{helped(x)}</td>
+                        <td><span className="flex flex-wrap items-center gap-1"><StatusBadge text={stateOf(x)} /><Helped x={x} /></span></td>
                       </tr>); })}
                   </tbody>
                 </table>
@@ -89,7 +96,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
             <Section title="Hội thoại của học sinh">
               <p className="text-sm text-text-muted">Tin nhắn đã được che số điện thoại và email. Bấm vào từng học sinh để xem.</p>
               <div className="flex flex-col gap-2">
-                {s.map((x) => { const ev = evBy.get(x.id); return <ChatLog key={x.id} id={x.id} title={`${shortId(x.id)} · ${who(x)} · ${x.problem_code}${ev ? ` · ${ev.total}/12` : ""}`} />; })}
+                {s.map((x) => { const ev = evBy.get(x.id); return <ChatLog key={x.id} id={x.id} head={{ sid: shortId(x.id), time: fmtTime(x.started_at), who: who(x), problem: x.problem_code, total: ev?.total, state: stateOf(x), helped: helpedN(x) }} />; })}
               </div>
               <a href="/api/export?kind=chat" className="inline-flex min-h-11 items-center self-start rounded-sm border border-border-strong bg-surface px-4 font-medium hover:bg-primary-soft">Tải toàn bộ hội thoại (CSV)</a>
             </Section>

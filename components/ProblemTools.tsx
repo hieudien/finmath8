@@ -1,13 +1,12 @@
 "use client";
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Alert, Button, Confirm, TextArea, post } from "@/components/ui";
+import { Alert, Button, Confirm, TextArea, post, useRefresh } from "@/components/ui";
 
 type Msg = { tone: "success" | "warning" | "danger"; text: string } | null;
 
 export function ImportPanel({ stepsMode = false }: { stepsMode?: boolean }) {
-  const router = useRouter();
+  const [rp, refresh] = useRefresh();
   const [tab, setTab] = useState<"json" | "text">("json");
   const [raw, setRaw] = useState("");
   const [preview, setPreview] = useState("");
@@ -16,7 +15,8 @@ export function ImportPanel({ stepsMode = false }: { stepsMode?: boolean }) {
   const [open, setOpen] = useState(false);
   const file = useRef<HTMLInputElement>(null);
 
-  const done = (n: number) => { setMsg({ tone: "success", text: `Đã lưu ${n} đề.` }); setRaw(""); setPreview(""); setOpen(false); router.refresh(); };
+  const wait = busy || (rp ? "Đang cập nhật danh sách..." : "");
+  const done = (n: number) => { setMsg({ tone: "success", text: `Đã lưu ${n} đề.` }); setRaw(""); setPreview(""); setOpen(false); refresh(); };
   const fail = (t?: string) => setMsg({ tone: "danger", text: t ?? "Có lỗi." });
 
   async function saveJson() {
@@ -54,7 +54,7 @@ export function ImportPanel({ stepsMode = false }: { stepsMode?: boolean }) {
     setBusy("");
     if (!ok) return fail(data.error);
     setMsg({ tone: data.failed ? "danger" : "success", text: `Đã tạo ${data.made} lời chào${data.failed ? `, ${data.failed} đề lỗi (bấm lại để thử tiếp)` : ""}.` });
-    router.refresh();
+    refresh();
   }
 
   async function guides() {
@@ -63,7 +63,7 @@ export function ImportPanel({ stepsMode = false }: { stepsMode?: boolean }) {
     setBusy("");
     if (!ok) return fail(data.error);
     setMsg({ tone: data.failed ? "danger" : data.left || data.noQuiz ? "warning" : "success", text: data.made || data.failed ? `Đã tạo chỉ dẫn cho ${data.made} đề${data.failed ? `, ${data.failed} đề lỗi (bấm lại để thử tiếp)` : ""}${data.left ? `. Còn ${data.left} đề chưa làm, bấm lại để làm tiếp` : ""}${data.rewrote ? `. AI đã viết lại lời giải của ${data.rewrote} đề vì lời giải cũ có bước quá chung chung (hãy xem lại)` : ""}${data.noQuiz ? `. ${data.noQuiz} đề chưa tạo được trắc nghiệm hợp lệ (bước quá chung chung), đề đó chạy kiểu Từng bước; bấm lại để thử tiếp hoặc sửa lại lời giải` : ""}.` : "Các đề có lời giải từng bước đều đã có chỉ dẫn." });
-    router.refresh();
+    refresh();
   }
 
   if (!open) return (
@@ -71,8 +71,8 @@ export function ImportPanel({ stepsMode = false }: { stepsMode?: boolean }) {
       <div className="flex flex-wrap gap-2">
         <Link href="/dashboard/problems/new" className="inline-flex min-h-11 items-center justify-center rounded-sm bg-primary px-4 font-medium text-on-primary hover:bg-primary-hover">Tạo đề mới</Link>
         <Button variant="secondary" onClick={() => { setMsg(null); setOpen(true); }}>Nạp JSON / dán văn bản</Button>
-        <Button variant="secondary" onClick={greetings} pending={busy || undefined}>Tạo lời chào cho các đề chưa có</Button>
-        {stepsMode && <Button variant="secondary" onClick={guides} pending={busy || undefined}>Tạo chỉ dẫn từng bước cho các đề chưa có</Button>}
+        <Button variant="secondary" onClick={greetings} pending={wait || undefined}>Tạo lời chào cho các đề chưa có</Button>
+        {stepsMode && <Button variant="secondary" onClick={guides} pending={wait || undefined}>Tạo chỉ dẫn từng bước cho các đề chưa có</Button>}
       </div>
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
     </div>
@@ -96,12 +96,12 @@ export function ImportPanel({ stepsMode = false }: { stepsMode?: boolean }) {
           <div className="flex flex-col gap-2 sm:flex-row">
             {tab === "json" ? (
               <>
-                <Button onClick={saveJson} disabled={raw.trim().length < 2} pending={busy || undefined}>Kiểm tra và lưu</Button>
+                <Button onClick={saveJson} disabled={raw.trim().length < 2} pending={wait || undefined}>Kiểm tra và lưu</Button>
                 <input ref={file} type="file" accept=".json,application/json" className="sr-only" aria-label="Chọn tệp JSON" onChange={async (e) => { const f = e.target.files?.[0]; if (f) setRaw(await f.text()); }} />
                 <Button variant="secondary" onClick={() => file.current?.click()}>Chọn tệp .json</Button>
               </>
             ) : (
-              <Button onClick={normalize} disabled={raw.trim().length < 20} pending={busy || undefined}>Chuẩn hóa thành JSON</Button>
+              <Button onClick={normalize} disabled={raw.trim().length < 20} pending={wait || undefined}>Chuẩn hóa thành JSON</Button>
             )}
           </div>
         </>
@@ -112,7 +112,7 @@ export function ImportPanel({ stepsMode = false }: { stepsMode?: boolean }) {
           <Alert tone="warning">Kiểm tra kỹ đáp án (solution) và gợi ý trước khi lưu. AI có thể tính sai.</Alert>
           <TextArea label="JSON đã chuẩn hóa (sửa được)" rows={16} value={preview} onChange={(e) => setPreview(e.target.value)} className="font-mono text-sm" />
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button onClick={savePreview} pending={busy || undefined}>Lưu đề</Button>
+            <Button onClick={savePreview} pending={wait || undefined}>Lưu đề</Button>
             <Button variant="secondary" onClick={() => setPreview("")}>Quay lại</Button>
           </div>
         </>
@@ -120,7 +120,7 @@ export function ImportPanel({ stepsMode = false }: { stepsMode?: boolean }) {
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
       <div className="border-t border-border pt-4">
         <p className="mb-2 text-sm text-text-muted">Tài khoản mới đã có sẵn 10 đề mẫu (TC01–TC10). Lỡ xóa nhầm thì bấm đây để thêm lại, đề đã có sẽ được giữ nguyên.</p>
-        <Button variant="secondary" onClick={seed} pending={busy || undefined}>Thêm đề mẫu</Button>
+        <Button variant="secondary" onClick={seed} pending={wait || undefined}>Thêm đề mẫu</Button>
       </div>
     </section>
   );
@@ -129,7 +129,6 @@ export function ImportPanel({ stepsMode = false }: { stepsMode?: boolean }) {
 type TR = { name: string; pass: boolean; detail: string };
 
 export function ProblemActions({ id, code }: { id: string; code: string }) {
-  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<TR[] | null>(null);
   const [err, setErr] = useState("");
@@ -148,7 +147,7 @@ export function ProblemActions({ id, code }: { id: string; code: string }) {
         <Link href={`/dashboard/problems/${id}`} className="inline-flex min-h-11 items-center justify-center rounded-sm bg-primary px-4 font-medium text-on-primary hover:bg-primary-hover">Xem đề</Link>
         <Link href={`/dashboard/problems/${id}/edit`} className="inline-flex min-h-11 items-center justify-center rounded-sm border border-border-strong bg-surface px-4 font-medium hover:bg-primary-soft">Sửa</Link>
         <Button variant="secondary" onClick={run} pending={busy ? "Đang kiểm thử (khoảng 30 giây)..." : undefined}>Kiểm thử chatbot</Button>
-        <Confirm label={`Xóa ${code}`} message="Đề sẽ bị xóa khỏi danh sách. Liên kết đã tạo vẫn dùng bản chụp đề cũ." onConfirm={async () => { await post("/api/problems", { action: "delete", id }); router.refresh(); }} />
+        <Confirm label={`Xóa ${code}`} message="Đề sẽ bị xóa khỏi danh sách. Liên kết đã tạo vẫn dùng bản chụp đề cũ." onConfirm={async () => { const { ok, data } = await post("/api/problems", { action: "delete", id }); if (!ok) return data.error ?? "Có lỗi."; }} />
       </div>
       <div className="basis-full" aria-live="polite">
         {err && <Alert tone="danger">{err}</Alert>}

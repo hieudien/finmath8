@@ -76,8 +76,7 @@ export default function ProblemEditor({ initial, newCode }: { initial?: Problem;
     };
     setBusy("Đang lưu..."); setMsg(null);
     const { ok: good, data: r } = await post("/api/problems", { action: "save", problems: [problem] });
-    setBusy("");
-    if (!good) return setMsg({ tone: "danger", text: r.error ?? "Không lưu được." });
+    if (!good) { setBusy(""); return setMsg({ tone: "danger", text: r.error ?? "Không lưu được." }); }
     router.push("/dashboard/problems"); router.refresh();
   }
 

@@ -1,10 +1,12 @@
 "use client";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { plain } from "@/lib/plain";
 
 type D = { name: string; value: number }[];
 const axis = { fill: "var(--color-text-muted)", fontSize: 12 };
 
-export function BarBox({ data, max, horizontal }: { data: D; max?: number; horizontal?: boolean }) {
+export function BarBox({ data: raw, max, horizontal }: { data: D; max?: number; horizontal?: boolean }) {
+  const data = raw.map((d) => ({ ...d, name: plain(d.name) })); // nhãn biểu đồ không dựng được KaTeX: đổi LaTeX sang chữ thường
   if (!data.length) return <p className="text-sm text-text-muted">Chưa có dữ liệu.</p>;
   return (
     <div className="w-full" style={{ height: horizontal ? 40 + data.length * 36 : 220 }} role="img" aria-label={data.map((d) => `${d.name}: ${d.value}`).join("; ")}>

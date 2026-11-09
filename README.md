@@ -24,9 +24,9 @@ Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải q
 - Chỉ dẫn từng bước do AI viết sẵn: việc cần làm, 3 mức gợi ý riêng từng bước, trắc nghiệm (nút "Tạo chỉ dẫn từng bước" ở danh sách đề và trang từng đề).
 - Kiểm thử chatbot cho từng đề: không lộ đáp án, che thông tin cá nhân, kéo học sinh về bài, không xác nhận đáp án sai, tăng gợi ý dần, hỏi cách làm khi chỉ có đáp số.
 - Liên kết công khai: bật/tắt, hạn dùng, giới hạn số tin, nhãn nhóm (trước, sau, thực nghiệm, đối chứng).
-- Trang **Học sinh**: gom theo mã học sinh; điểm trung bình 4 tiêu chí, kỹ năng cần củng cố, lỗi hay mắc, kiến thức nền còn thiếu (khi được giải hộ), danh sách bài đã làm (kể cả bài bỏ dở) và nút **AI phân tích và đề xuất cải thiện**.
+- Trang **Học sinh**: gom theo mã học sinh; điểm trung bình 4 tiêu chí, kỹ năng cần củng cố, lỗi hay mắc, kiến thức nền còn thiếu (khi được giải hộ), danh sách bài đã làm (kể cả bài bỏ dở) và nút **AI phân tích và đề xuất cải thiện**. Mở từng phiên (ở Thống kê hoặc hồ sơ học sinh) có nút **AI phân tích phiên này**: nhận xét điểm tốt, điểm yếu và việc nên làm, lưu lại để xem lại.
 - Thống kê theo liên kết: số phiên, tỉ lệ hoàn thành, điểm, mức gợi ý, thời gian, so sánh giữa các nhóm, xem hội thoại từng phiên. Xuất CSV (có mã và tên học sinh).
-- Nhật ký hoạt động chỉ thêm, không sửa; hướng dẫn sử dụng cho giáo viên.
+- Nhật ký hoạt động chỉ thêm, không sửa; nằm trong Cài đặt, chỉ tải khi mở mục. Có hướng dẫn sử dụng cho giáo viên.
 
 **Học sinh**
 - Không cần tài khoản. Nhập mã học sinh (chữ, số, `._-`, tối đa 20 ký tự) và họ tên một lần; có nút Đổi thông tin.
@@ -59,9 +59,9 @@ Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải q
 app/
   page.tsx                  trang giới thiệu
   (auth)/                   đăng ký, đăng nhập, quên và đặt lại mật khẩu
-  dashboard/                tổng quan, đề (tạo, sửa), liên kết, thống kê, học sinh, nhật ký, cài đặt, hướng dẫn
+  dashboard/                tổng quan, đề (tạo, sửa), liên kết, thống kê, học sinh, cài đặt (có nhật ký), hướng dẫn
   c/[slug]/                 trang chat của học sinh
-  api/                      auth, chat, chat-log, export, links, problems, settings, students
+  api/                      auth, chat, chat-log, export, links, logs, problems, settings, students
 components/                 giao diện (Chat, ProblemEditor, MathTextArea, FormulaDialog, ...)
 lib/
   chat/                     engine, steps, quiz, assist, goals, prompt, tiến độ, kiểm thử chatbot
@@ -73,7 +73,7 @@ lib/
   greeting.ts               tạo câu chào đầu tiên
   pii.ts, crypto.ts, log.ts lọc thông tin cá nhân, mã hóa key, nhật ký
 public/mathlive-fonts/      font của MathLive
-supabase/migrations/        001–014
+supabase/migrations/        001–015
 tests/                      Vitest
 ```
 
@@ -102,7 +102,7 @@ Tạo file `.env` (không commit) với các biến sau:
 
 ## Cơ sở dữ liệu
 
-Chạy các file trong `supabase/migrations/` theo thứ tự số (`001_init.sql` đến `014_quiz.sql`) trên project Supabase. File `011` thêm mã và tên học sinh vào `chat_sessions`, view `student_stats` và bảng `student_advice`. `012` thêm kiểu làm bài (`interaction_mode`, `mode`). `013` thêm `stall`, `revealed` và `gaps` (kiến thức nền còn thiếu). `014` thêm `wrong` cho kiểu Trắc nghiệm.
+Chạy các file trong `supabase/migrations/` theo thứ tự số (`001_init.sql` đến `015_session_analysis.sql`) trên project Supabase. File `011` thêm mã và tên học sinh vào `chat_sessions`, view `student_stats` và bảng `student_advice`. `012` thêm kiểu làm bài (`interaction_mode`, `mode`). `013` thêm `stall`, `revealed` và `gaps` (kiến thức nền còn thiếu). `014` thêm `wrong` cho kiểu Trắc nghiệm. `015` thêm bảng `session_analysis` (nhận xét AI cho từng phiên).
 
 ## Triển khai
 

@@ -2,7 +2,7 @@ import { supabaseServer, currentUser } from "@/lib/supabase/server";
 import { teacherMode } from "@/lib/teacher";
 import { CreateLink, LinkActions } from "@/components/LinkTools";
 import { Empty, LinkButton } from "@/components/ui";
-import { plain } from "@/lib/plain";
+import { MathText } from "@/components/MathText";
 import { parseProblems } from "@/lib/schema/problem";
 import { missingInfo } from "@/lib/ready";
 
@@ -27,9 +27,9 @@ export default async function Page() {
       <section aria-labelledby="ll" className="flex flex-col gap-3">
         <h2 id="ll">Đã tạo ({links.length})</h2>
         {links.length === 0 ? <Empty text="Chưa có liên kết nào." /> : (
-          <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+          <ul className="flex flex-col gap-3">
             {links.map((l) => (
-              <li key={l.id} className="flex flex-col gap-2 px-4 py-3">
+              <li key={l.id} className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4 shadow-1">
                 <div>
                   <p className="font-medium">{l.label} {l.tag && <span className="text-sm text-text-muted">· {TAG[l.tag]}</span>}</p>
                   <p className="text-sm text-text-muted">
@@ -46,7 +46,7 @@ export default async function Page() {
                     {parseProblems(l.problems_snapshot).ok.map((p) => (
                       <li key={p.id} className="flex flex-col gap-1 py-3">
                         <p className="font-medium"><span className="tnum text-text-muted">{p.id}</span> {p.title}</p>
-                        {p.statement && <p className="max-w-prose text-sm">{plain(p.statement)}</p>}
+                        {p.statement && <p className="max-w-prose text-sm"><MathText text={p.statement} /></p>}
                         {stepsMode && !p.solution_steps.length && <p className="text-sm text-text-muted">Thiếu lời giải từng bước: đề này chạy kiểu chat. Bổ sung lời giải rồi tạo liên kết mới.</p>}
                         {idOf.has(p.id) && <a className="inline-flex min-h-11 items-center text-sm text-primary underline" href={`/dashboard/problems/${idOf.get(p.id)}`}>Xem lời giải và gợi ý</a>}
                       </li>

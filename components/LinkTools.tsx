@@ -1,18 +1,20 @@
 "use client";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Alert, Button, Confirm, CopyButton, Field, post } from "@/components/ui";
+import { useEffect, useState } from "react";
+import { Alert, Button, Confirm, CopyButton, Field, post, useRefresh } from "@/components/ui";
 
 import { ExplainButton } from "@/components/ProblemViewTools";
 
 type P = { id: string; code: string; title: string; missing: string[] };
 
 export function CreateLink({ problems }: { problems: P[] }) {
-  const router = useRouter();
+  const [rp, refresh] = useRefresh();
   const [sel, setSel] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [open, setOpen] = useState(false);
+  const [created, setCreated] = useState(false);
+  // Đóng form khi liên kết mới đã hiện trong danh sách.
+  useEffect(() => { if (created && !rp) { setCreated(false); setOpen(false); } }, [created, rp]);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -21,7 +23,7 @@ export function CreateLink({ problems }: { problems: P[] }) {
     const { ok, data } = await post("/api/links", { action: "create", label: f.get("label"), tag: f.get("tag") || null, problemIds: sel, maxMessages: Number(f.get("max")) });
     setBusy(false);
     if (!ok) return setErr(data.error ?? "Có lỗi.");
-    setSel([]); (e.target as HTMLFormElement).reset(); setOpen(false); router.refresh();
+    setSel([]); (e.target as HTMLFormElement).reset(); setCreated(true); refresh();
   }
 
   if (!open) return <Button onClick={() => setOpen(true)} className="self-start">Thêm liên kết</Button>;
@@ -64,19 +66,30 @@ export function CreateLink({ problems }: { problems: P[] }) {
         <Field label="Số tin tối đa mỗi phiên" name="max" type="number" inputMode="numeric" min={5} max={200} defaultValue={40} required />
       </div>
       {err && <Alert tone="danger">{err}</Alert>}
-      <Button type="submit" disabled={!sel.length} pending={busy ? "Đang tạo..." : undefined} className="self-start">Tạo liên kết công khai</Button>
+      <Button type="submit" disabled={!sel.length} pending={busy || rp ? "Đang tạo..." : undefined} className="self-start">Tạo liên kết công khai</Button>
     </form>
   );
 }
 
 export function LinkActions({ id, slug, active }: { id: string; slug: string; active: boolean }) {
-  const router = useRouter();
+  const [rp, refresh] = useRefresh();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
   const url = typeof window === "undefined" ? "" : `${window.location.origin}/c/${slug}`;
+  async function toggle() {
+    setBusy(true); setErr("");
+    const { ok, data } = await post("/api/links", { action: "toggle", id, active: !active });
+    setBusy(false);
+    if (ok) refresh(); else setErr(data.error ?? "Có lỗi.");
+  }
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <CopyButton text={url || `/c/${slug}`} />
-      <Button variant="secondary" onClick={async () => { await post("/api/links", { action: "toggle", id, active: !active }); router.refresh(); }}>{active ? "Tắt" : "Bật"}</Button>
-      <Confirm label="Xóa liên kết" message="Học sinh không vào được nữa. Toàn bộ phiên chat và thống kê của liên kết này bị xóa vĩnh viễn." onConfirm={async () => { await post("/api/links", { action: "delete", id }); router.refresh(); }} />
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <CopyButton text={url || `/c/${slug}`} />
+        <Button variant="secondary" onClick={toggle} pending={busy || rp ? (active ? "Đang tắt..." : "Đang bật...") : undefined}>{active ? "Tắt" : "Bật"}</Button>
+        <Confirm label="Xóa liên kết" message="Học sinh không vào được nữa. Toàn bộ phiên chat và thống kê của liên kết này bị xóa vĩnh viễn." onConfirm={async () => { const { ok, data } = await post("/api/links", { action: "delete", id }); if (!ok) return data.error ?? "Có lỗi."; }} />
+      </div>
+      {err && <Alert tone="danger">{err}</Alert>}
     </div>
   );
 }

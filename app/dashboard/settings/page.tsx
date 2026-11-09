@@ -3,6 +3,7 @@ import { decrypt } from "@/lib/crypto";
 import { type Provider } from "@/lib/models";
 import SettingsForm from "@/components/SettingsForm";
 import ModeForm from "@/components/ModeForm";
+import ActivityLog from "@/components/ActivityLog";
 import { DEFAULT_MODE, isMode } from "@/lib/modes";
 
 type Row = { provider: Provider; gemini_key_enc: string | null; openai_key_enc: string | null; interaction_mode?: string };
@@ -23,6 +24,7 @@ export default async function Page() {
         provider={s?.provider ?? "gemini"}
         last4={{ gemini: tail(s?.gemini_key_enc), openai: tail(s?.openai_key_enc) }}
       />
+      <ActivityLog />
     </div>
   );
 }

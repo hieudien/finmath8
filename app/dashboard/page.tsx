@@ -1,12 +1,12 @@
 import { supabaseServer, currentUser } from "@/lib/supabase/server";
-import { LinkButton } from "@/components/ui";
+import { Badge, LinkButton, StatusBadge } from "@/components/ui";
 import { check } from "@/lib/db";
-import { r1, who } from "@/lib/stats";
+import { fmtTime, r1, sessionState, studentMsgs, who } from "@/lib/stats";
+import { MathText } from "@/components/MathText";
 
 type L = { id: string; label: string; active: boolean };
 type Sess = { id: string; link_id: string; seq: number; status: string; started_at: string; problem_code: string; student_code: string | null; student_name: string | null };
 type Ov = { sessions: number; done: number; evals: number; total_avg: number; correct_pct: number; duration_s: number; hint_avg: number };
-const STATUS: Record<string, string> = { active: "Đang làm", done: "Hoàn thành" };
 
 export default async function Page() {
   const u = (await currentUser())!;
@@ -26,6 +26,7 @@ export default async function Page() {
   ];
   const links = ln ?? [];
   const recent = ss ?? [];
+  const msgs = await studentMsgs(sb, recent.map((x) => x.id));
   const hasKey = !!(s && (s.provider === "openai" ? s.openai_key_enc : s.gemini_key_enc));
   const steps = [
     { done: hasKey, text: "Chọn nhà cung cấp AI (Gemini hoặc ChatGPT) và nhập API key", href: "/dashboard/settings", cta: "Mở cài đặt" },
@@ -36,7 +37,6 @@ export default async function Page() {
   const o: Ov = ov ?? { sessions: 0, done: 0, evals: 0, total_avg: 0, correct_pct: 0, duration_s: 0, hint_avg: 0 };
   const m = { sessions: o.sessions, completion: o.sessions ? Math.round((o.done / o.sessions) * 100) : 0, totalAvg: r1(o.total_avg), correctPct: Math.round(o.correct_pct), durationMin: r1(o.duration_s / 60), hintAvg: r1(o.hint_avg), errors: er ?? [] };
   const label = new Map(links.map((l) => [l.id, l.label]));
-  const fmt = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" });
   const kpis: [string, string | number][] = [
     ["Đề bài", np ?? 0],
     ["Liên kết đang mở", links.filter((l) => l.active).length],
@@ -73,8 +73,8 @@ export default async function Page() {
             <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
               {recent.map((x) => (
                 <li key={x.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-                  <span className="min-w-0"><span className="font-medium">{who(x)} · {x.problem_code}</span> <span className="text-sm text-text-muted">· {label.get(x.link_id) ?? "Liên kết đã xóa"}</span></span>
-                  <span className="text-sm text-text-muted">{STATUS[x.status] ?? "Bỏ dở"} · {fmt.format(new Date(x.started_at))}</span>
+                  <span className="min-w-0"><span className="font-medium">{who(x)}</span> <Badge tone="info">{x.problem_code}</Badge> <span className="text-sm text-text-muted">· {label.get(x.link_id) ?? "Liên kết đã xóa"}</span></span>
+                  <span className="flex items-center gap-2 text-sm text-text-muted"><StatusBadge text={x.status === "done" ? "Hoàn thành" : sessionState(x, null, msgs.get(x.id))} />Bắt đầu: {fmtTime(x.started_at)}</span>
                 </li>
               ))}
             </ul>
@@ -90,7 +90,7 @@ export default async function Page() {
               {m.errors.length > 0 && (
                 <div>
                   <p className="text-sm text-text-muted">Lỗi học sinh hay gặp nhất</p>
-                  <ul className="list-disc pl-5">{m.errors.slice(0, 3).map((e) => <li key={e.name}>{e.name} <span className="tnum text-text-muted">({e.value})</span></li>)}</ul>
+                  <ul className="list-disc pl-5">{m.errors.slice(0, 3).map((e) => <li key={e.name}><MathText text={e.name} /> <span className="tnum text-text-muted">({e.value})</span></li>)}</ul>
                 </div>
               )}
             </section>

@@ -59,7 +59,7 @@ Hero, 3 bước (nạp đề → tạo link → xem thống kê), quy trình Pol
 - Trang landing + trang chat ghi rõ cam kết. Không analytics bên thứ 3.
 - Dữ liệu thống kê chỉ hiển thị nhóm ≥3 phiên khi lọc nhỏ (k-anonymity) để tránh đoán danh tính.
 
-### 2.9 Log hoạt động `/dashboard/logs`
+### 2.9 Log hoạt động (Cài đặt, mục "Nhật ký hoạt động")
 Bảng `activity_logs(id, ts, actor_type teacher|student|system, teacher_id null, anon_id null, link_id null, action, meta jsonb)`.
 Actions: `register, login, login_failed, logout, password_reset, settings_changed, problem_created/updated/deleted/normalized, link_created/toggled/deleted, chat_session_started, chat_message (student|bot), chat_session_ended, eval_done, export`.
 Chỉ append (RLS cấm update/delete). GV xem log của mình + lọc theo action/link/ngày + xuất CSV. Tin nhắn chat đầy đủ nằm ở `messages`, log chỉ giữ tham chiếu + độ dài.

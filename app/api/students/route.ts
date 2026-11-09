@@ -8,11 +8,48 @@ import { loadStudent } from "@/lib/students";
 import { check } from "@/lib/db";
 import { log } from "@/lib/log";
 
-const body = z.object({ action: z.literal("advise"), code: z.string().regex(/^[A-Z0-9._-]{1,20}$/) });
+const UUID = z.string().uuid();
+const body = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("advise"), code: z.string().regex(/^[A-Z0-9._-]{1,20}$/) }),
+  z.object({ action: z.literal("analyze_session"), id: UUID }),
+]);
+const sessionOut = z.object({ summary: z.string().min(1), strengths: z.array(z.string()).max(5), weaknesses: z.array(z.string()).max(5), next_steps: z.array(z.string()).max(5) });
+
+const SESSION_SYSTEM = `Bạn là trợ lý cho giáo viên Toán. Dưới đây là một phiên học sinh làm một bài với chatbot gợi mở: đề, các bước lời giải, điểm tự chấm (rubric 0–3: nhận diện, lập kế hoạch, tính toán, giải thích) nếu có, và hội thoại (HS = học sinh, Bot = chatbot). Hãy nhận xét riêng phiên này cho giáo viên: học sinh làm tốt ở đâu, yếu ở bước nào và vì sao, cần làm gì tiếp. Dựa đúng vào hội thoại, không bịa. Phiên làm dở hoặc ít tin thì nói rõ là nhận xét sơ bộ. Bước chatbot phải hiện lời giải thì học sinh chưa tự làm được: coi là điểm yếu. Viết tiếng Việt, ngắn gọn, cụ thể, công thức đặt trong $...$ theo LaTeX.
+Chỉ trả JSON {"summary":"2-3 câu tổng quát","strengths":[điểm làm tốt],"weaknesses":[điểm yếu, nêu bước nào],"next_steps":[việc giáo viên nên làm với học sinh này sau phiên]}.`;
 const out = z.object({ weak_areas: z.array(z.string()).max(6), suggestions: z.array(z.string()).max(6), practice: z.array(z.string()).max(5) });
 
 const SYSTEM = `Bạn là trợ lý cho giáo viên Toán. Dựa trên số liệu một học sinh làm bài với chatbot gợi mở (rubric 0–3: nhận diện, lập kế hoạch, tính toán, giải thích; lỗi đã mắc; kỹ năng của các bài làm chưa tốt), hãy chỉ ra học sinh yếu ở đâu và đề xuất cách cải thiện. Viết tiếng Việt, ngắn gọn, cụ thể, dùng được ngay. Không bịa số liệu. Bài "bỏ dở" (mở bài nhưng chưa nhắn gì, hoặc làm dở chưa kết thúc) cũng là tín hiệu: nêu rõ thói quen bỏ bài, có thể do bài khó, thiếu động lực hay ngại hỏi, và gợi ý cách khuyến khích. Bài có "bot phải hiện lời giải N bước" nghĩa là học sinh kẹt, không tự làm được các bước đó: coi là điểm yếu thật, dựa vào "kien_thuc_nen_con_thieu" để đề xuất ôn tập. Ít dữ liệu thì nói rõ là nhận định sơ bộ.
 Chỉ trả JSON {"weak_areas":[điểm yếu],"suggestions":[việc giáo viên/học sinh nên làm],"practice":[dạng bài nên luyện thêm]}.`;
+
+type Sb = Awaited<ReturnType<typeof supabaseServer>>;
+type Cfg = NonNullable<Awaited<ReturnType<typeof llmCfg>>>;
+
+// Nhận xét một phiên. Đọc qua RLS nên chỉ phiên của giáo viên này đọc được. Không gửi tên hay mã học sinh cho AI.
+async function analyzeSession(sb: Sb, cfg: Cfg, teacherId: string, id: string) {
+  const { data: s } = await sb.from("chat_sessions").select("id,link_id,problem_code,status").eq("id", id).maybeSingle();
+  if (!s) return bad("Không tìm thấy phiên này.", 404);
+  const sess = s as { link_id: string; problem_code: string; status: string };
+  const [{ data: ms }, { data: ev }, { data: ln }] = await Promise.all([
+    sb.from("messages").select("role,content").eq("session_id", id).order("id").limit(500),
+    sb.from("session_evals").select("identify,plan,calculate,explain,total,final_correct,hint_count,errors,gaps").eq("session_id", id).maybeSingle(),
+    sb.from("public_links").select("problems_snapshot").eq("id", sess.link_id).maybeSingle(),
+  ]);
+  const msgs = (ms ?? []) as { role: "student" | "bot"; content: string }[];
+  if (!msgs.some((m) => m.role === "student")) return bad("Phiên này chưa có tin nhắn nào của học sinh để phân tích.");
+  const prob = ((ln as { problems_snapshot: { id: string; title?: string; statement?: string; solution_steps?: string[] }[] } | null)?.problems_snapshot ?? []).find((x) => x.id === sess.problem_code);
+  const text = JSON.stringify({
+    de: prob ? { tieu_de: prob.title, de_bai: prob.statement, cac_buoc_loi_giai: prob.solution_steps } : { ma_de: sess.problem_code },
+    trang_thai: sess.status === "done" ? "đã kết thúc" : "chưa kết thúc",
+    diem_tu_cham: ev ?? "chưa chấm",
+    hoi_thoai: msgs.map((m) => `${m.role === "student" ? "HS" : "Bot"}: ${m.content}`),
+  });
+  const content = await askJson(cfg, SESSION_SYSTEM, [{ role: "user", text }], sessionOut, { think: true });
+  const updated_at = new Date().toISOString();
+  check(await admin().from("session_analysis").upsert({ session_id: id, content, updated_at } as never));
+  await log({ actor: "teacher", action: "session_analysis", teacherId, linkId: sess.link_id, meta: { problem: sess.problem_code } });
+  return Response.json({ analysis: { content, updated_at } });
+}
 
 export const POST = api(async (req) => {
   const u = await requireUser();
@@ -21,6 +58,7 @@ export const POST = api(async (req) => {
   const cfg = await llmCfg(u.id);
   if (!cfg) return bad("Chưa có API key. Vào Cài đặt để nhập.");
   const sb = await supabaseServer();
+  if (p.data.action === "analyze_session") return analyzeSession(sb, cfg, u.id, p.data.id);
   const prof = await loadStudent(sb, p.data.code);
   if (!prof) return bad("Không tìm thấy học sinh này.", 404);
   // Phiên chưa chấm: đếm số tin học sinh đã nhắn để AI phân biệt "bỏ dở khi chưa nhắn gì" với "làm dở".
