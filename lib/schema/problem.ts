@@ -12,6 +12,9 @@ export const problemSchema = z.object({
   data: z.record(z.string(), z.unknown()).default({}),
   solution: z.record(z.string(), z.unknown()),
   solution_steps: z.array(z.string()).default([]), // lời giải từng bước bằng văn bản, để giáo viên xem
+  step_goals: z.array(z.string()).default([]), // việc cần làm ở từng bước (học sinh thấy), AI viết sẵn, song song solution_steps; lệch số bước thì không dùng
+  step_hints: z.array(z.array(z.string()).max(3)).default([]), // gợi ý riêng từng bước (mức 1-3), song song solution_steps; lệch số bước thì không dùng
+  step_choices: z.array(z.object({ right: z.string(), traps: z.array(z.object({ text: z.string(), why: z.string() })).length(3) })).default([]), // trắc nghiệm từng bước (1 đúng + 3 bẫy kèm lời giải thích lỗi), song song solution_steps; lệch số bước thì không dùng
   common_errors: z.array(z.string()).default([]),
   hints: z.array(z.object({ level: z.number().int().min(1).max(3), text: z.string() })).min(3, "Cần đủ 3 mức gợi ý"),
   extension: z.string().default(""),

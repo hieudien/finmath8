@@ -13,6 +13,7 @@ export const hasNum = (text: string, n: string) => new RegExp(`(?<!\\d)${n}(?!\\
 
 export type Cp = { id: number; label: string; anchors: string[]; must: string[] };
 
+export const stripStep = (s: string) => s.replace(/^Bước \d+\s*[:.)-]\s*/i, "");
 // Mốc = từng bước của solution_steps. must = số đáp án (có trong solution, đề chưa nêu) mà bước đó ra; anchors = mọi số của bước.
 // ponytail: suy ra tự động từ solution_steps, không cần soạn thêm. Đề không có solution_steps thì dùng 1 mốc từ số đáp án.
 export function checkpoints(p: Problem): Cp[] {
@@ -20,9 +21,16 @@ export function checkpoints(p: Problem): Cp[] {
   const sol = new Set(numsIn(JSON.stringify(p.solution)).filter((n) => !given.has(n)));
   if (!p.solution_steps.length) return [{ id: 0, label: "Nêu đáp án", anchors: [...sol], must: [...sol] }];
   return p.solution_steps.map((label, id) => {
-    const anchors = [...new Set(numsIn(label))];
+    const anchors = [...new Set(numsIn(stripStep(label)))]; // bỏ "Bước N:" khỏi nhãn: số thứ tự bước không phải số của lời giải
     return { id, label, anchors, must: anchors.filter((n) => sol.has(n)) };
   });
+}
+
+// Kiểu "từng bước": mốc có số đáp án đủ khi bước học sinh viết có mọi số của mốc. Mốc nào đủ thì ghi nhận, không cần đúng thứ tự
+// (học sinh nhảy cóc thì không bị chặn oan); một bước gộp nhiều mốc cũng ghi nhận hết.
+export function markByNumbers(text: string, cps: Cp[], mask: number) {
+  for (const c of cps) if (c.must.length && c.must.every((n) => hasNum(text, n))) mask |= 1 << c.id;
+  return mask;
 }
 
 // Máy kiểm số học sinh vừa nêu: khớp số của lời giải / không khớp mốc nào. Chỉ nêu số chính học sinh viết nên không lộ đáp án.
@@ -53,6 +61,16 @@ export function sim(a: string, b: string) {
 export const earlyClose = (reply: string) => !reply.includes("?") || /giải xong|chúc mừng|làm tốt lắm|hoàn thành bài/i.test(reply);
 export const ASK_METHOD = "Kết quả của bạn đúng rồi. Bạn tính ra kết quả đó bằng phép tính nào? Viết phép tính ra nhé.";
 export const ASK_NEXT = "Bài này chưa xong đâu nhé. Bạn thử viết bước tiếp theo của mình được không?";
+const ASK_NEXT_Q = "Bạn thử viết bước tiếp theo của mình nhé?";
+const ASK_METHOD_Q = "Bạn viết phép tính dẫn tới kết quả đó ra nhé?";
+
+// Phiên chưa xong mà lời AI không dẫn tiếp: có câu hỏi thì giữ nguyên lời AI (khỏi mất phần ghi nhận bài của học sinh);
+// không có câu hỏi và không phải lời kết thì nối câu hỏi vào sau; là lời kết thì dùng câu mẫu.
+export function keepOrAsk(reply: string, allDone: boolean) {
+  if (reply.includes("?")) return reply;
+  if (/giải xong|chúc mừng|làm tốt lắm|hoàn thành bài/i.test(reply)) return allDone ? ASK_METHOD : ASK_NEXT;
+  return `${reply.trim()} ${allDone ? ASK_METHOD_Q : ASK_NEXT_Q}`;
+}
 
 // Thang lạc đề: lần 1 nhắc nhẹ, lần 2 nhắc kèm mời làm tiếp, lần 3 chốt phiên. Đếm từ lịch sử (không cần cột DB mới).
 export const OFF_REPLIES = [
@@ -78,9 +96,8 @@ export const countDone = (mask: number) => (mask & (METHOD - 1)).toString(2).rep
 // Server xác minh bằng chứng AI nộp: trích nguyên văn từ tin của học sinh, và số của mốc phải do học sinh tự viết.
 export function verify(c: Cp, evidence: string, said: string) {
   const ev = norm(evidence).replace(/\s+/g, " ").trim().toLowerCase();
-  if (ev.length < 3 || !norm(said).replace(/\s+/g, " ").toLowerCase().includes(ev)) return false;
-  if (c.must.some((n) => !hasNum(said, n))) return false;
-  return !c.anchors.length || c.anchors.some((n) => hasNum(evidence, n)) || c.must.length > 0;
+  // Trích dẫn thật và số đáp án của mốc đủ. Mốc không có số (nhận xét, nêu cách làm) thì không đòi chữ số: "đối nhau" là câu trả lời đúng.
+  return ev.length >= 3 && norm(said).replace(/\s+/g, " ").toLowerCase().includes(ev) && c.must.every((n) => hasNum(said, n));
 }
 
 // Thanh 5 bước Polya hiển thị: tính từ tiến độ thật, không do AI quyết định.

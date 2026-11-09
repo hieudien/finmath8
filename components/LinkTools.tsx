@@ -3,7 +3,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Confirm, CopyButton, Field, post } from "@/components/ui";
 
-type P = { id: string; code: string; title: string };
+import { ExplainButton } from "@/components/ProblemViewTools";
+
+type P = { id: string; code: string; title: string; missing: string[] };
 
 export function CreateLink({ problems }: { problems: P[] }) {
   const router = useRouter();
@@ -34,10 +36,18 @@ export function CreateLink({ problems }: { problems: P[] }) {
       <fieldset className="flex flex-col gap-1">
         <legend className="mb-1 font-medium">Chọn đề cho học sinh</legend>
         {problems.map((p) => (
-          <label key={p.id} className="flex min-h-11 items-center gap-3">
-            <input type="checkbox" className="size-5 accent-[var(--color-primary)]" checked={sel.includes(p.id)} onChange={(e) => setSel((s) => e.target.checked ? [...s, p.id] : s.filter((x) => x !== p.id))} />
-            <span><span className="tnum text-text-muted">{p.code}</span> {p.title}</span>
-          </label>
+          <div key={p.id} className="flex flex-col gap-2">
+            <label className="flex min-h-11 items-center gap-3">
+              <input type="checkbox" className="size-5 accent-[var(--color-primary)]" disabled={p.missing.length > 0} checked={sel.includes(p.id)} onChange={(e) => setSel((s) => e.target.checked ? [...s, p.id] : s.filter((x) => x !== p.id))} />
+              <span><span className="tnum text-text-muted">{p.code}</span> {p.title}</span>
+            </label>
+            {p.missing.length > 0 && (
+              <div className="ml-8 flex flex-col gap-2">
+                <Alert tone="warning">Chưa tạo liên kết được với đề này: thiếu {p.missing.join(", ")}. Đề cần đủ để dùng cho cả chat và từng bước.</Alert>
+                <ExplainButton id={p.id} action="fill" label="Nạp thêm bằng AI" busyLabel="AI đang nạp thêm..." />
+              </div>
+            )}
+          </div>
         ))}
       </fieldset>
       <div className="grid gap-4 sm:grid-cols-2">

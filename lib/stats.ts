@@ -1,6 +1,7 @@
 import { mean, standardDeviation, sampleVariance } from "simple-statistics";
 
-export type Sess = { id: string; link_id: string; seq: number; status: string; started_at: string; problem_code: string; student_code: string | null; student_name: string | null };
+export type Sess = { id: string; link_id: string; seq: number; status: string; started_at: string; problem_code: string; student_code: string | null; student_name: string | null; revealed?: number };
+export const bits = (n: number) => n.toString(2).replace(/0/g, "").length; // số bit 1 của mặt nạ (số bước được giải hộ)
 export const who = (x: { seq: number; student_code: string | null; student_name: string | null }) => x.student_name ? `${x.student_name} (${x.student_code})` : `Ẩn danh (cũ) #${x.seq}`;
 export type Ev = { session_id: string; identify: number; plan: number; calculate: number; explain: number; total: number; final_correct: boolean; max_hint_level: number; hint_count: number; errors: string[]; duration_s: number; survey_likert: number | null; confidence?: number | null };
 

@@ -14,7 +14,7 @@ const LABEL: Record<string, string> = {
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ action?: string }> }) {
   const { action } = await searchParams;
-  let q = (await supabaseServer()).from("activity_logs").select("id,ts,actor_type,action,anon_id,link_id,meta").neq("action", "ai_call").order("id", { ascending: false }).limit(200);
+  let q = (await supabaseServer()).from("activity_logs").select("id,ts,actor_type,action,anon_id,link_id,meta").neq("action", "ai_call").neq("action", "ai_usage").order("id", { ascending: false }).limit(200);
   if (action) q = q.eq("action", action);
   const rows = ((await q).data ?? []) as Row[];
   const fmt = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "medium", timeZone: "Asia/Ho_Chi_Minh" });

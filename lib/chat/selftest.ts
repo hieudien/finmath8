@@ -20,7 +20,7 @@ const cleaks = (p: Problem, reply: string) => leaks(reply, p.solution, [p.data, 
 async function say(cfg: LlmCfg, p: Problem, history: Turn[], text: string, mask = 0, hint = 1) {
   const cps = checkpoints(p);
   const turns: Turn[] = [...history, { role: "user", text: text + "\n" + chatState(cps, mask, hint) }];
-  const out = await askJson(cfg, chatSystem(p, cps), turns, turnSchema);
+  const out = await askJson(cfg, chatSystem(p), turns, turnSchema);
   return { out, history: [...history, { role: "user", text } as Turn, { role: "model", text: out.reply } as Turn] };
 }
 

@@ -9,7 +9,10 @@ import { SEED } from "@/lib/seed";
 import { runSelfTest } from "@/lib/chat/selftest";
 import { log } from "@/lib/log";
 import { missingAnswers } from "@/lib/answer-check";
+import { fillMissing, guidesOrRewrite, makeSteps } from "@/lib/fill";
 import { makeGreeting } from "@/lib/greeting";
+import { makeStepGuides } from "@/lib/step-guides";
+import { hasChoices, hasGuides } from "@/lib/chat/goals";
 
 const NORMALIZE_SYSTEM = `Bạn chuẩn hóa một đề Toán từ văn bản thô sang JSON. Đề có thể thuộc bất kỳ chủ đề và lớp nào (giải phương trình, hình học, tỉ lệ, tình huống thực tế...). Chỉ trả JSON một đối tượng đúng mẫu:
 {"id":"BTxx","title":string,"grade":số lớp (đoán theo đề, mặc định 8),"topic":string,"skills":[2–5 kỹ năng/kiến thức chính cần dùng, mỗi mục một cụm ngắn],"statement":string (nguyên văn đề bài cho học sinh),"learning_objectives":[string],"data":{số liệu đề cho, nếu có; tỉ lệ dạng thập phân 0.x},"solution":{đáp án chuẩn. Số thì dạng số, ví dụ {"x":3}; nhiều nghiệm {"x1":2,"x2":-3}; vô nghiệm hoặc đáp án chữ {"ket_luan":"vô nghiệm"}},"solution_steps":[lời giải từng bước, mỗi bước 1–2 câu có phép tính, bước cuối là kết luận],"common_errors":[sai lầm học sinh hay mắc với đề này],"hints":[{"level":1,"text":..},{"level":2,"text":..},{"level":3,"text":..}],"extension":string,"rubric":{"identify":3,"plan":3,"calculate":3,"explain":3}}
@@ -41,9 +44,14 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("seed") }),
   z.object({ action: z.literal("greetings") }),
   z.object({ action: z.literal("explain"), id: z.string().uuid() }),
+  z.object({ action: z.literal("fill"), id: z.string().uuid() }),
+  z.object({ action: z.literal("step_guides"), id: z.string().uuid() }),
+  z.object({ action: z.literal("step_guides_all") }),
   z.object({ action: z.literal("selftest"), id: z.string().uuid() }),
   z.object({ action: z.literal("delete"), id: z.string().uuid() }),
 ]);
+
+export const maxDuration = 60; // hàng loạt nhiều đề gọi AI theo nhóm
 
 export const POST = api(async (req) => {
   const u = await requireUser();
@@ -60,27 +68,71 @@ export const POST = api(async (req) => {
     return Response.json({ ok: true, saved: n });
   }
 
-  if (b.action === "explain") {
-    const cfg = await llmCfg(u.id);
-    if (!cfg) return bad("Chưa có API key. Vào Cài đặt để nhập.");
-    const { data } = await admin().from("problems").select("content,version").eq("id", b.id).eq("teacher_id", u.id).is("deleted_at", null).maybeSingle();
+  // Đọc đề của giáo viên (đã qua kiểm định dạng) cùng version để khóa khi ghi lại.
+  const NO_KEY = "Chưa có API key. Vào Cài đặt để nhập.";
+  const load = async (id: string) => {
+    const { data } = await admin().from("problems").select("content,version").eq("id", id).eq("teacher_id", u.id).is("deleted_at", null).maybeSingle();
     if (!data) return bad("Không tìm thấy đề.", 404);
     const row = data as { content: unknown; version: number };
     const pp = problemSchema.safeParse(row.content);
-    if (!pp.success) return bad("Đề này lưu sai định dạng nên không tạo được lời giải. Hãy nạp lại đề.");
-    const prob = pp.data;
-    const out = await askJson(cfg, 'Viết lời giải từng bước (3–8 bước) cho bài Toán. Mỗi bước 1–2 câu, nêu rõ phép tính và kết quả trung gian, bước cuối là kết luận. Lời giải PHẢI ra đúng đáp án đã cho trong "solution". Chỉ trả JSON {"steps": [string]}.', [{ role: "user", text: `${prob.statement ?? prob.title}
-Dữ liệu: ${JSON.stringify(prob.data)}
-Đáp án: ${JSON.stringify(prob.solution)}` }], z.object({ steps: z.array(z.string().min(3)).min(2).max(12) }), { think: true });
-    // Kiểm tra: mọi số lớn trong đáp án phải xuất hiện trong lời giải, nếu không thì không lưu (AI giải lệch đáp án).
-    const missing = missingAnswers(prob.solution, out.steps);
-    if (missing.length) return bad(`AI viết lời giải chưa khớp đáp án của đề (thiếu ${missing.join(", ")}). Bấm thử lại, hoặc kiểm tra lại đáp án trong đề.`);
-    // Khóa theo version: nếu giáo viên vừa sửa đề trong lúc AI viết thì không ghi đè.
-    const { data: upd, error: ue } = await admin().from("problems").update({ content: { ...prob, solution_steps: out.steps }, version: row.version + 1, updated_at: new Date().toISOString() } as never).eq("id", b.id).eq("teacher_id", u.id).eq("version", row.version).select("id");
+    return pp.success ? { prob: pp.data, version: row.version } : bad("Đề này lưu sai định dạng. Hãy nạp lại đề.");
+  };
+  // Khóa theo version: nếu giáo viên vừa sửa đề trong lúc AI viết thì không ghi đè. Trả Response khi lỗi, null khi đã lưu.
+  const commit = async (id: string, version: number, content: Problem, meta: Record<string, unknown>) => {
+    const { data: upd, error: ue } = await admin().from("problems").update({ content, version: version + 1, updated_at: new Date().toISOString() } as never).eq("id", id).eq("teacher_id", u.id).eq("version", version).select("id");
     if (ue) throw new Error("Lỗi cơ sở dữ liệu: " + ue.message);
     if (!upd?.length) return bad("Đề vừa được sửa ở nơi khác. Tải lại trang rồi thử lại.", 409);
-    await log({ actor: "teacher", action: "problem_updated", teacherId: u.id, meta: { code: prob.id, explain: true } });
-    return Response.json({ ok: true });
+    await log({ actor: "teacher", action: "problem_updated", teacherId: u.id, meta: { code: content.id, ...meta } });
+    return null;
+  };
+  const withGuides = (p: Problem, g: { goals: string[]; hints: string[][]; choices: Problem["step_choices"] } | null): Problem => ({ ...p, step_goals: g?.goals ?? [], step_hints: g?.hints ?? [], step_choices: g?.choices ?? [] });
+
+  if (b.action === "explain" || b.action === "fill" || b.action === "step_guides") {
+    const cfg = await llmCfg(u.id);
+    if (!cfg) return bad(NO_KEY);
+    const r = await load(b.id);
+    if (r instanceof Response) return r;
+    const { prob, version } = r;
+    if (b.action === "explain") {
+      const steps = await makeSteps(cfg, prob);
+      if (typeof steps === "string") return bad(steps);
+      const guides = await makeStepGuides(cfg, prob, steps); // chỉ dẫn + gợi ý riêng từng bước; lỗi thì để trống, học sinh dùng gợi ý chung
+      return (await commit(b.id, version, withGuides({ ...prob, solution_steps: steps }, guides), { explain: true })) ?? Response.json({ ok: true });
+    }
+    // Nạp thêm phần còn thiếu (đáp án, lời giải từng bước, chỉ dẫn từng bước) để đề dùng được cho cả chat và từng bước.
+    if (b.action === "fill") {
+      const filled = await fillMissing(cfg, prob);
+      if (typeof filled === "string") return bad(filled);
+      return (await commit(b.id, version, filled, { fill: true })) ?? Response.json({ ok: true });
+    }
+    if (!prob.solution_steps.length) return bad("Đề chưa có lời giải từng bước. Tạo lời giải trước.");
+    const g = await guidesOrRewrite(cfg, prob);
+    if (!g) return bad("AI chưa viết được chỉ dẫn cho từng bước. Bấm thử lại.");
+    return (await commit(b.id, version, withGuides(g.p, g), { step_guides: true, rewrote: g.rewrote })) ?? Response.json({ ok: true, noQuiz: !g.choices.length, rewrote: g.rewrote });
+  }
+
+  // Hàng loạt: mọi đề có lời giải từng bước mà chưa đủ chỉ dẫn. Song song từng nhóm 3 đề như "greetings".
+  // Hết ~45 giây thì dừng và báo số đề còn lại (maxDuration 60s); giáo viên bấm lại để làm tiếp.
+  if (b.action === "step_guides_all") {
+    const cfg = await llmCfg(u.id);
+    if (!cfg) return bad(NO_KEY);
+    const { data } = await admin().from("problems").select("id,content,version").eq("teacher_id", u.id).is("deleted_at", null);
+    let made = 0, failed = 0, noQuiz = 0, rewrote = 0;
+    const todo = ((data ?? []) as { id: string; content: unknown; version: number }[]).flatMap((row) => {
+      const pp = problemSchema.safeParse(row.content);
+      return pp.success && pp.data.solution_steps.length && !(hasGuides(pp.data) && hasChoices(pp.data)) ? [{ row, prob: pp.data }] : [];
+    });
+    const stop = Date.now() + 45_000;
+    let i = 0;
+    for (; i < todo.length && Date.now() < stop; i += 3) {
+      await Promise.all(todo.slice(i, i + 3).map(async ({ row, prob }) => {
+        const g = await guidesOrRewrite(cfg, prob);
+        if (!g) { failed++; return; }
+        const { data: upd } = await admin().from("problems").update({ content: withGuides(g.p, g), version: row.version + 1, updated_at: new Date().toISOString() } as never).eq("id", row.id).eq("version", row.version).select("id");
+        if (upd?.length) { made++; if (g.rewrote) rewrote++; if (!g.choices.length) noQuiz++; } else failed++;
+      }));
+    }
+    return Response.json({ ok: true, made, failed, noQuiz, rewrote, left: Math.max(0, todo.length - i) });
   }
 
   if (b.action === "greetings") {

@@ -5,6 +5,7 @@ import { admin } from "@/lib/supabase/admin";
 import { api, bad, requireUser } from "@/lib/auth";
 import { llmCfg } from "@/lib/teacher";
 import { getLink } from "@/lib/links";
+import { missingInfo } from "@/lib/ready";
 import { log } from "@/lib/log";
 
 const slug = () => randomBytes(8).toString("base64url").replace(/[-_]/g, "x").slice(0, 10).toLowerCase();
@@ -34,6 +35,9 @@ export const POST = api(async (req) => {
     const snap = ((data ?? []) as { content: unknown }[]).map((r) => r.content);
     if (!snap.length) return bad("Không tìm thấy đề đã chọn.");
     if (snap.some((c) => (c as { reviewed?: boolean }).reviewed === false)) return bad("Có đề AI tạo chưa duyệt. Mở đề, kiểm tra rồi lưu trước khi tạo liên kết.");
+    // Đề phải đủ cho cả chat và từng bước: giáo viên đổi kiểu sau này thì liên kết cũ vẫn chạy được.
+    const lack = snap.flatMap((c) => { const m = missingInfo(c); return m.length ? [`${(c as { id?: string }).id ?? "?"} (thiếu ${m.join(", ")})`] : []; });
+    if (lack.length) return bad(`Có đề chưa đủ thông tin cho cả chat và từng bước: ${lack.join("; ")}. Vào Đề bài, bấm "Nạp thêm bằng AI" cho đề đó rồi tạo lại.`);
     const { data: row, error } = await db.from("public_links").insert({
       teacher_id: u.id, slug: slug(), label: b.label, tag: b.tag, problems_snapshot: snap, max_messages: b.maxMessages,
     } as never).select("id,slug").single();

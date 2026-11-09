@@ -11,7 +11,7 @@ import { log } from "@/lib/log";
 const body = z.object({ action: z.literal("advise"), code: z.string().regex(/^[A-Z0-9._-]{1,20}$/) });
 const out = z.object({ weak_areas: z.array(z.string()).max(6), suggestions: z.array(z.string()).max(6), practice: z.array(z.string()).max(5) });
 
-const SYSTEM = `Bạn là trợ lý cho giáo viên Toán. Dựa trên số liệu một học sinh làm bài với chatbot gợi mở (rubric 0–3: nhận diện, lập kế hoạch, tính toán, giải thích; lỗi đã mắc; kỹ năng của các bài làm chưa tốt), hãy chỉ ra học sinh yếu ở đâu và đề xuất cách cải thiện. Viết tiếng Việt, ngắn gọn, cụ thể, dùng được ngay. Không bịa số liệu. Bài "bỏ dở" (mở bài nhưng chưa nhắn gì, hoặc làm dở chưa kết thúc) cũng là tín hiệu: nêu rõ thói quen bỏ bài, có thể do bài khó, thiếu động lực hay ngại hỏi, và gợi ý cách khuyến khích. Ít dữ liệu thì nói rõ là nhận định sơ bộ.
+const SYSTEM = `Bạn là trợ lý cho giáo viên Toán. Dựa trên số liệu một học sinh làm bài với chatbot gợi mở (rubric 0–3: nhận diện, lập kế hoạch, tính toán, giải thích; lỗi đã mắc; kỹ năng của các bài làm chưa tốt), hãy chỉ ra học sinh yếu ở đâu và đề xuất cách cải thiện. Viết tiếng Việt, ngắn gọn, cụ thể, dùng được ngay. Không bịa số liệu. Bài "bỏ dở" (mở bài nhưng chưa nhắn gì, hoặc làm dở chưa kết thúc) cũng là tín hiệu: nêu rõ thói quen bỏ bài, có thể do bài khó, thiếu động lực hay ngại hỏi, và gợi ý cách khuyến khích. Bài có "bot phải hiện lời giải N bước" nghĩa là học sinh kẹt, không tự làm được các bước đó: coi là điểm yếu thật, dựa vào "kien_thuc_nen_con_thieu" để đề xuất ôn tập. Ít dữ liệu thì nói rõ là nhận định sơ bộ.
 Chỉ trả JSON {"weak_areas":[điểm yếu],"suggestions":[việc giáo viên/học sinh nên làm],"practice":[dạng bài nên luyện thêm]}.`;
 
 export const POST = api(async (req) => {
@@ -34,7 +34,8 @@ export const POST = api(async (req) => {
     rubric_tb: prof.rubric.map((r) => `${r.name}: ${r.value.toFixed(1)}/3`),
     loi_da_mac: prof.errors.slice(0, 8),
     ky_nang_bai_lam_chua_tot: prof.weakSkills.slice(0, 8),
-    cac_bai: prof.attempts.filter((a) => a.ev).slice(0, 10).map((a) => `${a.title}: ${a.ev!.total}/12, ${a.ev!.final_correct ? "đúng" : "chưa đúng"}, ${a.ev!.hint_count} gợi ý`),
+    kien_thuc_nen_con_thieu: prof.gaps.slice(0, 8), // AI ghi khi chấm các phiên có bước được giải hộ
+    cac_bai: prof.attempts.filter((a) => a.ev).slice(0, 10).map((a) => `${a.title}: ${a.ev!.total}/12, ${a.ev!.final_correct ? "đúng" : "chưa đúng"}, ${a.ev!.hint_count} gợi ý${a.revealed ? `, bot phải hiện lời giải ${a.revealed} bước vì kẹt (không tính là tự làm)` : ""}`),
     // Chưa chấm: 0 tin = vào bài rồi bỏ, không nhắn gì; có tin = làm dở, chưa kết thúc.
     bai_chua_xong: open.slice(0, 10).map((a) => `${a.title}: ${sent.get(a.id) ? `làm dở, mới nhắn ${sent.get(a.id)} tin, chưa kết thúc` : "mở bài rồi bỏ, chưa nhắn gì"}`),
   };

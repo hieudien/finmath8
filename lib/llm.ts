@@ -7,10 +7,13 @@ export type LlmCfg = {
   key: string;
   model: string;
   temperature: number;
-  think?: boolean; // true: để model suy nghĩ sâu (chậm hơn). Mặc định tắt: chat cần nhanh
+  think?: boolean | "low"; // true: suy nghĩ sâu (chậm hơn); "low": suy nghĩ nhẹ (nhận xét bước giải). Mặc định tắt: chat cần nhanh
   maxTokens?: number; // giới hạn độ dài trả lời, tránh model nói dài
   onFallback?: (from: string, to: string, reason: string) => void; // để ghi nhật ký khi tự đổi model
+  onUsage?: (u: Usage) => void; // mỗi lượt gọi thành công: số token để đo chi phí và kiểm tra cache
+  signal?: AbortSignal; // askJson đặt khi hủy lượt gọi chậm, khỏi bị tính tiền thêm
 };
+export type Usage = { provider: Provider; model: string; input: number; cached: number; output: number; thoughts: number };
 type Turn = { role: "user" | "model"; text: string; image?: { mime: string; b64: string } };
 
 // Structured output của Gemini: ép đúng khung JSON, khỏi mô tả định dạng trong prompt và khỏi gọi lại khi JSON sai.
@@ -20,16 +23,18 @@ const jsonSchema = (schema: z.ZodType) => { try { return clean(z.toJSONSchema(sc
 
 async function callGemini(cfg: LlmCfg, system: string, turns: Turn[], schema?: z.ZodType) {
   const ai = new GoogleGenAI({ apiKey: cfg.key });
-  const base = { systemInstruction: system, responseMimeType: "application/json", responseJsonSchema: schema && jsonSchema(schema), temperature: cfg.temperature, maxOutputTokens: cfg.maxTokens };
+  const base = { systemInstruction: system, responseMimeType: "application/json", responseJsonSchema: schema && jsonSchema(schema), temperature: cfg.temperature, maxOutputTokens: cfg.maxTokens, abortSignal: cfg.signal };
   const run = (extra: object) => ai.models.generateContent({ model: cfg.model, contents: turns.map((t) => ({ role: t.role, parts: [{ text: t.text }, ...(t.image ? [{ inlineData: { mimeType: t.image.mime, data: t.image.b64 } }] : [])] })), config: { ...base, ...extra } });
   // Tắt suy nghĩ để trả lời nhanh; model không hỗ trợ mức này (báo lỗi liên quan "thinking") thì gọi lại như thường.
   let res;
   try {
-    res = await run(cfg.think ? {} : { thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } });
+    res = await run(cfg.think === true ? {} : { thinkingConfig: { thinkingLevel: cfg.think === "low" ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL } });
   } catch (e) {
-    if (cfg.think || !/thinking/i.test(String(e))) throw e;
+    if (cfg.think === true || !/thinking/i.test(String(e))) throw e;
     res = await run({});
   }
+  const u = res.usageMetadata;
+  if (u) cfg.onUsage?.({ provider: "gemini", model: cfg.model, input: u.promptTokenCount ?? 0, cached: u.cachedContentTokenCount ?? 0, output: u.candidatesTokenCount ?? 0, thoughts: u.thoughtsTokenCount ?? 0 });
   return res.text ?? "";
 }
 
@@ -44,13 +49,16 @@ async function callOpenAI(cfg: LlmCfg, system: string, turns: Turn[], json = tru
     method: "POST",
     headers: { authorization: `Bearer ${cfg.key}`, "content-type": "application/json" },
     body: JSON.stringify(body),
+    signal: cfg.signal,
   });
   if (!r.ok) {
     const t = await r.text();
     if (json && r.status === 400 && /response_format|json_object/i.test(t)) return callOpenAI(cfg, system, turns, false); // model không hỗ trợ JSON mode: dựa vào prompt
     throw new Error(`OpenAI ${r.status}: ${t.slice(0, 300)}`);
   }
-  const j = (await r.json()) as { choices?: { message?: { content?: string } }[] };
+  const j = (await r.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number }; completion_tokens_details?: { reasoning_tokens?: number } } };
+  const u = j.usage;
+  if (u) cfg.onUsage?.({ provider: "openai", model: cfg.model, input: u.prompt_tokens ?? 0, cached: u.prompt_tokens_details?.cached_tokens ?? 0, output: u.completion_tokens ?? 0, thoughts: u.completion_tokens_details?.reasoning_tokens ?? 0 });
   return j.choices?.[0]?.message?.content ?? "";
 }
 
@@ -63,7 +71,7 @@ const isOverload = (e: unknown) => /\b50\d\b|UNAVAILABLE|overload|high demand|AI
 const isLongQuota = (e: unknown) => /PerDay|insufficient_quota|no longer available|404/i.test(String(e));
 
 // Hết quota (hoặc model không còn) thì tự thử model kế tiếp của cùng nhà cung cấp, tối đa 4 model.
-export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string, turns: Turn[], schema: T, opts: { think?: boolean; maxTokens?: number; deadlineMs?: number; attemptMs?: number } = {}): Promise<z.infer<T>> {
+export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string, turns: Turn[], schema: T, opts: { think?: boolean | "low"; maxTokens?: number; deadlineMs?: number; attemptMs?: number } = {}): Promise<z.infer<T>> {
   const cfg = { ...cfg0, ...opts };
   const deadline = Date.now() + (opts.deadlineMs ?? Infinity); // chat đặt hạn chót để trả lỗi thân thiện trước khi trình duyệt tự báo timeout
   const all = [cfg.model, ...PROVIDERS[cfg.provider].models.filter((id) => id !== cfg.model)].slice(0, 4);
@@ -75,11 +83,12 @@ export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string,
     if (left <= 0) throw last ?? new Error("AI_TIMEOUT: quá thời gian chờ AI");
     // Mỗi model (trừ model cuối) chỉ được chờ attemptMs: Google thỉnh thoảng chậm 5-9s, chờ tiếp không bằng đổi model ngay.
     const cap = i + 1 < chain.length ? Math.min(left, opts.attemptMs ?? Infinity) : left;
+    const ac = new AbortController(); // hủy request khi quá hạn: không hủy thì Google vẫn tính tiền lượt đó
     try {
-      const run = askOne({ ...cfg, model: chain[i] }, system, turns, schema);
+      const run = askOne({ ...cfg, model: chain[i], signal: ac.signal }, system, turns, schema);
       if (cap === Infinity) return await run;
       let timer: ReturnType<typeof setTimeout>;
-      const timeout = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error(cap < left ? "AI_SLOW: model trả lời quá chậm" : "AI_TIMEOUT: quá thời gian chờ AI")), cap); });
+      const timeout = new Promise<never>((_, rej) => { timer = setTimeout(() => { rej(new Error(cap < left ? "AI_SLOW: model trả lời quá chậm" : "AI_TIMEOUT: quá thời gian chờ AI")); ac.abort(); }, cap); });
       return await Promise.race([run, timeout]).finally(() => clearTimeout(timer));
     } catch (e) {
       if (/AI_TIMEOUT/.test(String(e))) throw last && isQuota(last) ? last : e;

@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Confirm, TextArea, post } from "@/components/ui";
 
-type Msg = { tone: "success" | "danger"; text: string } | null;
+type Msg = { tone: "success" | "warning" | "danger"; text: string } | null;
 
-export function ImportPanel() {
+export function ImportPanel({ stepsMode = false }: { stepsMode?: boolean }) {
   const router = useRouter();
   const [tab, setTab] = useState<"json" | "text">("json");
   const [raw, setRaw] = useState("");
@@ -57,12 +57,22 @@ export function ImportPanel() {
     router.refresh();
   }
 
+  async function guides() {
+    setBusy("Đang tạo chỉ dẫn từng bước (có thể mất vài chục giây)..."); setMsg(null);
+    const { ok, data } = await post<{ made: number; failed: number; noQuiz: number; rewrote: number; left: number }>("/api/problems", { action: "step_guides_all" });
+    setBusy("");
+    if (!ok) return fail(data.error);
+    setMsg({ tone: data.failed ? "danger" : data.left || data.noQuiz ? "warning" : "success", text: data.made || data.failed ? `Đã tạo chỉ dẫn cho ${data.made} đề${data.failed ? `, ${data.failed} đề lỗi (bấm lại để thử tiếp)` : ""}${data.left ? `. Còn ${data.left} đề chưa làm, bấm lại để làm tiếp` : ""}${data.rewrote ? `. AI đã viết lại lời giải của ${data.rewrote} đề vì lời giải cũ có bước quá chung chung (hãy xem lại)` : ""}${data.noQuiz ? `. ${data.noQuiz} đề chưa tạo được trắc nghiệm hợp lệ (bước quá chung chung), đề đó chạy kiểu Từng bước; bấm lại để thử tiếp hoặc sửa lại lời giải` : ""}.` : "Các đề có lời giải từng bước đều đã có chỉ dẫn." });
+    router.refresh();
+  }
+
   if (!open) return (
     <div className="flex flex-col items-start gap-3">
       <div className="flex flex-wrap gap-2">
         <Link href="/dashboard/problems/new" className="inline-flex min-h-11 items-center justify-center rounded-sm bg-primary px-4 font-medium text-on-primary hover:bg-primary-hover">Tạo đề mới</Link>
         <Button variant="secondary" onClick={() => { setMsg(null); setOpen(true); }}>Nạp JSON / dán văn bản</Button>
         <Button variant="secondary" onClick={greetings} pending={busy || undefined}>Tạo lời chào cho các đề chưa có</Button>
+        {stepsMode && <Button variant="secondary" onClick={guides} pending={busy || undefined}>Tạo chỉ dẫn từng bước cho các đề chưa có</Button>}
       </div>
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
     </div>

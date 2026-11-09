@@ -12,12 +12,19 @@ const VARIANT = {
 };
 
 // Lớp phủ toàn trang khi tác vụ dài đang chạy: chặn chuột và bàn phím ở mọi chỗ khác.
+// Đếm số lớp phủ đang mở: nhiều nút cùng "pending" (cùng một state busy) mở nhiều lớp phủ; lớp sau đọc inert đã bị lớp trước bật
+// nên khôi phục sai và trang kẹt inert. Chỉ lớp đầu bật, lớp cuối tắt.
+let overlays = 0;
+let frozen: { el: HTMLElement; prev: boolean }[] = [];
 function BlockOverlay({ text }: { text: string }) {
   useEffect(() => {
-    const others = [...document.body.children].filter((el) => !el.hasAttribute("data-block-overlay")) as HTMLElement[];
-    const prev = others.map((el) => el.inert);
-    others.forEach((el) => { el.inert = true; });
-    return () => others.forEach((el, i) => { el.inert = prev[i]; });
+    if (overlays++ === 0) {
+      frozen = ([...document.body.children].filter((el) => !el.hasAttribute("data-block-overlay")) as HTMLElement[]).map((el) => ({ el, prev: el.inert }));
+      frozen.forEach(({ el }) => { el.inert = true; });
+    }
+    return () => {
+      if (--overlays === 0) { frozen.forEach(({ el, prev }) => { el.inert = prev; }); frozen = []; }
+    };
   }, []);
   return createPortal(
     <div data-block-overlay role="status" aria-live="polite" className="fixed inset-0 z-50 flex cursor-wait flex-col items-center justify-center gap-3 bg-black/50 text-lg font-medium text-white">

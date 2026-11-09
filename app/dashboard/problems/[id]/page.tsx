@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { supabaseServer } from "@/lib/supabase/server";
+import { supabaseServer, currentUser } from "@/lib/supabase/server";
+import { teacherMode } from "@/lib/teacher";
+import { hasChoices, hasGuides } from "@/lib/chat/goals";
 import { problemSchema } from "@/lib/schema/problem";
 import { entries, problemToText } from "@/lib/problem-text";
 import { ExplainButton, ViewTools } from "@/components/ProblemViewTools";
@@ -42,6 +44,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     );
   }
   const p = parsed.data;
+  const tmode = await teacherMode((await currentUser())!.id);
+  const stepsMode = tmode !== "chat";
+  const guided = hasGuides(p) && (tmode !== "quiz" || hasChoices(p));
   const hints = [...p.hints].sort((a, b) => a.level - b.level);
 
   return (
@@ -64,14 +69,34 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
       <Section title="Lời giải">
         {p.solution_steps.length ? (
-          <ol className="flex max-w-prose flex-col gap-2">
-            {p.solution_steps.map((s, i) => (
-              <li key={i} className="flex gap-3"><span className="tnum w-14 shrink-0 font-medium text-primary">Bước {i + 1}</span><MathText text={s} /></li>
-            ))}
-          </ol>
+          <>
+            <ol className="flex max-w-prose flex-col gap-2">
+              {p.solution_steps.map((s, i) => (
+                <li key={i} className="flex gap-3">
+                  <span className="tnum w-14 shrink-0 font-medium text-primary">Bước {i + 1}</span>
+                  <div>
+                    <MathText text={s} />
+                    {hasGuides(p) && p.step_goals[i] && <p className="text-sm text-text-muted">Học sinh thấy: <MathText text={p.step_goals[i]} /></p>}
+                    {hasChoices(p) && (
+                      <ul className="mt-1 text-sm text-text-muted">
+                        <li>✓ <MathText text={p.step_choices[i].right} /></li>
+                        {p.step_choices[i].traps.map((t, k) => <li key={k}>✗ <MathText text={t.text} /> — <MathText text={t.why} /></li>)}
+                      </ul>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ol>
+            {stepsMode && !guided && (
+              <div className="flex flex-col gap-3">
+                <Alert tone="info">Chưa đủ chỉ dẫn cho từng bước (việc cần làm, gợi ý{tmode === "quiz" ? " và trắc nghiệm 4 đáp án" : ""}), nên học sinh chỉ thấy lời nhắc chung và gợi ý chung của đề{tmode === "quiz" ? "; đề thiếu trắc nghiệm chạy kiểu Từng bước" : ""}. AI có thể viết chỉ dẫn cho từng bước. Sửa lời giải xong thì bấm tạo lại.</Alert>
+                <ExplainButton id={id} action="step_guides" label={tmode === "quiz" ? "Tạo chỉ dẫn, gợi ý và trắc nghiệm từng bước bằng AI" : "Tạo chỉ dẫn và gợi ý từng bước bằng AI"} busyLabel="AI đang viết chỉ dẫn..." />
+              </div>
+            )}
+          </>
         ) : (
           <div className="flex flex-col gap-3">
-            <Alert tone="info">Đề này chưa có lời giải từng bước. AI có thể viết giúp; lời giải được kiểm tra khớp đáp án trước khi lưu.</Alert>
+            <Alert tone={stepsMode ? "warning" : "info"}>Đề này chưa có lời giải từng bước.{stepsMode ? " Đang bật kiểu Từng bước nên đề này chạy kiểu chat cho đến khi có lời giải (liên kết cũ giữ đề cũ, cần tạo liên kết mới)." : ""} AI có thể viết giúp; lời giải được kiểm tra khớp đáp án trước khi lưu.</Alert>
             <ExplainButton id={id} />
           </div>
         )}

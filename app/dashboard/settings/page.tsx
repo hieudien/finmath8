@@ -2,8 +2,10 @@ import { supabaseServer, currentUser } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/crypto";
 import { type Provider } from "@/lib/models";
 import SettingsForm from "@/components/SettingsForm";
+import ModeForm from "@/components/ModeForm";
+import { DEFAULT_MODE, isMode } from "@/lib/modes";
 
-type Row = { provider: Provider; gemini_key_enc: string | null; openai_key_enc: string | null };
+type Row = { provider: Provider; gemini_key_enc: string | null; openai_key_enc: string | null; interaction_mode?: string };
 
 const tail = (enc: string | null | undefined) => {
   try { return enc ? decrypt(enc).slice(-4) : null; } catch { return null; }
@@ -16,6 +18,7 @@ export default async function Page() {
   return (
     <div className="flex flex-col gap-6">
       <h1>Cài đặt</h1>
+      <ModeForm mode={isMode(s?.interaction_mode) ? s.interaction_mode : DEFAULT_MODE} />
       <SettingsForm
         provider={s?.provider ?? "gemini"}
         last4={{ gemini: tail(s?.gemini_key_enc), openai: tail(s?.openai_key_enc) }}

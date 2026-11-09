@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadStudent } from "@/lib/students";
 import { r1 } from "@/lib/stats";
+import { shortId } from "@/lib/sid";
 import AdviceButton from "@/components/AdviceButton";
 import ChatLog from "@/components/ChatLog";
 import "katex/dist/katex.min.css";
@@ -41,6 +42,7 @@ export default async function Page({ params }: { params: Promise<{ code: string 
       </Section>
 
       {prof.weakSkills.length > 0 && <Section title="Kỹ năng cần củng cố"><List items={prof.weakSkills.map((k) => `${k.name} (${k.value} bài làm chưa tốt)`)} /></Section>}
+      {prof.gaps.length > 0 && <Section title="Kiến thức nền còn thiếu (khi được giải hộ)"><List items={prof.gaps.map((g) => `${g.name}${g.value > 1 ? ` (${g.value} phiên)` : ""}`)} /></Section>}
       {prof.errors.length > 0 && <Section title="Lỗi hay mắc"><List items={prof.errors.map((e) => `${e.name} (${e.value} lần)`)} /></Section>}
 
       <Section title="Đề xuất cải thiện">
@@ -59,7 +61,7 @@ export default async function Page({ params }: { params: Promise<{ code: string 
         <ul className="flex flex-col gap-2">
           {prof.attempts.map((a) => (
             <li key={a.id} className="flex flex-col gap-2">
-              <ChatLog id={a.id} title={`${a.title} · ${fmt.format(new Date(a.started_at))} · ${a.ev ? `${a.ev.total}/12, ${a.ev.final_correct ? "đúng" : "chưa đúng"}` : a.status === "active" ? "đang làm" : "bỏ dở"}`} />
+              <ChatLog id={a.id} title={`${shortId(a.id)} · ${a.title} · ${fmt.format(new Date(a.started_at))} · ${a.ev ? `${a.ev.total}/12, ${a.ev.final_correct ? "đúng" : "chưa đúng"}` : a.status === "active" ? "đang làm" : "bỏ dở"}${a.revealed ? ` · giải hộ ${a.revealed} bước` : ""}`} />
             </li>
           ))}
         </ul>
