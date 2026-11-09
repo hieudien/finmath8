@@ -6,7 +6,7 @@ import Brand from "@/components/Brand";
 import { GREETING_FALLBACK } from "@/lib/greeting";
 import { teacherMode } from "@/lib/teacher";
 import { modeFor } from "@/lib/modes";
-import { stepGoal, stepsGreeting } from "@/lib/chat/goals";
+import { choiceOptions, stepGoal, stepsGreeting } from "@/lib/chat/goals";
 import { checkpoints } from "@/lib/chat/progress";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +39,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   const tm = await teacherMode(l.teacher_id);
   const problems = parseProblems(l.problems_snapshot).ok.map((p) => {
     const mode = modeFor(tm, p);
-    return { id: p.id, title: p.title, statement: p.statement ?? "", mode, total: checkpoints(p).length, goal: mode !== "chat" ? stepGoal(p, 0) : "", greeting: mode !== "chat" ? stepsGreeting(p, mode === "quiz") : p.statement ? p.greeting || GREETING_FALLBACK : "" };
+    return { id: p.id, title: p.title, statement: p.statement ?? "", mode, total: checkpoints(p).length, goal: mode !== "chat" ? stepGoal(p, 0) : "", options: mode === "quiz" ? choiceOptions(p, 0, p.id) : undefined, greeting: mode !== "chat" ? stepsGreeting(p, mode === "quiz") : p.statement ? p.greeting || GREETING_FALLBACK : "" };
   });
   return <Chat slug={slug} label={l.label} problems={problems} />;
 }

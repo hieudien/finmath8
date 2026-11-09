@@ -65,13 +65,13 @@ async function handle(req: Request) {
     const prob = problems.find((x) => x.id === b.problemCode);
     if (!prob) return err("Không tìm thấy bài.", 404);
     // Lời chào có sẵn không gọi AI; đề không có statement mới gọi AI để mở bài. Cả hai cần key hợp lệ.
-    const cfg = await llmCfg(link.teacher_id);
-    if (!cfg) return err("Chatbot chưa sẵn sàng. Nhờ giáo viên kiểm tra cài đặt.", 503);
     const since = new Date(Date.now() - 86_400_000).toISOString();
-    const [{ count: today }, { count: linkToday }] = await Promise.all([
+    const [cfg, { count: today }, { count: linkToday }] = await Promise.all([
+      llmCfg(link.teacher_id),
       db.from("chat_sessions").select("id", { count: "exact", head: true }).eq("anon_id", anon).gte("started_at", since),
       db.from("chat_sessions").select("id", { count: "exact", head: true }).eq("link_id", link.id).gte("started_at", since),
     ]);
+    if (!cfg) return err("Chatbot chưa sẵn sàng. Nhờ giáo viên kiểm tra cài đặt.", 503);
     if ((linkToday ?? 0) >= MAX_SESSIONS_PER_LINK_PER_DAY) return err("Liên kết này đã đạt giới hạn lượt dùng hôm nay. Báo giáo viên của em.", 429);
     if ((today ?? 0) >= MAX_SESSIONS_PER_DAY) return err("Hôm nay em đã làm nhiều bài rồi. Nghỉ một chút, mai làm tiếp nhé.", 429);
     const { data: seq } = await db.rpc("next_seq", { p_link: link.id } as never); // sau khi qua mọi giới hạn, để số thứ tự không bị hụt

@@ -7,7 +7,7 @@ import { INPUTS } from "@/components/ChatInputs";
 import type { Mode } from "@/lib/modes";
 import { shortId } from "@/lib/sid";
 
-type P = { id: string; title: string; statement: string; greeting: string; mode: Mode; total: number; goal: string };
+type P = { id: string; title: string; statement: string; greeting: string; mode: Mode; total: number; goal: string; options?: string[] };
 type M = { role: "student" | "bot"; text: string };
 type Prog = { done: number; total: number; next?: number; goal?: string; options?: string[] };
 type R = { sessionId?: string; reply?: string; step?: number; done?: boolean; mode?: Mode; progress?: Prog; ok?: boolean };
@@ -42,7 +42,9 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
 
   async function start(p: P) {
     const my = ++tok.current;
-    setProb(p); setBusy(!p.greeting); setErr(""); setSmode(null); setAsking(false); setWrong(0); setTried([]); setProg(p.mode !== "chat" ? { done: 0, total: p.total, next: 1, goal: p.goal } : null);
+    // Kiểu trắc nghiệm: đáp án bước 1 đã có trong trang, xáo ngẫu nhiên ngay ở máy học sinh (mỗi lần mở một thứ tự); phản hồi của server không đè lại thứ tự này.
+    const mine = p.options && [...p.options].sort(() => Math.random() - 0.5);
+    setProb(p); setBusy(!p.greeting); setErr(""); setSmode(null); setAsking(false); setWrong(0); setTried([]); setProg(p.mode !== "chat" ? { done: 0, total: p.total, next: 1, goal: p.goal, options: mine } : null);
     if (p.greeting) setMsgs([{ role: "bot", text: p.greeting }]); // hiện lời chào ngay; server tạo phiên song song, có sid thì mở ô nhập
     const { ok, data } = await post<R>("/api/chat", { action: "start", slug, problemCode: p.id, studentCode: who?.code, studentName: who?.name });
     if (my !== tok.current) return;
@@ -50,7 +52,9 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
     if (!ok) { setErr(data.error ?? "Có lỗi."); started.current = false; setMsgs([]); if (problems.length > 1) setProb(null); return; } // lỗi: bỏ lời chào đã hiện, nhiều đề thì về danh sách (lỗi hiện ở đó)
     setSid(data.sessionId);
     setSmode(data.mode ?? null);
-    setProg(data.progress ?? null);
+    const theirs = data.progress?.options; // khác tập đáp án (đề vừa được sửa) hoặc khác kiểu thì dùng của server
+    const same = mine && theirs && mine.length === theirs.length && mine.every((o) => theirs.includes(o));
+    setProg(data.progress ? { ...data.progress, ...(same && { options: mine }) } : null);
     if (!p.greeting || (data.mode && data.mode !== p.mode)) setMsgs([{ role: "bot", text: data.reply ?? "" }]); // lời chào dự đoán sai kiểu: thay bằng lời chào của server
   }
 
