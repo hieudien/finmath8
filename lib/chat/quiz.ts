@@ -4,12 +4,13 @@ import { admin } from "@/lib/supabase/admin";
 import type { LlmCfg } from "@/lib/llm";
 import { leaks } from "@/lib/chat/prompt";
 import { checkpoints, countDone } from "@/lib/chat/progress";
-import { finish, withReview, type Session } from "@/lib/chat/engine";
+import { botMsg, finish, withReview, type Session } from "@/lib/chat/engine";
 import { revealLine } from "@/lib/chat/assist";
 import { closing, closingHelp } from "@/lib/chat/canned";
 import { known, nextLine as baseLine, progress, stepNo, struggle } from "@/lib/chat/steps";
 import { MAX_WRONG } from "@/lib/modes";
 import { log } from "@/lib/log";
+import { reportError } from "@/lib/errors";
 import type { Problem } from "@/lib/schema/problem";
 
 // Kiểu "trắc nghiệm từng bước": mỗi bước một câu 4 đáp án (1 đúng + 3 bẫy lỗi hay gặp, AI viết sẵn khi giáo viên bấm tạo chỉ dẫn).
@@ -56,9 +57,9 @@ export async function quizPick(cfg: LlmCfg, s: Session, p: Problem, choice: stri
   const moved = mask !== mask0;
   const hl = moved ? 0 : s.hint_level;
   await Promise.all([
-    db.from("messages").insert({ session_id: s.id, role: "bot", content: reply, step, hint_level: hl } as never).then(check),
+    botMsg(s.id, { content: reply, step, hint_level: hl, kind: finished ? "done" : right ? "right" : reveal ? "reveal" : "wrong" }).then(check),
     db.from("chat_sessions").update({ step, progress: mask, hint_level: hl, wrong: moved ? 0 : wrong, ...(moved && { stall: 0 }), revealed, ...(!right && { struggled: struggle(s, cur) }) } as never).eq("id", s.id).then(check),
   ]);
-  if (finished) after(() => finish(cfg, s, p, teacherId).catch((e) => console.error("finish failed", e)));
+  if (finished) after(() => finish(cfg, s, p, teacherId).catch((e) => reportError(e, "chấm điểm (finish)", { teacherId, linkId: s.link_id, anonId: s.anon_id, actor: "system" })));
   return { reply, step, done: finished, ok: right, progress: progress(p, cps, mask, s) };
 }

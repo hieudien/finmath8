@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Badge, Button, post, ScoreBadge, StatusBadge } from "@/components/ui";
+import { AiButton, Alert, Badge, post, ScoreBadge, StatusBadge } from "@/components/ui";
 import { MathText } from "@/components/MathText";
 
 type Item = { role: "student" | "bot"; time: string; html: string };
@@ -89,7 +89,7 @@ export default function ChatLog({ id, head, open, note }: { id: string; head: He
               <Block title="Nên làm tiếp" items={an.content.next_steps} />
             </div>
           )}
-          <div><Button variant="secondary" onClick={analyze} pending={busy ? "AI đang phân tích..." : undefined} className="text-sm">{an ? "Phân tích lại phiên này" : "AI phân tích phiên này"}</Button></div>
+          <div><AiButton variant="secondary" onClick={analyze} pending={busy ? "AI đang phân tích..." : undefined} className="text-sm">{an ? "Phân tích lại phiên này" : "AI phân tích phiên này"}</AiButton></div>
           {anErr && <Alert tone="danger">{anErr}</Alert>}
         </div>
       )}

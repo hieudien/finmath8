@@ -8,13 +8,13 @@ type Row = { id: number; ts: string; actor_type: string; action: string; meta: M
 const TZ = "Asia/Ho_Chi_Minh";
 const day = new Intl.DateTimeFormat("sv-SE", { timeZone: TZ }); // yyyy-mm-dd, tiện so sánh và nhóm
 const dayLabel = new Intl.DateTimeFormat("vi-VN", { dateStyle: "full", timeZone: TZ });
-const hour = new Intl.DateTimeFormat("vi-VN", { timeStyle: "short", timeZone: TZ });
+export const hour = new Intl.DateTimeFormat("vi-VN", { timeStyle: "short", timeZone: TZ });
 
 const WHO: Record<string, string> = { teacher: "Thầy cô", student: "Học sinh", system: "Hệ thống" };
 
-function group(rows: Row[]) {
+export function group<T extends { ts: string }>(rows: T[]) {
   const today = day.format(new Date()), yest = day.format(new Date(Date.now() - 864e5));
-  const out: { key: string; title: string; rows: Row[] }[] = [];
+  const out: { key: string; title: string; rows: T[] }[] = [];
   for (const r of rows) {
     const d = new Date(r.ts), k = day.format(d);
     if (out.at(-1)?.key !== k) out.push({ key: k, title: k === today ? "Hôm nay" : k === yest ? "Hôm qua" : dayLabel.format(d), rows: [] });

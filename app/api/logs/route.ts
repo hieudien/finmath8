@@ -2,6 +2,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { api, requireUser } from "@/lib/auth";
 import { check } from "@/lib/db";
 import { WARN } from "@/lib/log-labels";
+import { nameRows } from "@/lib/log-join";
 
 type R = { id: number; ts: string; actor_type: string; action: string; anon_id: string | null; link_id: string | null; meta: Record<string, unknown> };
 
@@ -16,15 +17,5 @@ export const GET = api(async (req) => {
   else if (action) q = q.eq("action", action);
   const r = await q;
   check(r);
-  const rows = (r.data ?? []) as R[];
-  const linkIds = [...new Set(rows.map((x) => x.link_id).filter((x): x is string => !!x))];
-  const anonIds = [...new Set(rows.map((x) => x.anon_id).filter((x): x is string => !!x))];
-  const [lk, st] = await Promise.all([
-    linkIds.length ? sb.from("public_links").select("id,label").in("id", linkIds) : null,
-    anonIds.length ? sb.from("chat_sessions").select("anon_id,student_code,started_at").in("anon_id", anonIds).not("student_code", "is", null).order("started_at", { ascending: false }) : null,
-  ]);
-  const link = new Map(((lk?.data ?? []) as { id: string; label: string }[]).map((x) => [x.id, x.label]));
-  const student = new Map<string, string>();
-  for (const x of (st?.data ?? []) as { anon_id: string; student_code: string }[]) if (!student.has(x.anon_id)) student.set(x.anon_id, x.student_code);
-  return Response.json({ rows: rows.map(({ anon_id, link_id, ...x }) => ({ ...x, link: link.get(link_id ?? "") ?? null, student: student.get(anon_id ?? "") ?? null })) });
+  return Response.json({ rows: await nameRows(sb, (r.data ?? []) as R[]) });
 });

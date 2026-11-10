@@ -45,7 +45,7 @@ async function analyzeSession(sb: Sb, cfg: Cfg, teacherId: string, id: string) {
     diem_tu_cham: ev ?? "chưa chấm",
     hoi_thoai: msgs.map((m) => `${m.role === "student" ? "HS" : "Bot"}: ${m.content}`),
   });
-  const content = await askJson(cfg, SESSION_SYSTEM, [{ role: "user", text }], sessionOut, { think: true });
+  const content = await askJson(cfg, SESSION_SYSTEM, [{ role: "user", text }], sessionOut, { think: true, use: "analyze_session" });
   const updated_at = new Date().toISOString();
   check(await admin().from("session_analysis").upsert({ session_id: id, content, updated_at } as never));
   await log({ actor: "teacher", action: "session_analysis", teacherId, linkId: sess.link_id, meta: { problem: sess.problem_code } });
@@ -86,7 +86,7 @@ export const POST = api(async (req) => {
     // Chưa chấm: 0 tin = vào bài rồi bỏ, không nhắn gì; có tin = làm dở, chưa kết thúc.
     bai_chua_xong: open.slice(0, 10).map((a) => `${a.title}: ${sent.get(a.id) ? `làm dở, mới nhắn ${sent.get(a.id)} tin, chưa kết thúc` : "mở bài rồi bỏ, chưa nhắn gì"}`),
   };
-  const content = await askJson(cfg, SYSTEM, [{ role: "user", text: JSON.stringify(facts) }], out, { think: true });
+  const content = await askJson(cfg, SYSTEM, [{ role: "user", text: JSON.stringify(facts) }], out, { think: true, use: "advise" });
   check(await admin().from("student_advice").upsert({ teacher_id: u.id, student_code: p.data.code, content, sessions: prof.attempts.length, updated_at: new Date().toISOString() } as never));
   await log({ actor: "teacher", action: "student_advice", teacherId: u.id, meta: { code: p.data.code } });
   return Response.json({ ok: true });

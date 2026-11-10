@@ -4,17 +4,15 @@ const BLOCKS: [string, string[]][] = [
     "Giới thiệu chatbot: \"Chatbot gợi ý từng bước, em cố gắng trả lời trước khi xin gợi ý\".",
     "Mỗi học sinh tự làm riêng trên thiết bị của mình.",
   ]],
-  ["Chọn kiểu làm bài", [
-    "Vào Cài đặt để chọn một trong 2 kiểu, áp dụng cho các phiên mới của cả lớp.",
+  ["Kiểu làm bài", [
     "Từng bước: học sinh nộp một bước giải mỗi lần vào ô ngắn. Nhanh hơn, ít lạc đề. Có nút Em chưa hiểu để hỏi khi chưa rõ đề hoặc cách bắt đầu.",
-    "Trắc nghiệm từng bước: mỗi bước là một câu 4 đáp án, chỉ 1 đáp án đúng. Chọn sai thì học sinh được giải thích lỗi đó. Không gọi AI khi học sinh làm bài.",
     "Đề thiếu lời giải từng bước sẽ tự chạy kiểu Chat: học sinh nhắn tin tự do với chatbot.",
   ]],
-  ["Chuẩn bị đề cho kiểu Từng bước và Trắc nghiệm", [
+  ["Chuẩn bị đề cho kiểu Từng bước", [
     "Đề cần có lời giải từng bước. Nếu chưa có, bấm \"Tạo lời giải bằng AI\" ở trang đề.",
-    "Bấm \"Tạo chỉ dẫn từng bước\" (ở danh sách đề hoặc trang từng đề) để AI viết việc cần làm, 3 mức gợi ý và câu trắc nghiệm cho từng bước.",
-    "Đọc lại lời giải và đáp án AI viết. Nếu AI báo đã viết lại lời giải vì có bước quá chung chung, hãy xem lại.",
-    "Đề thiếu trắc nghiệm sẽ chạy kiểu Từng bước. Đề thiếu lời giải từng bước sẽ chạy kiểu Chat.",
+    "Bấm \"Tạo chỉ dẫn từng bước\" (ở danh sách đề hoặc trang từng đề) để AI viết việc cần làm và 3 mức gợi ý cho từng bước.",
+    "Đọc lại lời giải và đáp án AI viết.",
+    "Đề thiếu lời giải từng bước sẽ chạy kiểu Chat.",
   ]],
   ["Phân công và giám sát", [
     "Quan sát học sinh hiểu giao diện, không sao lãng.",
@@ -51,7 +49,7 @@ export default function Page() {
         <ol className="list-decimal space-y-1 pl-5">
           <li>Khám phá tình huống</li><li>Phân tích dữ kiện</li><li>Đề xuất phương án</li><li>Thực hiện giải quyết</li><li>Đánh giá kết quả</li>
         </ol>
-        <p className="text-text-muted">Gợi ý tăng dần khi học sinh kẹt. Kiểu Từng bước và Trắc nghiệm có 3 mức riêng cho từng bước: định hướng, chỉ cách làm, nêu tên phép tính cần dùng. Kiểu Chat (khi đề thiếu lời giải từng bước) có 4 mức, mức 4 là làm mẫu bằng số khác. Hết gợi ý mà vẫn kẹt thì chatbot hiện lời giải của bước đó để em đi tiếp; bước được giải hộ không được tính điểm.</p>
+        <p className="text-text-muted">Gợi ý tăng dần khi học sinh kẹt. Kiểu Từng bước có 3 mức riêng cho từng bước: định hướng, chỉ cách làm, nêu tên phép tính cần dùng. Kiểu Chat (khi đề thiếu lời giải từng bước) có 4 mức, mức 4 là làm mẫu bằng số khác. Hết gợi ý mà vẫn kẹt thì chatbot hiện lời giải của bước đó để em đi tiếp; bước được giải hộ không được tính điểm.</p>
       </section>
     </div>
   );

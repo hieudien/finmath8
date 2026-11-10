@@ -5,12 +5,13 @@ import { admin } from "@/lib/supabase/admin";
 import { askJson, type LlmCfg } from "@/lib/llm";
 import { leaks, leaksCalc } from "@/lib/chat/prompt";
 import { checkpoints, countDone, markByNumbers, numsIn, SOS_REPLY, stepOf, verify, type Cp } from "@/lib/chat/progress";
-import { finish, INJECT, MAX_TURNS, SOS, withReview, type Msg, type Session, type Tm } from "@/lib/chat/engine";
+import { botMsg, finish, INJECT, MAX_TURNS, SOS, withReview, type Msg, type Session, type Tm } from "@/lib/chat/engine";
 import { choiceOptions, stepCue, stepGoal, stepLead, stepsGreeting } from "@/lib/chat/goals";
 import { ladder, MAX_HINT, revealLine, stepText } from "@/lib/chat/assist";
 import { ASK_ANSWER, ASK_IS_STEP, ASK_LEAK, ASK_LIMIT, ASK_NOT_JUDGE, capped as cappedLine, closing, closingHelp, isOff, lastBot, OFF_AGAIN, OFF_FIRST, pick, QUIZ_NOHINT, REPEAT, RETRY, STEP_LEAK, STUCK_HINT, STUCK_NOHINT } from "@/lib/chat/canned";
 import { scrub } from "@/lib/pii";
 import { log } from "@/lib/log";
+import { reportError } from "@/lib/errors";
 import type { Problem } from "@/lib/schema/problem";
 
 // Kiểu "từng bước": học sinh nộp một bước mỗi lần. Mốc có số đáp án do server tự xác minh (không gọi AI); mốc không có số
@@ -115,7 +116,7 @@ export const stepNo = (cps: Cp[], mask: number) => Math.min(4, stepOf(countDone(
 
 export async function stepsOpening(s: Session, p: Problem) {
   const reply = stepsGreeting(p, s.mode === "quiz");
-  check(await admin().from("messages").insert({ session_id: s.id, role: "bot", content: reply, step: 1, hint_level: 0 } as never));
+  check(await botMsg(s.id, { content: reply, step: 1, hint_level: 0, kind: "open" }));
   return { reply, step: 1, done: false, ok: true, progress: progress(p, checkpoints(p), 0, s) };
 }
 
@@ -131,14 +132,14 @@ export async function stepTurn(cfg: LlmCfg, s: Session, p: Problem, text: string
 
   let mask = off ? mask0 : markByNumbers(clean, cps, mask0);
   const cur = cps.find((c) => !(mask0 >> c.id & 1)); // bước học sinh đang làm
-  let reply = "";
+  let reply = "", blocked = false;
   const canned = !off && cur && mask === mask0 ? cannedStuck(s, p, cps, mask0, clean, prior, lastBot(all)) : "";
   if (canned) reply = canned;
   else if (!off && cur && mask === mask0) {
     // Server không xác nhận được: nhờ AI nhận xét bước này. Mốc có số thì quyền quyết đúng/sai ở server, AI chỉ viết lời.
     const t0 = Date.now();
     const goal = stepCue(p, cur.id, known(cps, mask0));
-    const out = await askJson(cfg, stepSystem(p, cps), [{ role: "user", text: `[Bước cần làm: S${cur.id + 1}${goal ? ": " + goal : ""}]${cur.must.length ? "\n" + machineCheck(p, clean) : ""}${recent(all)}\nBước học sinh viết: ${clean}` }], stepSchema, { maxTokens: 300, think: "low", deadlineMs: 40_000, attemptMs: 8_000 })
+    const out = await askJson(cfg, stepSystem(p, cps), [{ role: "user", text: `[Bước cần làm: S${cur.id + 1}${goal ? ": " + goal : ""}]${cur.must.length ? "\n" + machineCheck(p, clean) : ""}${recent(all)}\nBước học sinh viết: ${clean}` }], stepSchema, { maxTokens: 300, think: "low", deadlineMs: 40_000, attemptMs: 8_000, use: "step" })
       .catch(async (e) => { await saveStudent.catch(() => {}); throw e; });
     if (tm) tm.ai = (tm.ai ?? 0) + Date.now() - t0;
     // Mốc không có số: AI phán đúng thì phải trích nguyên văn bằng chứng từ bước học sinh viết, server kiểm trích dẫn có thật (như kiểu chat).
@@ -158,6 +159,7 @@ export async function stepTurn(cfg: LlmCfg, s: Session, p: Problem, text: string
   const given = [p.data, p.statement, [...prior, clean].join("\n"), cps.filter((c) => mask >> c.id & 1).map((c) => c.must)];
   if (off) reply = cry ? SOS_REPLY : offReply(p, cps, mask0, all);
   else if (reply && !canned && (leaks(reply, p.solution, given, p.solution_steps) || leaksCalc(reply, p.solution, given, p.solution_steps))) {
+    blocked = true;
     reply = progressed ? "" : pick(STEP_LEAK, lastBot(all)); // đã qua bước thì bỏ lời AI (câu "chưa đúng" cứng sẽ mâu thuẫn với "Đúng rồi")
     await log({ actor: "system", action: "answer_leak_blocked", teacherId, anonId: s.anon_id, linkId: s.link_id });
   }
@@ -185,10 +187,10 @@ export async function stepTurn(cfg: LlmCfg, s: Session, p: Problem, text: string
   const hl = progressed ? 0 : s.hint_level; // qua bước thì mức gợi ý về 0
   const sg = !off && (!progressed || revLine) ? struggle(s, cur) : (s.struggled ?? 0); // nộp mà chưa qua bước, hoặc được giải hộ: bước này gặp khó
   await Promise.all([
-    db.from("messages").insert({ session_id: s.id, role: "bot", content: reply, step, hint_level: hl } as never).then(check),
+    botMsg(s.id, { content: reply, step, hint_level: hl, ms: tm?.ai, kind: cry ? "distress" : off ? "off_topic" : blocked ? "blocked" : revLine ? "reveal" : finished ? "done" : capped ? "capped" : progressed ? "right" : canned ? "stuck" : "wrong" }).then(check),
     db.from("chat_sessions").update({ step, progress: mask, hint_level: hl, stall: revLine ? 0 : lad.stall, revealed, struggled: sg } as never).eq("id", s.id).then(check),
   ]);
-  if (finished || capped) after(() => finish(cfg, s, p, teacherId).catch((e) => console.error("finish failed", e)));
+  if (finished || capped) after(() => finish(cfg, s, p, teacherId).catch((e) => reportError(e, "chấm điểm (finish)", { teacherId, linkId: s.link_id, anonId: s.anon_id, actor: "system" })));
   return { reply, step, done: finished || capped, progress: progress(p, cps, mask, s) };
 }
 
@@ -222,7 +224,7 @@ export async function stepAsk(cfg: LlmCfg, s: Session, p: Problem, text: string,
   else {
     const cur = cps.find((c) => !(mask >> c.id & 1));
     const t0 = Date.now();
-    const out = await askJson(cfg, askSystem(p, cps), [{ role: "user", text: `[Bước đang làm: S${(cur?.id ?? 0) + 1}]\nCâu hỏi của học sinh: ${clean}` }], askSchema, { maxTokens: 300, think: "low", deadlineMs: 40_000, attemptMs: 8_000 })
+    const out = await askJson(cfg, askSystem(p, cps), [{ role: "user", text: `[Bước đang làm: S${(cur?.id ?? 0) + 1}]\nCâu hỏi của học sinh: ${clean}` }], askSchema, { maxTokens: 300, think: "low", deadlineMs: 40_000, attemptMs: 8_000, use: "ask" })
       .catch(async (e) => { await saveStudent.catch(() => {}); throw e; });
     if (tm) tm.ai = (tm.ai ?? 0) + Date.now() - t0;
     const given = [p.data, p.statement, [...prior, clean].join("\n"), cps.filter((c) => mask >> c.id & 1).map((c) => c.must)];
@@ -234,16 +236,16 @@ export async function stepAsk(cfg: LlmCfg, s: Session, p: Problem, text: string,
   }
   if (cry) await log({ actor: "system", action: "student_distress", teacherId, anonId: s.anon_id, linkId: s.link_id });
   await saveStudent;
-  return off ? plainBot(s, p, cps, mask, reply) : stuckTurn(cfg, s, p, teacherId, reply);
+  return off ? plainBot(s, p, cps, mask, reply, cry) : stuckTurn(cfg, s, p, teacherId, reply, "ask", tm?.ai);
 }
 
-async function plainBot(s: Session, p: Problem, cps: Cp[], mask: number, reply: string) {
-  check(await admin().from("messages").insert({ session_id: s.id, role: "bot", content: reply, step: s.step, hint_level: s.hint_level } as never));
+async function plainBot(s: Session, p: Problem, cps: Cp[], mask: number, reply: string, cry: boolean) {
+  check(await botMsg(s.id, { content: reply, step: s.step, hint_level: s.hint_level, kind: cry ? "distress" : "off_topic" }));
   return { reply, step: s.step, done: false, progress: progress(p, cps, mask, s) };
 }
 
 // Hỏi hoặc bấm Gợi ý khi đã hết mức gợi ý là một lượt kẹt (không qua bước). Đủ STALL_LIMIT lượt thì hiện lời giải bước hiện tại và sang bước sau.
-async function stuckTurn(cfg: LlmCfg, s: Session, p: Problem, teacherId: string, reply0: string) {
+async function stuckTurn(cfg: LlmCfg, s: Session, p: Problem, teacherId: string, reply0: string, kind = "stuck", ms?: number) {
   const db = admin();
   const cps = checkpoints(p);
   const mask0 = s.progress ?? 0;
@@ -262,10 +264,10 @@ async function stuckTurn(cfg: LlmCfg, s: Session, p: Problem, teacherId: string,
   const hl = go ? 0 : s.hint_level;
   const sg = struggle(s, cur); // hỏi hoặc bấm Gợi ý khi hết mức: bước này gặp khó
   await Promise.all([
-    db.from("messages").insert({ session_id: s.id, role: "bot", content: reply, step, hint_level: hl } as never).then(check),
+    botMsg(s.id, { content: reply, step, hint_level: hl, ms, kind: go ? "reveal" : kind }).then(check),
     go || lad.stall !== (s.stall ?? 0) || sg !== (s.struggled ?? 0) ? db.from("chat_sessions").update({ step, progress: mask, hint_level: hl, stall: go ? 0 : lad.stall, revealed, struggled: sg, ...(go && { wrong: 0 }) } as never).eq("id", s.id).then(check) : null,
   ]);
-  if (done) after(() => finish(cfg, s, p, teacherId).catch((e) => console.error("finish failed", e)));
+  if (done) after(() => finish(cfg, s, p, teacherId).catch((e) => reportError(e, "chấm điểm (finish)", { teacherId, linkId: s.link_id, anonId: s.anon_id, actor: "system" })));
   return { reply, step, done, progress: progress(p, cps, mask, s) };
 }
 
@@ -284,7 +286,7 @@ export async function stepHint(cfg: LlmCfg, s: Session, p: Problem, teacherId: s
   const reply = text && !leaks(text, p.solution, given, p.solution_steps) ? text : "Bạn đọc lại đề, xem đã biết những gì và cần tìm gì, rồi chọn phép tính cho bước này nhé.";
   const db = admin();
   await Promise.all([
-    db.from("messages").insert({ session_id: s.id, role: "bot", content: reply, step: s.step, hint_level: level } as never).then(check),
+    botMsg(s.id, { content: reply, step: s.step, hint_level: level, kind: "hint" }).then(check),
     db.from("chat_sessions").update({ hint_level: level, struggled: struggle(s, cur) } as never).eq("id", s.id).then(check),
   ]);
   return { reply, step: s.step, done: false, progress: progress(p, cps, mask, s) };

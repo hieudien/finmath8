@@ -7,8 +7,8 @@ Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải q
 ## Cách hoạt động
 
 1. Giáo viên đăng ký, nhập API key của Google Gemini hoặc OpenAI trong Cài đặt (key được mã hóa AES-256-GCM, không trả về trình duyệt).
-2. Giáo viên tạo đề: soạn trực tiếp, dán văn bản, nạp JSON hoặc chụp ảnh đề. AI điền đáp án, lời giải, gợi ý và câu chào đầu tiên; giáo viên kiểm tra rồi lưu. Với kiểu Từng bước và Trắc nghiệm, giáo viên bấm "Tạo chỉ dẫn từng bước" để AI viết việc cần làm, gợi ý và câu trắc nghiệm cho từng bước.
-3. Giáo viên chọn kiểu làm bài ở Cài đặt (Từng bước, Trắc nghiệm từng bước; Chat chỉ là kiểu lùi khi đề thiếu lời giải từng bước), chọn một hoặc nhiều đề, tạo liên kết công khai và gửi cho học sinh.
+2. Giáo viên tạo đề: soạn trực tiếp, dán văn bản, nạp JSON hoặc chụp ảnh đề. AI điền đáp án, lời giải, gợi ý và câu chào đầu tiên; giáo viên kiểm tra rồi lưu. Giáo viên bấm "Tạo chỉ dẫn từng bước" để AI viết việc cần làm và gợi ý cho từng bước.
+3. Giáo viên chọn một hoặc nhiều đề (kiểu Từng bước; Chat chỉ là kiểu lùi khi đề thiếu lời giải từng bước), tạo liên kết công khai và gửi cho học sinh.
 4. Học sinh mở liên kết, nhập mã và họ tên (nhớ trong trình duyệt), chọn đề, làm bài theo kiểu đã chọn, tự đánh giá mức hiểu bài và mức hài lòng cuối bài.
 5. Hệ thống chấm theo 4 tiêu chí (nhận diện, lập kế hoạch, tính toán, giải thích). Giáo viên xem thống kê theo liên kết, hồ sơ từng học sinh và nội dung hội thoại.
 
@@ -20,8 +20,8 @@ Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải q
 - Soạn công thức bằng bàn phím toán MathLive, xem trước KaTeX ngay trong ô nhập.
 - Đề do AI tạo có cờ `reviewed = false`: phải mở đề, tick xác nhận đáp án đúng rồi lưu mới được đưa vào liên kết.
 - AI tạo lời giải từng bước và kiểm tra lời giải khớp đáp án.
-- 2 kiểu làm bài chọn được ở Cài đặt (mặc định Từng bước; ghim vào từng phiên lúc bắt đầu): **Từng bước** (nộp một bước mỗi lần), **Trắc nghiệm từng bước** (4 đáp án mỗi bước, 1 đúng và 3 bẫy lỗi hay gặp kèm lời giải thích). **Chat** (nhắn tự do) không còn trong Cài đặt, chỉ chạy khi đề thiếu lời giải từng bước. Đề thiếu chỉ dẫn hoặc trắc nghiệm tự lùi kiểu: Trắc nghiệm, rồi Từng bước, rồi Chat.
-- Chỉ dẫn từng bước do AI viết sẵn: việc cần làm, 3 mức gợi ý riêng từng bước, trắc nghiệm (nút "Tạo chỉ dẫn từng bước" ở danh sách đề và trang từng đề).
+- Kiểu làm bài **Từng bước** (nộp một bước mỗi lần; ghim vào từng phiên lúc bắt đầu). **Chat** (nhắn tự do) chỉ chạy khi đề thiếu lời giải từng bước. Kiểu Trắc nghiệm từng bước (`quiz.ts`) đang ẩn khỏi Cài đặt, code giữ nguyên; `teacherMode` đổi `quiz` đã lưu thành `steps`.
+- Chỉ dẫn từng bước do AI viết sẵn: việc cần làm, 3 mức gợi ý riêng từng bước (nút "Tạo chỉ dẫn từng bước" ở danh sách đề và trang từng đề).
 - Kiểm thử chatbot cho từng đề: không lộ đáp án, che thông tin cá nhân, kéo học sinh về bài, không xác nhận đáp án sai, tăng gợi ý dần, hỏi cách làm khi chỉ có đáp số.
 - Liên kết công khai: bật/tắt, hạn dùng, giới hạn số tin, nhãn nhóm (trước, sau, thực nghiệm, đối chứng).
 - Trang **Học sinh**: gom theo mã học sinh; điểm trung bình 4 tiêu chí, kỹ năng cần củng cố, lỗi hay mắc, kiến thức nền còn thiếu (khi được giải hộ), danh sách bài đã làm (kể cả bài bỏ dở) và nút **AI phân tích và đề xuất cải thiện**. Mở từng phiên (ở Thống kê hoặc hồ sơ học sinh) có nút **AI phân tích phiên này**: nhận xét điểm tốt, điểm yếu và việc nên làm, lưu lại để xem lại.
@@ -71,7 +71,7 @@ lib/
   students.ts               hồ sơ học sinh
   llm.ts, models.ts         gọi AI (kể cả ảnh), danh sách model, tự đổi model
   modes.ts                  các kiểu làm bài và chuỗi lùi kiểu
-  step-guides.ts            AI viết chỉ dẫn, gợi ý, trắc nghiệm từng bước
+  step-guides.ts            AI viết chỉ dẫn và gợi ý từng bước
   greeting.ts               tạo câu chào đầu tiên
   pii.ts, crypto.ts, log.ts lọc thông tin cá nhân, mã hóa key, nhật ký
 public/mathlive-fonts/      font của MathLive

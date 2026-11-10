@@ -6,6 +6,8 @@ const MODE: Record<string, string> = { chat: "Chat", steps: "Từng bước", qu
 const PROVIDER: Record<string, string> = { gemini: "Google Gemini", openai: "OpenAI" };
 const s = (v: unknown) => (v == null ? "" : String(v));
 
+const RULE: Record<string, string> = { anon: "Gửi quá nhanh (theo trình duyệt)", ip: "Cả mạng gửi quá nhiều", start_ip: "Mở quá nhiều bài cùng lúc", link_day: "Liên kết đạt trần lượt dùng trong ngày", anon_day: "Một em làm quá nhiều bài trong ngày", max_messages: "Đủ số tin tối đa của bài", too_fast: "Gửi tin liên tiếp dưới 2 giây" };
+
 const ACC = "Tài khoản", PROB = "Đề và liên kết", STU = "Học sinh làm bài", SYS = "Hệ thống";
 
 export const LOG: Record<string, Info> = {
@@ -16,7 +18,7 @@ export const LOG: Record<string, Info> = {
   logout: { label: "Đăng xuất", group: ACC },
   password_reset_requested: { label: "Yêu cầu đặt lại mật khẩu", group: ACC },
   password_reset: { label: "Đặt lại mật khẩu", group: ACC },
-  settings_changed: { label: "Đổi cài đặt", group: ACC, text: (m) => [m.provider && `Nhà cung cấp ${PROVIDER[s(m.provider)] ?? s(m.provider)}`, m.mode && `kiểu ${MODE[s(m.mode)] ?? s(m.mode)}`, m.key_changed && "có đổi API key"].filter(Boolean).join(", ") },
+  settings_changed: { label: "Đổi cài đặt", group: ACC, text: (m) => { const c = (m.changed ?? {}) as Record<string, { from?: string; to?: string }>; const ch = (k: string, names: Record<string, string>) => `${names[s(c[k].from)] ?? (s(c[k].from) || "chưa đặt")} sang ${names[s(c[k].to)] ?? s(c[k].to)}`; return [m.provider && `Nhà cung cấp ${PROVIDER[s(m.provider)] ?? s(m.provider)}${c.provider ? ` (${ch("provider", PROVIDER)})` : ""}`, m.mode && `kiểu ${MODE[s(m.mode)] ?? s(m.mode)}${c.mode ? ` (${ch("mode", MODE)})` : ""}`, m.key_changed && "có đổi API key"].filter(Boolean).join(", "); } },
   export: { label: "Tải dữ liệu", group: ACC, text: (m) => `Tải CSV${m.kind ? ` (${s(m.kind)})` : ""}${m.rows != null ? `, ${s(m.rows)} dòng` : ""}` },
   student_deleted: { label: "Xóa học sinh", group: ACC, text: (m) => (m.code ? `${m.name ? `${s(m.name)} ` : ""}(${s(m.code)}), bài làm vẫn được giữ` : "") },
   student_advice: { label: "AI đề xuất cải thiện cho học sinh", group: ACC, text: (m) => (m.code ? `Học sinh ${s(m.code)}` : "") },
@@ -40,6 +42,8 @@ export const LOG: Record<string, Info> = {
   student_distress: { label: "Học sinh có dấu hiệu cần người lớn hỗ trợ", group: STU, warn: true },
   answer_leak_blocked: { label: "Chặn lộ đáp án", group: STU, warn: true, text: () => "Chatbot định nêu đáp án, hệ thống đã thay bằng câu hỏi tiếp" },
   session_capped: { label: "Chốt bài do quá số lượt", group: STU, warn: true, text: (m) => (m.done != null ? `Đã qua ${s(m.done)} bước` : "") },
+  rate_limited: { label: "Học sinh bị chặn do gửi quá nhiều", group: STU, warn: true, text: (m) => RULE[s(m.rule)] ?? s(m.rule) },
+  link_closed: { label: "Học sinh vào liên kết đã đóng", group: STU, text: (m) => (m.reason === "expired" ? "Liên kết đã hết hạn" : "Liên kết đang tắt") },
   session_off_topic_closed: { label: "Chốt bài do lạc đề liên tục", group: STU, warn: true },
 
   model_fallback: { label: "Tự đổi model AI", group: SYS, text: (m) => `Từ ${s(m.from)} sang ${s(m.to)}${m.reason ? ` (${s(m.reason)})` : ""}` },
@@ -47,6 +51,22 @@ export const LOG: Record<string, Info> = {
 };
 
 export const GROUPS = [ACC, PROB, STU, SYS];
+
+// Loại lỗi của nhật ký lỗi (cột error_logs.kind): nhãn tiếng Việt và gợi ý việc cần làm.
+export const ERR_KIND: Record<string, { label: string; hint: string }> = {
+  quota: { label: "Hết hạn mức AI", hint: "Kiểm tra gói hoặc thanh toán của API key, hoặc chờ sang ngày mới." },
+  timeout: { label: "AI trả lời quá chậm", hint: "Thử lại sau; nếu lặp lại, đổi nhà cung cấp." },
+  key: { label: "API key bị từ chối", hint: "Nhập key mới ở mục API key phía trên." },
+  model: { label: "Model AI không còn dùng được", hint: "Báo admin cập nhật danh sách model." },
+  overload: { label: "AI quá tải hoặc mất kết nối", hint: "Thường tự hết sau vài phút." },
+  format: { label: "AI trả sai định dạng", hint: "Thử lại; nếu lặp lại, báo admin." },
+  db: { label: "Lỗi cơ sở dữ liệu", hint: "Báo admin kèm mã lỗi." },
+  mail: { label: "Không gửi được email", hint: "Kiểm tra cấu hình gửi thư, thử lại sau ít phút." },
+  config: { label: "Chưa cấu hình xong", hint: "Chatbot chưa có API key nên học sinh không làm bài được." },
+  render: { label: "Lỗi hiển thị trang", hint: "Báo admin kèm mã lỗi." },
+  client: { label: "Lỗi trên trình duyệt", hint: "Báo admin kèm mã lỗi." },
+  other: { label: "Lỗi khác", hint: "Báo admin kèm mã lỗi." },
+};
 export const WARN = Object.keys(LOG).filter((k) => LOG[k].warn);
 export const labelOf = (a: string) => LOG[a]?.label ?? a;
 export const describe = (a: string, m: Meta) => { try { return LOG[a]?.text?.(m) ?? ""; } catch { return ""; } };

@@ -4,7 +4,6 @@ import { api, bad, requireUser } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
 import { checkKey } from "@/lib/llm";
 import { PROVIDERS } from "@/lib/models";
-import { MODE_IDS } from "@/lib/modes";
 import { log } from "@/lib/log";
 import { llmCfg, teacherMode } from "@/lib/teacher";
 
@@ -12,7 +11,7 @@ import { llmCfg, teacherMode } from "@/lib/teacher";
 const body = z.object({
   provider: z.enum(["gemini", "openai"]).optional(),
   key: z.string().trim().optional(),
-  mode: z.enum(MODE_IDS).optional(),
+  mode: z.literal("steps").optional(), // kiểu Trắc nghiệm đang ẩn
 });
 
 export const POST = api(async (req) => {
@@ -23,14 +22,15 @@ export const POST = api(async (req) => {
   if (!provider && !mode) return bad("Dữ liệu không hợp lệ.");
   if (key && !provider) return bad("Dữ liệu không hợp lệ.");
 
+  const { data: before } = await admin().from("teacher_settings").select("provider,interaction_mode,gemini_key_enc,openai_key_enc").eq("teacher_id", u.id).maybeSingle();
+  const old = before as { provider: string; interaction_mode: string; gemini_key_enc: string | null; openai_key_enc: string | null } | null;
   const row: Record<string, unknown> = { teacher_id: u.id, updated_at: new Date().toISOString() };
   if (mode) row.interaction_mode = mode;
 
   if (provider) {
     const label = PROVIDERS[provider].label;
     const col = provider === "openai" ? "openai_key_enc" : "gemini_key_enc";
-    const { data: ex } = await admin().from("teacher_settings").select("gemini_key_enc,openai_key_enc").eq("teacher_id", u.id).maybeSingle();
-    const hasKey = !!(ex as Record<string, string | null> | null)?.[col];
+    const hasKey = !!(old as Record<string, string | null> | null)?.[col];
     if (!key && !hasKey) return bad(`Chưa có API key của ${label}. Dán key vào ô API key.`);
 
     if (key) {
@@ -54,6 +54,10 @@ export const POST = api(async (req) => {
   if (error) return bad("Không lưu được cài đặt.", 500);
   llmCfg.drop(u.id);
   teacherMode.drop(u.id);
-  await log({ actor: "teacher", action: "settings_changed", teacherId: u.id, meta: { provider, key_changed: !!key, mode } });
+  // Giá trị cũ và mới của phần có đổi (không ghi key).
+  const changed: Record<string, { from: string | null; to: string }> = {};
+  if (provider && provider !== old?.provider) changed.provider = { from: old?.provider ?? null, to: provider };
+  if (mode && mode !== old?.interaction_mode) changed.mode = { from: old?.interaction_mode ?? null, to: mode };
+  await log({ actor: "teacher", action: "settings_changed", teacherId: u.id, meta: { provider, key_changed: !!key, mode, changed } });
   return Response.json({ ok: true, last4: key?.slice(-4) });
 });

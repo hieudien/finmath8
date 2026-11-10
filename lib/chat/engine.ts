@@ -10,6 +10,7 @@ import { stepGoal } from "@/lib/chat/goals";
 import { GREETING_FALLBACK } from "@/lib/greeting";
 import { scrub } from "@/lib/pii";
 import { log } from "@/lib/log";
+import { reportError } from "@/lib/errors";
 import type { Problem } from "@/lib/schema/problem";
 
 export type Session = { id: string; link_id: string; anon_id: string; step: number; hint_level: number; progress?: number; stall?: number; wrong?: number; revealed?: number; struggled?: number; started_at: string; status: string; mode?: string };
@@ -19,6 +20,11 @@ export const SOS = /tự tử|muốn chết|tự (làm )?đau|tự hại|bị (�
 const IDK = /không biết|ko biết|chịu|bó tay|khó quá|không hiểu|giải (giúp|hộ)|cho (mình )?đáp án/i;
 export const MAX_TURNS = 20; // trần số tin học sinh mỗi phiên: quá mức này mà chưa xong thì chốt phiên, không để lặp vô hạn
 export const INJECT = /ignore (all |previous |the )?(instruction|prompt)|system prompt|prompt (của|cua) (bạn|mày)|bỏ qua (mọi |các |tất cả )?(hướng dẫn|chỉ dẫn|quy tắc|lệnh)|quên (mọi |các )?(hướng dẫn|quy tắc)|đóng vai|jailbreak|developer mode/i;
+
+const VER = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "dev";
+// Mọi tin của bot ghi qua đây: meta.kind (right, wrong, hint, ask, reveal, off_topic, blocked, distress, capped, done, open, stuck, reply), meta.ai_ms (thời gian chờ AI) và meta.v (bản code).
+export const botMsg = (sid: string, m: { content: string; step?: number; hint_level?: number; kind: string; ms?: number }) =>
+  admin().from("messages").insert({ session_id: sid, role: "bot", content: m.content, step: m.step ?? null, hint_level: m.hint_level ?? null, meta: { kind: m.kind, ai_ms: m.ms, v: VER } } as never);
 
 export type Tm = Record<string, number>; // thời gian từng bước (ms), route đưa ra header Server-Timing
 const timed = <T>(tm: Tm | undefined, k: string, p: Promise<T>) => {
@@ -49,7 +55,7 @@ ${chatState(cps, mask0, s.hint_level, v)}` },
   ];
   // Lưu tin học sinh song song với lúc chờ AI: bớt một vòng chờ DB.
   const saveStudent = clean === null ? null : Promise.resolve(db.from("messages").insert({ session_id: s.id, role: "student", content: clean } as never)).then(check);
-  const out = off ? null : await timed(tm, "ai", askJson(cfg, chatSystem(p), turns, turnSchema, { maxTokens: 400, deadlineMs: 40_000, attemptMs: 8_000 })).catch(async (e) => { await saveStudent?.catch(() => {}); throw e; });
+  const out = off ? null : await timed(tm, "ai", askJson(cfg, chatSystem(p), turns, turnSchema, { maxTokens: 400, deadlineMs: 40_000, attemptMs: 8_000, use: "chat" })).catch(async (e) => { await saveStudent?.catch(() => {}); throw e; });
   await saveStudent;
 
   // Server xác minh bằng chứng AI nộp, không tin AI tự báo "xong". Mốc làm đúng thứ tự: chỉ tính mốc đầu tiên chưa xong và các mốc sau nếu đủ bằng chứng.
@@ -90,6 +96,7 @@ ${chatState(cps, mask0, s.hint_level, v)}` },
   const cry = sos || (!onTopic && !!out?.distress);
   // Bot chỉ được nói số kết quả/trung gian mà học sinh đã tự nêu. Vi phạm thì dùng câu trung tính.
   let reply = onTopic ? tighten(out!.reply) : cry ? SOS_REPLY : OFF_REPLIES[Math.min(streak, 2)];
+  let blocked = false;
   if (cry) await log({ actor: "system", action: "student_distress", teacherId, anonId: s.anon_id, linkId: s.link_id });
   // AI viết lời tổng kết (không có câu hỏi) nhưng server chưa xác nhận cách làm: không để bot chào kết trong khi phiên còn mở, hỏi lại cách làm.
   if (onTopic && !finished) reply = keepOrAsk(reply, done >= cps.length);
@@ -99,6 +106,7 @@ ${chatState(cps, mask0, s.hint_level, v)}` },
   const given = [p.data, p.statement, said, cps.filter((c) => mask >> c.id & 1).map((c) => c.must)];
   if (leaks(reply, p.solution, given, p.solution_steps)) {
     reply = "Mình thấy bạn đang đi đúng hướng. Bạn thử viết tiếp bước tính tiếp theo của mình nhé?"; // không gọi AI viết lại: chậm thêm 2-3s
+    blocked = true;
     await log({ actor: "system", action: "answer_leak_blocked", teacherId, anonId: s.anon_id, linkId: s.link_id });
   }
   // Lời giải hiện cho học sinh là chủ ý (đã hết gợi ý): đặt sau kiểm tra lộ đáp án. Phiên có bước được giải hộ thì lời kết là lời kết "có giúp", không khen tự giải.
@@ -119,19 +127,19 @@ ${chatState(cps, mask0, s.hint_level, v)}` },
     await log({ actor: "system", action: "session_capped", teacherId, anonId: s.anon_id, linkId: s.link_id, meta: { done } });
   }
   await timed(tm, "db_save", Promise.all([
-    db.from("messages").insert({ session_id: s.id, role: "bot", content: reply, step, hint_level: hint } as never).then(check),
+    botMsg(s.id, { content: reply, step, hint_level: hint, ms: tm?.ai, kind: cry ? "distress" : !onTopic ? "off_topic" : blocked ? "blocked" : revLine ? "reveal" : capped ? "capped" : finished ? "done" : progressed ? "right" : stuck ? "stuck" : "reply" }).then(check),
     db.from("chat_sessions").update({ step, hint_level: hint, progress: mask, stall: revLine ? 0 : lad.stall, revealed } as never).eq("id", s.id).then(check),
   ]));
 
   if (closeOff) await log({ actor: "system", action: "session_off_topic_closed", teacherId, anonId: s.anon_id, linkId: s.link_id });
   // Chấm điểm chạy ngầm sau khi trả lời: học sinh thấy lời kết ngay, khỏi chờ AI chấm 2-5 giây. Lỗi thì phiên vẫn "active", nút Kết thúc chấm lại.
-  if (finished || capped || closeOff) after(() => finish(cfg, s, p, teacherId).catch((e) => console.error("finish failed", e)));
+  if (finished || capped || closeOff) after(() => finish(cfg, s, p, teacherId).catch((e) => reportError(e, "chấm điểm (finish)", { teacherId, linkId: s.link_id, anonId: s.anon_id, actor: "system" })));
   return { reply, step, done: finished || capped || closeOff };
 }
 
 // Chấm ngay phiên có bước được giải hộ để nối gợi ý ôn tập vào lời kết. Lỗi thì giữ nguyên lời kết, chấm ngầm sau.
 export async function withReview(cfg: LlmCfg, s: Session, p: Problem, teacherId: string, revealed: number, reply: string) {
-  const rv = await finish(cfg, s, p, teacherId, revealed).catch((e) => { console.error("finish failed", e); return undefined; });
+  const rv = await finish(cfg, s, p, teacherId, revealed).catch(async (e) => { await reportError(e, "chấm điểm (withReview)", { teacherId, linkId: s.link_id, anonId: s.anon_id, actor: "system" }); return undefined; });
   return rv ? reply + reviewText(rv) : reply;
 }
 
@@ -147,7 +155,7 @@ export async function finish(cfg: LlmCfg, s: Session, p: Problem, teacherId: str
   const helped = cps.filter((x) => revealed >> x.id & 1);
   const transcript = msgs.map((m) => `${m.role === "student" ? "HS" : "Bot"}: ${m.content}`).join("\n")
     + (helped.length ? `\n[Hệ thống: bot đã hiện lời giải các bước ${helped.map((x) => x.id + 1).join(", ")} (học sinh KHÔNG tự làm các bước này)]` : "");
-  const r = await askJson(cfg, evalSystem(p, helped.length > 0), [{ role: "user", text: transcript || "(không có hội thoại)" }], evalSchema);
+  const r = await askJson(cfg, evalSystem(p, helped.length > 0), [{ role: "user", text: transcript || "(không có hội thoại)" }], evalSchema, { use: "eval" });
   const cap = helped.length ? scoreCap(cps, revealed) : 3; // chỉ phần tự làm được tính điểm: chốt bằng luật, không phụ thuộc AI chấm
   const c = (n: number) => Math.min(cap, Math.max(0, Math.round(n)));
   r.final_correct = r.final_correct && !(cps.length && revealed >> (cps.length - 1) & 1); // bước kết luận được giải hộ thì không phải tự đi tới kết luận đúng
@@ -172,6 +180,6 @@ export async function finish(cfg: LlmCfg, s: Session, p: Problem, teacherId: str
 // Lời mở đầu không gọi AI lúc chat: dùng câu chào AI đã tạo sẵn khi nạp đề (p.greeting). Tiết kiệm 1 lượt/phiên.
 export async function openingTurn(s: Session, p: Problem) {
   const reply = p.greeting || GREETING_FALLBACK;
-  check(await admin().from("messages").insert({ session_id: s.id, role: "bot", content: reply, step: 1, hint_level: 1 } as never));
+  check(await botMsg(s.id, { content: reply, step: 1, hint_level: 1, kind: "open" }));
   return { reply, step: 1, done: false };
 }

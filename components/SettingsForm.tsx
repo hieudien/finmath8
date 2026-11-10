@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Alert, Button, Field, post } from "@/components/ui";
+import { AiBadge, Alert, Button, Field, post } from "@/components/ui";
 import { PROVIDERS, type Provider } from "@/lib/models";
 
 type Props = { provider: Provider; last4: Record<Provider, string | null> };
@@ -65,7 +65,7 @@ export default function SettingsForm(props: Props) {
       </section>
 
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
-      <Button type="submit" pending={busy ? "Đang kiểm tra key..." : undefined} className="self-start">Lưu cài đặt</Button>
+      <Button type="submit" pending={busy ? "Đang kiểm tra key..." : undefined} className="self-start">Lưu cài đặt <AiBadge /></Button>
     </form>
   );
 }

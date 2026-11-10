@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Be_Vietnam_Pro } from "next/font/google";
 import "./globals.css";
+import ClientErrors from "@/components/ClientErrors";
 
 const font = Be_Vietnam_Pro({
   variable: "--font-be-vietnam",
@@ -18,7 +19,7 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, view
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="vi">
-      <body className={`${font.variable} antialiased`}>{children}</body>
+      <body className={`${font.variable} antialiased`}>{children}<ClientErrors /></body>
     </html>
   );
 }

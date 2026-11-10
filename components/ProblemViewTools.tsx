@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, post, useRefresh } from "@/components/ui";
+import { AiButton, Alert, Button, post, useRefresh } from "@/components/ui";
 
 export function ViewTools({ text }: { text: string }) {
   const [done, setDone] = useState(false);
@@ -38,25 +38,22 @@ export function ExplainButton({ id, action = "explain", label = "Tạo lời gi�
   const [rp, refresh] = useRefresh();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const [warn, setWarn] = useState("");
   return (
     <div className="flex flex-col gap-2 print:hidden">
-      <Button
+      <AiButton
         onClick={async () => {
           setBusy(true);
-          setErr(""); setWarn("");
-          const { ok, data } = await post<{ noQuiz?: boolean; rewrote?: boolean }>("/api/problems", { action, id });
+          setErr("");
+          const { ok, data } = await post("/api/problems", { action, id });
           setBusy(false);
-          if (ok) { if (data.rewrote) setWarn("Lời giải cũ có bước quá chung chung nên AI đã viết lại lời giải và tạo trắc nghiệm. Hãy xem lại lời giải mới."); else if (data.noQuiz) setWarn("Đã tạo chỉ dẫn và gợi ý, nhưng AI chưa tạo được trắc nghiệm hợp lệ (có bước quá chung chung). Đề này chạy kiểu Từng bước. Bấm thử lại hoặc sửa lời giải cho rõ kết quả từng bước."); refresh(); }
-          else setErr(data.error ?? "Có lỗi.");
+          if (ok) refresh(); else setErr(data.error ?? "Có lỗi.");
         }}
         pending={busy ? busyLabel : rp ? "Đang cập nhật..." : undefined}
         className="self-start"
       >
         {label}
-      </Button>
+      </AiButton>
       {err && <Alert tone="danger">{err}</Alert>}
-      {warn && <Alert tone="warning">{warn}</Alert>}
     </div>
   );
 }

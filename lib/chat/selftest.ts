@@ -20,12 +20,12 @@ const cleaks = (p: Problem, reply: string) => leaks(reply, p.solution, [p.data, 
 async function say(cfg: LlmCfg, p: Problem, history: Turn[], text: string, mask = 0, hint = 1) {
   const cps = checkpoints(p);
   const turns: Turn[] = [...history, { role: "user", text: text + "\n" + chatState(cps, mask, hint) }];
-  const out = await askJson(cfg, chatSystem(p), turns, turnSchema);
+  const out = await askJson(cfg, chatSystem(p), turns, turnSchema, { use: "selftest" });
   return { out, history: [...history, { role: "user", text } as Turn, { role: "model", text: out.reply } as Turn] };
 }
 
 async function judge(cfg: LlmCfg, question: string, reply: string) {
-  return askJson(cfg, "Bạn là giám khảo kiểm thử chatbot dạy Toán. Trả lời nghiêm túc, chỉ trả JSON {\"pass\": boolean, \"reason\": string (1 câu)}.", [{ role: "user", text: `Câu hỏi: ${question}\nTin nhắn của chatbot: "${reply}"` }], judgeSchema);
+  return askJson(cfg, "Bạn là giám khảo kiểm thử chatbot dạy Toán. Trả lời nghiêm túc, chỉ trả JSON {\"pass\": boolean, \"reason\": string (1 câu)}.", [{ role: "user", text: `Câu hỏi: ${question}\nTin nhắn của chatbot: "${reply}"` }], judgeSchema, { use: "selftest" });
 }
 
 async function guard(name: string, fn: () => Promise<Omit<TestResult, "name">>): Promise<TestResult> {
@@ -45,7 +45,7 @@ export async function runSelfTest(cfg: LlmCfg, p: Problem): Promise<TestResult[]
 
   const tests: (() => Promise<TestResult>)[] = [
     () => guard("Đáp án đề khớp lời giải độc lập", async () => {
-      const r = await askJson(cfg, "Giải bài Toán sau cẩn thận. Chỉ trả JSON {\"answers\": {tên: giá trị số}} chứa mọi đáp số bằng số của bài (không làm tròn bớt).", [{ role: "user", text: `${p.statement ?? p.title}\nDữ liệu: ${JSON.stringify(p.data)}` }], solveSchema, { think: true });
+      const r = await askJson(cfg, "Giải bài Toán sau cẩn thận. Chỉ trả JSON {\"answers\": {tên: giá trị số}} chứa mọi đáp số bằng số của bài (không làm tròn bớt).", [{ role: "user", text: `${p.statement ?? p.title}\nDữ liệu: ${JSON.stringify(p.data)}` }], solveSchema, { think: true, use: "selftest" });
       const got = nums(r.answers);
       const near = (m: number, n: number) => Math.abs(m - n) <= Math.abs(n) * 0.005;
       // Chấp nhận số trùng khớp, hoặc số là hiệu của hai số trong lời giải (vd chênh lệch).

@@ -1,9 +1,13 @@
 "use client";
+import { useEffect } from "react";
 import { Button } from "@/components/ui";
+import { reportClient } from "@/components/ClientErrors";
 
 const CONTACT = process.env.NEXT_PUBLIC_ADMIN_CONTACT;
 
 export default function ErrorView({ error, reset, student = false }: { error: Error & { digest?: string }; reset: () => void; student?: boolean }) {
+  // Lỗi có digest đã được server ghi (instrumentation.ts); lỗi chỉ xảy ra trên trình duyệt thì báo về đây.
+  useEffect(() => { if (!error.digest) reportClient(error.message, error.stack); }, [error]);
   return (
     <main className="mx-auto flex min-h-[60dvh] max-w-md flex-col justify-center gap-4 px-4 py-8">
       <h1>Có lỗi xảy ra</h1>

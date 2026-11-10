@@ -2,7 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Field, TextArea, post } from "@/components/ui";
+import { AiBadge, AiButton, Alert, Button, Field, TextArea, post } from "@/components/ui";
 import MathTextArea from "@/components/MathTextArea";
 import type { Problem } from "@/lib/schema/problem";
 
@@ -94,8 +94,8 @@ export default function ProblemEditor({ initial, newCode }: { initial?: Problem;
       <div onPaste={(e) => { const f = [...e.clipboardData.files].find((x) => x.type.startsWith("image/")); if (f) { e.preventDefault(); readImage(f); } }}>
         <MathTextArea label="Đề bài (học sinh sẽ thấy)" rows={5} value={statement} onChange={setStatement} hint="Bấm Công thức để soạn công thức, hoặc gõ trong $...$. Sửa đề bài xong thì bấm lại nút AI để cập nhật lời giải. Dán ảnh đề (Ctrl+V) vào ô này để AI đọc." />
       </div>
-      <label className="inline-flex min-h-11 w-fit cursor-pointer items-center text-sm text-primary underline">Hoặc chọn ảnh đề từ máy<input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) readImage(f); }} /></label>
-      <div><Button variant="secondary" onClick={generate} disabled={!canGen} pending={busy || undefined}>AI tạo đáp án, lời giải, gợi ý từ đề bài</Button></div>
+      <label className="inline-flex min-h-11 w-fit cursor-pointer items-center text-sm text-primary underline">Hoặc chọn ảnh đề từ máy&nbsp;<AiBadge /><input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) readImage(f); }} /></label>
+      <div><AiButton variant="secondary" onClick={generate} disabled={!canGen} pending={busy || undefined}>AI tạo đáp án, lời giải, gợi ý từ đề bài</AiButton></div>
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
 
       <Field label="Kỹ năng (cách nhau dấu phẩy)" value={skills} onChange={(e) => setSkills(e.target.value)} hint="Dùng để thống kê học sinh yếu kỹ năng nào." />

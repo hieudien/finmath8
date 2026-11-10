@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { Alert, Button, Confirm, TextArea, post, useRefresh } from "@/components/ui";
+import { AiButton, Alert, Button, Confirm, TextArea, post, useRefresh } from "@/components/ui";
 
 type Msg = { tone: "success" | "warning" | "danger"; text: string } | null;
 
@@ -59,10 +59,10 @@ export function ImportPanel({ stepsMode = false }: { stepsMode?: boolean }) {
 
   async function guides() {
     setBusy("Đang tạo chỉ dẫn từng bước (có thể mất vài chục giây)..."); setMsg(null);
-    const { ok, data } = await post<{ made: number; failed: number; noQuiz: number; rewrote: number; left: number }>("/api/problems", { action: "step_guides_all" });
+    const { ok, data } = await post<{ made: number; failed: number; left: number }>("/api/problems", { action: "step_guides_all" });
     setBusy("");
     if (!ok) return fail(data.error);
-    setMsg({ tone: data.failed ? "danger" : data.left || data.noQuiz ? "warning" : "success", text: data.made || data.failed ? `Đã tạo chỉ dẫn cho ${data.made} đề${data.failed ? `, ${data.failed} đề lỗi (bấm lại để thử tiếp)` : ""}${data.left ? `. Còn ${data.left} đề chưa làm, bấm lại để làm tiếp` : ""}${data.rewrote ? `. AI đã viết lại lời giải của ${data.rewrote} đề vì lời giải cũ có bước quá chung chung (hãy xem lại)` : ""}${data.noQuiz ? `. ${data.noQuiz} đề chưa tạo được trắc nghiệm hợp lệ (bước quá chung chung), đề đó chạy kiểu Từng bước; bấm lại để thử tiếp hoặc sửa lại lời giải` : ""}.` : "Các đề có lời giải từng bước đều đã có chỉ dẫn." });
+    setMsg({ tone: data.failed ? "danger" : data.left ? "warning" : "success", text: data.made || data.failed ? `Đã tạo chỉ dẫn cho ${data.made} đề${data.failed ? `, ${data.failed} đề lỗi (bấm lại để thử tiếp)` : ""}${data.left ? `. Còn ${data.left} đề chưa làm, bấm lại để làm tiếp` : ""}.` : "Các đề có lời giải từng bước đều đã có chỉ dẫn." });
     refresh();
   }
 
@@ -71,8 +71,8 @@ export function ImportPanel({ stepsMode = false }: { stepsMode?: boolean }) {
       <div className="flex flex-wrap gap-2">
         <Link href="/dashboard/problems/new" className="inline-flex min-h-11 items-center justify-center rounded-sm bg-primary px-4 font-medium text-on-primary hover:bg-primary-hover">Tạo đề mới</Link>
         <Button variant="secondary" onClick={() => { setMsg(null); setOpen(true); }}>Nạp JSON / dán văn bản</Button>
-        <Button variant="secondary" onClick={greetings} pending={wait || undefined}>Tạo lời chào cho các đề chưa có</Button>
-        {stepsMode && <Button variant="secondary" onClick={guides} pending={wait || undefined}>Tạo chỉ dẫn từng bước cho các đề chưa có</Button>}
+        <AiButton variant="secondary" onClick={greetings} pending={wait || undefined}>Tạo lời chào cho các đề chưa có</AiButton>
+        {stepsMode && <AiButton variant="secondary" onClick={guides} pending={wait || undefined}>Tạo chỉ dẫn từng bước cho các đề chưa có</AiButton>}
       </div>
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
     </div>
@@ -101,7 +101,7 @@ export function ImportPanel({ stepsMode = false }: { stepsMode?: boolean }) {
                 <Button variant="secondary" onClick={() => file.current?.click()}>Chọn tệp .json</Button>
               </>
             ) : (
-              <Button onClick={normalize} disabled={raw.trim().length < 20} pending={wait || undefined}>Chuẩn hóa thành JSON</Button>
+              <AiButton onClick={normalize} disabled={raw.trim().length < 20} pending={wait || undefined}>Chuẩn hóa thành JSON</AiButton>
             )}
           </div>
         </>
@@ -128,7 +128,7 @@ export function ImportPanel({ stepsMode = false }: { stepsMode?: boolean }) {
 
 type TR = { name: string; pass: boolean; detail: string };
 
-export function ProblemActions({ id, code }: { id: string; code: string }) {
+export function ProblemActions({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<TR[] | null>(null);
   const [err, setErr] = useState("");
@@ -143,11 +143,11 @@ export function ProblemActions({ id, code }: { id: string; code: string }) {
   const passed = res?.filter((r) => r.pass).length ?? 0;
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="ml-auto flex flex-wrap items-center gap-2">
         <Link href={`/dashboard/problems/${id}`} className="inline-flex min-h-11 items-center justify-center rounded-sm bg-primary px-4 font-medium text-on-primary hover:bg-primary-hover">Xem đề</Link>
         <Link href={`/dashboard/problems/${id}/edit`} className="inline-flex min-h-11 items-center justify-center rounded-sm border border-border-strong bg-surface px-4 font-medium hover:bg-primary-soft">Sửa</Link>
-        <Button variant="secondary" onClick={run} pending={busy ? "Đang kiểm thử (khoảng 30 giây)..." : undefined}>Kiểm thử chatbot</Button>
-        <Confirm label={`Xóa ${code}`} message="Đề sẽ bị xóa khỏi danh sách. Liên kết đã tạo vẫn dùng bản chụp đề cũ." onConfirm={async () => { const { ok, data } = await post("/api/problems", { action: "delete", id }); if (!ok) return data.error ?? "Có lỗi."; }} />
+        <AiButton variant="secondary" onClick={run} pending={busy ? "Đang kiểm thử (khoảng 30 giây)..." : undefined}>Kiểm thử chatbot</AiButton>
+        <Confirm label="Xóa" message="Đề sẽ bị xóa khỏi danh sách. Liên kết đã tạo vẫn dùng bản chụp đề cũ." onConfirm={async () => { const { ok, data } = await post("/api/problems", { action: "delete", id }); if (!ok) return data.error ?? "Có lỗi."; }} />
       </div>
       <div className="basis-full" aria-live="polite">
         {err && <Alert tone="danger">{err}</Alert>}

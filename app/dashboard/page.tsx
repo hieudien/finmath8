@@ -1,6 +1,7 @@
 import { supabaseServer, currentUser } from "@/lib/supabase/server";
 import { Badge, LinkButton, StatusBadge } from "@/components/ui";
 import { check } from "@/lib/db";
+import { sweep } from "@/lib/sweep";
 import Link from "next/link";
 import { fmtTime, hardSteps, r1, sessionState, studentMsgs, who, type StepInfo } from "@/lib/stats";
 import { MathText } from "@/components/MathText";
@@ -12,6 +13,7 @@ type Ov = { sessions: number; done: number; evals: number; total_avg: number; co
 export default async function Page() {
   const u = (await currentUser())!;
   const sb = await supabaseServer();
+  sweep();
   // Số liệu gom sẵn trong DB (view overview_stats, error_counts): không kéo toàn bộ phiên/chấm điểm/nhật ký về.
   const res = await Promise.all([
     sb.from("teacher_settings").select("*").eq("teacher_id", u.id).maybeSingle(),

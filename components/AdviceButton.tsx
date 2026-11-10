@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Alert, Button, post, useRefresh } from "@/components/ui";
+import { AiButton, Alert, post, useRefresh } from "@/components/ui";
 
 export default function AdviceButton({ code, has }: { code: string; has: boolean }) {
   const [rp, refresh] = useRefresh();
@@ -14,7 +14,7 @@ export default function AdviceButton({ code, has }: { code: string; has: boolean
   }
   return (
     <div className="flex flex-col gap-2">
-      <div><Button variant="secondary" onClick={run} pending={busy ? "AI đang phân tích..." : rp ? "Đang cập nhật..." : undefined}>{has ? "Phân tích lại bằng AI" : "AI phân tích và đề xuất cải thiện"}</Button></div>
+      <div><AiButton variant="secondary" onClick={run} pending={busy ? "AI đang phân tích..." : rp ? "Đang cập nhật..." : undefined}>{has ? "Phân tích lại bằng AI" : "AI phân tích và đề xuất cải thiện"}</AiButton></div>
       {err && <Alert tone="danger">{err}</Alert>}
     </div>
   );

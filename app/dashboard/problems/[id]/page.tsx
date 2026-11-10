@@ -46,7 +46,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const p = parsed.data;
   const tmode = await teacherMode((await currentUser())!.id);
   const stepsMode = tmode !== "chat";
-  const guided = hasGuides(p) && (tmode !== "quiz" || hasChoices(p));
+  const guided = hasGuides(p);
   const hints = [...p.hints].sort((a, b) => a.level - b.level);
 
   return (
@@ -89,8 +89,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             </ol>
             {stepsMode && !guided && (
               <div className="flex flex-col gap-3">
-                <Alert tone="info">Chưa đủ chỉ dẫn cho từng bước (việc cần làm, gợi ý{tmode === "quiz" ? " và trắc nghiệm 4 đáp án" : ""}), nên học sinh chỉ thấy lời nhắc chung và gợi ý chung của đề{tmode === "quiz" ? "; đề thiếu trắc nghiệm chạy kiểu Từng bước" : ""}. AI có thể viết chỉ dẫn cho từng bước. Sửa lời giải xong thì bấm tạo lại.</Alert>
-                <ExplainButton id={id} action="step_guides" label={tmode === "quiz" ? "Tạo chỉ dẫn, gợi ý và trắc nghiệm từng bước bằng AI" : "Tạo chỉ dẫn và gợi ý từng bước bằng AI"} busyLabel="AI đang viết chỉ dẫn..." />
+                <Alert tone="info">Chưa đủ chỉ dẫn cho từng bước (việc cần làm, gợi ý), nên học sinh chỉ thấy lời nhắc chung và gợi ý chung của đề. AI có thể viết chỉ dẫn cho từng bước. Sửa lời giải xong thì bấm tạo lại.</Alert>
+                <ExplainButton id={id} action="step_guides" label="Tạo chỉ dẫn và gợi ý từng bước bằng AI" busyLabel="AI đang viết chỉ dẫn..." />
               </div>
             )}
           </>

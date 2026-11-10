@@ -1,6 +1,7 @@
 import { check } from "@/lib/db";
 import { createHash, randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
+import { sweep } from "@/lib/sweep";
 import { z } from "zod";
 import { admin } from "@/lib/supabase/admin";
 import { llmCfg, teacherMode } from "@/lib/teacher";
@@ -11,7 +12,7 @@ import { stepAsk, stepHint, stepsOpening, stepTurn } from "@/lib/chat/steps";
 import { modeFor } from "@/lib/modes";
 import { type Problem } from "@/lib/schema/problem";
 import { log } from "@/lib/log";
-import { failResponse } from "@/lib/errors";
+import { failResponse, reportError } from "@/lib/errors";
 import { clientIp, limited } from "@/lib/ratelimit";
 
 const body = z.discriminatedUnion("action", [
@@ -31,6 +32,13 @@ const MAX_SESSIONS_PER_LINK_PER_DAY = 2000; // trần cả liên kết: lớp th
 
 
 const err = (error: string, status = 400) => Response.json({ error }, { status });
+
+// Bị chặn giới hạn (429): ghi nhật ký cho giáo viên thấy lớp nào chạm trần. Mỗi học sinh mỗi luật chỉ ghi 1 lần mỗi 10 phút, tránh spam làm phình bảng.
+async function denied(rule: string, slug: string, anon: string, message: string, link?: { id: string; teacher_id: string } | null) {
+  link ??= await getLink(slug).catch(() => null);
+  if (link && !limited(`rl:${anon}:${rule}`, 1, 600_000)) await log({ actor: "student", action: "rate_limited", teacherId: link.teacher_id, anonId: anon, linkId: link.id, meta: { rule } });
+  return err(message, 429);
+}
 
 export async function POST(req: Request) {
   try {
@@ -54,11 +62,17 @@ async function handle(req: Request) {
   const ip = clientIp(req);
   const day = new Date().toISOString().slice(0, 10);
   const ipKey = createHash("sha256").update(ip + day + (process.env.APP_SECRET ?? "")).digest("hex");
-  if (limited("a" + anon, 30) || limited("i" + ipKey, 1500) || (b.action === "start" && limited("s" + ipKey, 300))) return err("Bạn gửi nhanh quá. Chờ một chút rồi thử lại.", 429);
+  const rule = limited("a" + anon, 30) ? "anon" : limited("i" + ipKey, 1500) ? "ip" : b.action === "start" && limited("s" + ipKey, 300) ? "start_ip" : null;
+  if (rule) return denied(rule, b.slug, anon, "Bạn gửi nhanh quá. Chờ một chút rồi thử lại.");
 
   const db = admin();
   const link = await getLink(b.slug);
-  if (!link || !link.active || (link.expires_at && new Date(link.expires_at) < new Date())) return err("Liên kết này đã đóng. Hỏi giáo viên của em.", 404);
+  const closed = !link ? null : !link.active ? "inactive" : link.expires_at && new Date(link.expires_at) < new Date() ? "expired" : null;
+  if (!link || closed) {
+    // Slug không tồn tại thì bỏ qua (không có giáo viên nào để báo); liên kết có thật mà đã đóng thì ghi, mỗi học sinh 1 lần mỗi 10 phút.
+    if (link && closed && !limited(`lc:${anon}:${link.id}`, 1, 600_000)) await log({ actor: "student", action: "link_closed", teacherId: link.teacher_id, anonId: anon, linkId: link.id, meta: { reason: closed } });
+    return err("Liên kết này đã đóng. Hỏi giáo viên của em.", 404);
+  }
   const problems = link.problems;
 
   if (b.action === "start") {
@@ -71,9 +85,10 @@ async function handle(req: Request) {
       db.from("chat_sessions").select("id", { count: "exact", head: true }).eq("anon_id", anon).gte("started_at", since),
       db.from("chat_sessions").select("id", { count: "exact", head: true }).eq("link_id", link.id).gte("started_at", since),
     ]);
-    if (!cfg) return err("Chatbot chưa sẵn sàng. Nhờ giáo viên kiểm tra cài đặt.", 503);
-    if ((linkToday ?? 0) >= MAX_SESSIONS_PER_LINK_PER_DAY) return err("Liên kết này đã đạt giới hạn lượt dùng hôm nay. Báo giáo viên của em.", 429);
-    if ((today ?? 0) >= MAX_SESSIONS_PER_DAY) return err("Hôm nay em đã làm nhiều bài rồi. Nghỉ một chút, mai làm tiếp nhé.", 429);
+    if (!cfg) return notReady(link, anon);
+    if ((linkToday ?? 0) >= MAX_SESSIONS_PER_LINK_PER_DAY) return denied("link_day", b.slug, anon, "Liên kết này đã đạt giới hạn lượt dùng hôm nay. Báo giáo viên của em.", link);
+    if ((today ?? 0) >= MAX_SESSIONS_PER_DAY) return denied("anon_day", b.slug, anon, "Hôm nay em đã làm nhiều bài rồi. Nghỉ một chút, mai làm tiếp nhé.", link);
+    sweep(); // dọn phiên bỏ dở và nhật ký lỗi cũ sau khi trả phản hồi
     const { data: seq } = await db.rpc("next_seq", { p_link: link.id } as never); // sau khi qua mọi giới hạn, để số thứ tự không bị hụt
     // Kiểu tương tác ghim vào phiên lúc bắt đầu; đề thiếu lời giải từng bước thì chạy chat.
     const mode = modeFor(await teacherMode(link.teacher_id), prob);
@@ -81,7 +96,7 @@ async function handle(req: Request) {
     if (error || !s) throw new Error("Không tạo được phiên chat: " + (error?.message ?? "rỗng"));
     // Học sinh có bảng riêng, sống sót khi xóa liên kết. Vào lại bằng cùng mã thì hiện lại (deleted_at = null).
     const up = await db.from("students").upsert({ teacher_id: link.teacher_id, code: b.studentCode, name: b.studentName, last_seen_at: new Date().toISOString(), deleted_at: null } as never);
-    if (up.error) console.error("student upsert failed", up.error.message);
+    if (up.error) await reportError(new Error("Lỗi cơ sở dữ liệu: " + up.error.message), "lưu học sinh (upsert)", { teacherId: link.teacher_id, linkId: link.id, anonId: anon, actor: "student" });
     const sess = s as Session & { seq: number };
     try {
       const [r] = await Promise.all([
@@ -121,7 +136,7 @@ async function handle(req: Request) {
     return Response.json({ ok: true });
   }
 
-  if (!cfg) return err("Chatbot chưa sẵn sàng. Nhờ giáo viên kiểm tra cài đặt.", 503);
+  if (!cfg) return notReady(link, anon);
 
   try {
     if (b.action === "end") {
@@ -138,10 +153,10 @@ async function handle(req: Request) {
     // Một lần đọc (ở trên) cho cả giới hạn số tin, chống gửi dồn và ngữ cảnh của lượt này.
     const all = (msgs ?? []) as { role: "student" | "bot"; content: string; hint_level: number | null; ts: string }[];
     const said = all.filter((m) => m.role === "student");
-    if (said.length >= link.max_messages) return err("Đã đủ số tin nhắn cho bài này. Bấm Kết thúc bài.", 429);
+    if (said.length >= link.max_messages) return denied("max_messages", b.slug, anon, "Đã đủ số tin nhắn cho bài này. Bấm Kết thúc bài.", link);
     // Chống gửi dồn: cách tin trước ít nhất 2 giây trong cùng phiên.
     const last = said.at(-1);
-    if (last && Date.now() - new Date(last.ts).getTime() < 2000) return err("Bạn gửi nhanh quá. Chờ một chút rồi gửi lại nhé.", 429);
+    if (last && Date.now() - new Date(last.ts).getTime() < 2000) return denied("too_fast", b.slug, anon, "Bạn gửi nhanh quá. Chờ một chút rồi gửi lại nhé.", link);
     if (b.action === "pick") {
       const r = await quizPick(cfg, sess, prob, b.choice, link.teacher_id);
       return r ? Response.json(r) : err("Yêu cầu không hợp lệ.");
@@ -153,6 +168,12 @@ async function handle(req: Request) {
   } catch (e) {
     return geminiFail(e, link.teacher_id, anon, link.id);
   }
+}
+
+// Giáo viên chưa có API key hợp lệ nên học sinh không làm bài được: ghi vào nhật ký lỗi (mỗi liên kết 1 lần mỗi 10 phút) để giáo viên biết.
+async function notReady(link: { id: string; teacher_id: string }, anon: string) {
+  if (!limited(`nr:${link.id}`, 1, 600_000)) await reportError(new Error("Chatbot chưa sẵn sàng: giáo viên chưa nhập API key"), "/api/chat (chưa có key)", { teacherId: link.teacher_id, linkId: link.id, anonId: anon, actor: "student", kind: "config" });
+  return err("Chatbot chưa sẵn sàng. Nhờ giáo viên kiểm tra cài đặt.", 503);
 }
 
 function geminiFail(e: unknown, teacherId: string, anon: string, linkId: string) {

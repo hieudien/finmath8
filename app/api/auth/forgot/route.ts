@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { contact } from "@/lib/errors";
+import { contact, reportError } from "@/lib/errors";
 import { api } from "@/lib/auth";
 import { admin } from "@/lib/supabase/admin";
 import { sendLinkMail } from "@/lib/mail";
@@ -18,7 +18,7 @@ export const POST = api(async (req) => {
     try {
       await sendLinkMail(p.data.email, "recovery", link);
     } catch (e) {
-      console.error("mail", e);
+      await reportError(e, "gửi mail đặt lại mật khẩu", { teacherId: data.user.id, actor: "teacher", kind: "mail" });
       return Response.json({ error: `Không gửi được email. Chờ vài phút rồi thử lại. ${contact()}` }, { status: 502 });
     }
     await log({ actor: "teacher", action: "password_reset_requested", teacherId: data.user.id });

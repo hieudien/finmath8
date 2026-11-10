@@ -5,6 +5,7 @@ import ChatLog from "@/components/ChatLog";
 import "katex/dist/katex.min.css";
 import { Badge, Empty, ScoreBadge, StatusBadge } from "@/components/ui";
 import { check } from "@/lib/db";
+import { sweep } from "@/lib/sweep";
 import { shortId } from "@/lib/sid";
 import { bits, compareStats, fmtTime, hardSteps, r1, sessionState, studentMsgs, who, type Ev, type Sess, type StepInfo, type Summary } from "@/lib/stats";
 
@@ -20,6 +21,7 @@ const TAG: Record<string, string> = { pre: "Trước", post: "Sau", experiment: 
 export default async function Page({ searchParams }: { searchParams: Promise<{ link?: string }> }) {
   const { link } = await searchParams;
   const sb = await supabaseServer();
+  sweep();
   // Số liệu gom sẵn trong DB (view link_stats, hàm link_summary): PostgREST cắt 1000 dòng nên không tính ở phía app.
   // Mở 1 liên kết chỉ tải danh sách 100 phiên gần nhất để hiện bảng và hội thoại.
   const res = await Promise.all([
@@ -93,7 +95,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
                       </li>
                     ))}
                   </ul>
-                  <p className="text-sm text-text-muted">Tính khi học sinh bấm Gợi ý, bấm Em chưa hiểu, nộp sai hoặc được giải hộ ở bước đó. Chỉ tính trong các phiên gần nhất bên dưới, kiểu từng bước và trắc nghiệm.</p>
+                  <p className="text-sm text-text-muted">Tính khi học sinh bấm Gợi ý, bấm Em chưa hiểu, nộp sai hoặc được giải hộ ở bước đó. Chỉ tính trong các phiên gần nhất bên dưới, kiểu từng bước.</p>
                 </>
               ) : <p className="text-text-muted">Chưa có học sinh nào gặp khó ở một bước cụ thể.</p>}
             </Section>

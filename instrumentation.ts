@@ -2,6 +2,6 @@
 export async function onRequestError(err: unknown, request: { path: string }) {
   const { reportError } = await import("@/lib/errors");
   const digest = (err as { digest?: string })?.digest;
-  const ref = await reportError(err, `render ${request.path}${digest ? ` digest=${digest}` : ""}`);
+  const ref = await reportError(err, `render ${request.path}${digest ? ` digest=${digest}` : ""}`, { kind: "render" });
   console.error("onRequestError", ref, digest);
 }

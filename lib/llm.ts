@@ -12,8 +12,10 @@ export type LlmCfg = {
   onFallback?: (from: string, to: string, reason: string) => void; // để ghi nhật ký khi tự đổi model
   onUsage?: (u: Usage) => void; // mỗi lượt gọi thành công: số token để đo chi phí và kiểm tra cache
   signal?: AbortSignal; // askJson đặt khi hủy lượt gọi chậm, khỏi bị tính tiền thêm
+  teacherId?: string; // giáo viên sở hữu key: để nơi nuốt lỗi AI vẫn ghi được vào nhật ký lỗi của giáo viên đó
+  use?: string; // nhãn "dùng làm gì" của lượt gọi, ghi vào nhật ký để thống kê token
 };
-export type Usage = { provider: Provider; model: string; input: number; cached: number; output: number; thoughts: number };
+export type Usage = { provider: Provider; model: string; input: number; cached: number; output: number; thoughts: number; use?: string; ms?: number };
 type Turn = { role: "user" | "model"; text: string; image?: { mime: string; b64: string } };
 
 // Structured output của Gemini: ép đúng khung JSON, khỏi mô tả định dạng trong prompt và khỏi gọi lại khi JSON sai.
@@ -34,7 +36,7 @@ async function callGemini(cfg: LlmCfg, system: string, turns: Turn[], schema?: z
     res = await run({});
   }
   const u = res.usageMetadata;
-  if (u) cfg.onUsage?.({ provider: "gemini", model: cfg.model, input: u.promptTokenCount ?? 0, cached: u.cachedContentTokenCount ?? 0, output: u.candidatesTokenCount ?? 0, thoughts: u.thoughtsTokenCount ?? 0 });
+  if (u) cfg.onUsage?.({ provider: "gemini", model: cfg.model, input: u.promptTokenCount ?? 0, cached: u.cachedContentTokenCount ?? 0, output: u.candidatesTokenCount ?? 0, thoughts: u.thoughtsTokenCount ?? 0, use: cfg.use });
   return res.text ?? "";
 }
 
@@ -58,7 +60,7 @@ async function callOpenAI(cfg: LlmCfg, system: string, turns: Turn[], json = tru
   }
   const j = (await r.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number }; completion_tokens_details?: { reasoning_tokens?: number } } };
   const u = j.usage;
-  if (u) cfg.onUsage?.({ provider: "openai", model: cfg.model, input: u.prompt_tokens ?? 0, cached: u.prompt_tokens_details?.cached_tokens ?? 0, output: u.completion_tokens ?? 0, thoughts: u.completion_tokens_details?.reasoning_tokens ?? 0 });
+  if (u) cfg.onUsage?.({ provider: "openai", model: cfg.model, input: u.prompt_tokens ?? 0, cached: u.prompt_tokens_details?.cached_tokens ?? 0, output: u.completion_tokens ?? 0, thoughts: u.completion_tokens_details?.reasoning_tokens ?? 0, use: cfg.use });
   return j.choices?.[0]?.message?.content ?? "";
 }
 
@@ -71,7 +73,7 @@ const isOverload = (e: unknown) => /\b50\d\b|UNAVAILABLE|overload|high demand|AI
 const isLongQuota = (e: unknown) => /PerDay|insufficient_quota|no longer available|404/i.test(String(e));
 
 // Hết quota (hoặc model không còn) thì tự thử model kế tiếp của cùng nhà cung cấp, tối đa 4 model.
-export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string, turns: Turn[], schema: T, opts: { think?: boolean | "low"; maxTokens?: number; deadlineMs?: number; attemptMs?: number } = {}): Promise<z.infer<T>> {
+export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string, turns: Turn[], schema: T, opts: { think?: boolean | "low"; maxTokens?: number; deadlineMs?: number; attemptMs?: number; use?: string } = {}): Promise<z.infer<T>> {
   const cfg = { ...cfg0, ...opts };
   const deadline = Date.now() + (opts.deadlineMs ?? Infinity); // chat đặt hạn chót để trả lỗi thân thiện trước khi trình duyệt tự báo timeout
   const all = [cfg.model, ...PROVIDERS[cfg.provider].models.filter((id) => id !== cfg.model)].slice(0, 4);
@@ -107,7 +109,9 @@ async function askOne<T extends z.ZodType>(cfg: LlmCfg, system: string, turns: T
   let lastErr = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     const t = lastErr ? [...turns, { role: "user" as const, text: `JSON trước không hợp lệ (${lastErr}). Trả lại JSON đúng định dạng.` }] : turns;
-    const text = await withRetry(() => (cfg.provider === "openai" ? callOpenAI(cfg, system, t) : callGemini(cfg, system, t, schema)));
+    const t0 = Date.now();
+    const c = { ...cfg, onUsage: cfg.onUsage && ((u: Usage) => cfg.onUsage!({ ...u, ms: Date.now() - t0 })) }; // ms: thời gian chờ AI của lượt gọi này
+    const text = await withRetry(() => (c.provider === "openai" ? callOpenAI(c, system, t) : callGemini(c, system, t, schema)));
     try {
       const parsed = schema.safeParse(JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, "")));
       if (parsed.success) return parsed.data;

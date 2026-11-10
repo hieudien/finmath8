@@ -72,6 +72,31 @@ export function Button({ variant = "primary", pending, block = true, children, c
   );
 }
 
+// Huy hiệu báo thao tác gọi AI, tốn token của giáo viên.
+export const AiBadge = () => <span title="Gọi AI, có thể tốn token"><Badge tone="info">AI</Badge></span>;
+
+// Nút gọi AI: gắn huy hiệu AI và hỏi xác nhận trước khi chạy onClick.
+export function AiButton({ onClick, children, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof VARIANT; pending?: string; block?: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button {...p} type="button" onClick={() => setOpen(true)}>{children} <AiBadge /></Button>
+      {open && (
+        <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/50 sm:items-center" role="dialog" aria-modal="true" onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
+          <div className="w-full max-w-md rounded-t-lg bg-surface p-6 sm:rounded-lg" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
+            <h2>Gọi AI?</h2>
+            <p className="mt-2 text-text-muted">Thao tác này gọi AI và có thể tốn token. Tiếp tục?</p>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button variant="secondary" autoFocus onClick={() => setOpen(false)}>Hủy</Button>
+              <Button onClick={(e) => { setOpen(false); onClick?.(e); }}>Tiếp tục</Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export function LinkButton({ href, variant = "primary", children, className = "" }: { href: string; variant?: keyof typeof VARIANT; children: ReactNode; className?: string }) {
   return <Link href={href} className={`${BTN} ${VARIANT[variant]} ${className}`}>{children}</Link>;
 }

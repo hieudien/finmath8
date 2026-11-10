@@ -31,7 +31,7 @@ export const POST = api(async (req) => {
   try {
     await sendLinkMail(email, "signup", link);
   } catch (e) {
-    console.error("mail", e);
+    await reportError(e, "gửi mail xác nhận đăng ký", { teacherId: data.user.id, actor: "teacher", kind: "mail" });
     return Response.json({ error: `Không gửi được email xác nhận. Chờ vài phút rồi thử lại. ${contact()}` }, { status: 502 });
   }
   await log({ actor: "teacher", action: "register", teacherId: data.user.id, meta: { email_domain: email.split("@")[1] } });

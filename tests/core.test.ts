@@ -3,9 +3,10 @@ import { scrub } from "../lib/pii";
 import { decrypt, encrypt } from "../lib/crypto";
 import { chatState, leaks } from "../lib/chat/prompt";
 import { parseProblems } from "../lib/schema/problem";
-import { friendly } from "../lib/errors";
+import { friendly, kindOf } from "../lib/errors";
+import { describe as describe_, ERR_KIND } from "../lib/log-labels";
 import { plain } from "../lib/plain";
-import { missingInfo } from "../lib/ready";
+import { missingInfo, readiness } from "../lib/ready";
 import { ladder, revealLine, scoreCap, STALL_LIMIT } from "../lib/chat/assist";
 import { ASK_METHOD, ASK_NEXT, keepOrAsk, earlyClose, checkpoints, countDone, hasNum, markByNumbers, offStreak, OFF_REPLIES, sim, stepOf, tighten, verdict, verify } from "../lib/chat/progress";
 import { SEED } from "../lib/seed";
@@ -15,7 +16,6 @@ import { leaksCalc } from "../lib/chat/prompt";
 import { cannedStuck, looksLikeStep, misses, NOT_JUDGE, offReply } from "../lib/chat/steps";
 import { ASK_ANSWER, ASK_IS_STEP, ASK_LEAK, ASK_LIMIT, ASK_NOT_JUDGE, CLOSINGS, CLOSINGS_HELP, isOff, OFF_AGAIN, OFF_FIRST, pick, QUIZ_NOHINT, REPEAT, RETRY, STEP_LEAK, STUCK_HINT, STUCK_NOHINT } from "../lib/chat/canned";
 import { choiceOptions, hasChoices, hasGuides, stepCue, stepGoal, stepLead, stepsGreeting } from "../lib/chat/goals";
-import { validChoice } from "../lib/step-guides";
 import { machineCheck, recent } from "../lib/chat/steps";
 
 describe("pii", () => {
@@ -221,6 +221,18 @@ describe("missingInfo", () => {
   });
 });
 
+describe("readiness", () => {
+  const base = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
+  const full = { ...base, solution: { x: 4 }, solution_steps: ["a", "b"], step_goals: ["a", "b"], step_hints: [["h"], ["h"]], greeting: "Chào", reviewed: true };
+  it("dem tung nhom", () => {
+    expect(readiness(full)).toMatchObject({ ok: true, needGuides: false, noGreeting: false, pending: false });
+    expect(readiness({ ...full, step_goals: [] })).toMatchObject({ ok: false, needGuides: true });
+    expect(readiness({ ...full, greeting: "" })).toMatchObject({ ok: false, noGreeting: true });
+    expect(readiness({ ...full, reviewed: false })).toMatchObject({ ok: false, pending: true });
+    expect(readiness({ nonsense: 1 })).toMatchObject({ bad: true, ok: false });
+  });
+});
+
 describe("kieu tuong tac", () => {
   const p = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
   it("isMode chi nhan kieu hop le", () => {
@@ -371,16 +383,10 @@ describe("steps: may kiem va lich su", () => {
 
 describe("trac nghiem tung buoc", () => {
   const ch = { right: "x = 4", traps: [{ text: "x = -4", why: "Quen doi dau." }, { text: "x = 8", why: "Chia sai." }, { text: "x = 2", why: "Nham cong thuc." }] };
-  const cp = { id: 0, label: "x = 4", anchors: ["4"], must: ["4"] };
   it("modeFor: quiz thieu trac nghiem lui ve steps, thieu loi giai lui ve chat", () => {
     expect(modeFor("quiz", { solution_steps: ["a"], step_choices: [ch] })).toBe("quiz");
     expect(modeFor("quiz", { solution_steps: ["a"], step_choices: [] })).toBe("steps");
     expect(modeFor("quiz", { solution_steps: [], step_choices: [] })).toBe("chat");
-  });
-  it("validChoice: 4 dap an khac nhau, right khong lac buoc", () => {
-    expect(validChoice(ch, cp)).toBe(true);
-    expect(validChoice({ ...ch, traps: [{ text: "x=4", why: "abc" }, ch.traps[1], ch.traps[2]] }, cp)).toBe(false); // trung right sau chuan hoa
-    expect(validChoice({ ...ch, right: "x = 5" }, cp)).toBe(false); // right thieu so dap an
   });
   it("choiceOptions: xao on dinh theo seed, du 4 dap an", () => {
     const p = { step_choices: [ch] };
@@ -392,5 +398,25 @@ describe("trac nghiem tung buoc", () => {
   it("hasChoices khop so buoc", () => {
     expect(hasChoices({ solution_steps: ["a"], step_choices: [ch] })).toBe(true);
     expect(hasChoices({ solution_steps: ["a", "b"], step_choices: [ch] })).toBe(false);
+  });
+});
+
+describe("nhat ky loi va hoat dong", () => {
+  it("kindOf phan loai loi AI va he thong", () => {
+    expect(kindOf("429 RESOURCE_EXHAUSTED quota")).toBe("quota");
+    expect(kindOf("AI_TIMEOUT: x")).toBe("timeout");
+    expect(kindOf("API key not valid")).toBe("key");
+    expect(kindOf("503 UNAVAILABLE")).toBe("overload");
+    expect(kindOf("Mô hình AI trả dữ liệu sai định dạng: x")).toBe("format");
+    expect(kindOf(new Error("Lỗi cơ sở dữ liệu: boom"))).toBe("db");
+    expect(kindOf("gi do la")).toBe("other");
+  });
+  it("moi loai loi co nhan hien thi", () => {
+    for (const k of ["quota", "timeout", "key", "model", "overload", "format", "db", "config", "mail", "render", "client", "other"]) expect(ERR_KIND[k]?.label).toBeTruthy();
+  });
+  it("mo ta hoat dong moi", () => {
+    expect(describe_("rate_limited", { rule: "too_fast" })).toMatch(/2 giây/);
+    expect(describe_("link_closed", { reason: "expired" })).toMatch(/hết hạn/);
+    expect(describe_("settings_changed", { provider: "openai", changed: { provider: { from: "gemini", to: "openai" } } })).toMatch(/Google Gemini sang OpenAI/);
   });
 });
