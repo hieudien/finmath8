@@ -7,7 +7,8 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "eval": "vitest run --config vitest.eval.config.mts"
   },
   "dependencies": {
     "@google/genai": "^3.0.0",

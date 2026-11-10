@@ -4,7 +4,7 @@ import { reveal } from "@/lib/chat/canned";
 // Hết mức gợi ý mà học sinh vẫn kẹt STALL_LIMIT lượt thì bot hiện lời giải của bước hiện tại (không có nút xem lời giải: học sinh tự giải thì không thấy).
 // Mỗi lần hiện qua đúng một bước nên đề luôn kết thúc. Bước được giải hộ ghi vào chat_sessions.revealed để chấm điểm đúng.
 export const STALL_LIMIT = 5;
-export const MAX_HINT = { steps: 3, chat: 4 } as const;
+export const MAX_HINT = { steps: 3 } as const;
 
 // stall chỉ tăng khi đã hết gợi ý và lượt đó không qua mốc; qua mốc thì về 0.
 export function ladder(mode: keyof typeof MAX_HINT, hint: number, stall: number, progressed: boolean) {

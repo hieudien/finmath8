@@ -1,10 +1,9 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { AiButton, Alert, Button, post, useRefresh } from "@/components/ui";
+import { AiButton, Button, post, toast, useRefresh } from "@/components/ui";
 
 export function ViewTools({ text }: { text: string }) {
   const [done, setDone] = useState(false);
-  const [err, setErr] = useState("");
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
   return (
@@ -16,11 +15,10 @@ export function ViewTools({ text }: { text: string }) {
             try {
               await navigator.clipboard.writeText(text);
               setDone(true);
-              setErr("");
               clearTimeout(timer.current);
               timer.current = setTimeout(() => setDone(false), 2000);
             } catch {
-              setErr("Trình duyệt không cho sao chép tự động. Hãy bôi đen nội dung rồi sao chép thủ công.");
+              toast("warning", "Trình duyệt không cho sao chép tự động. Hãy bôi đen nội dung rồi sao chép thủ công.");
             }
           }}
         >
@@ -28,32 +26,29 @@ export function ViewTools({ text }: { text: string }) {
         </Button>
         <Button variant="secondary" onClick={() => window.print()}>In hoặc lưu PDF</Button>
       </div>
-      {err && <Alert tone="warning">{err}</Alert>}
     </div>
   );
 }
 
-// Nút gọi AI cho một đề: mặc định tạo lời giải từng bước ("explain"); action "step_guides" tạo chỉ dẫn và gợi ý riêng từng bước.
-export function ExplainButton({ id, action = "explain", label = "Tạo lời giải bằng AI", busyLabel = "AI đang viết lời giải..." }: { id: string; action?: "explain" | "step_guides" | "fill"; label?: string; busyLabel?: string }) {
+// Nút gọi AI cho một đề. Mặc định "Chuẩn hóa đề": cùng đường với nút hàng loạt (action finish, một id); action "verify" chỉ kiểm tra đáp án.
+export function ExplainButton({ id, action = "finish", label = "Chuẩn hóa đề", busyLabel = "AI đang chuẩn hóa đề..." }: { id: string; action?: "finish" | "verify"; label?: string; busyLabel?: string }) {
   const [rp, refresh] = useRefresh();
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
   return (
     <div className="flex flex-col gap-2 print:hidden">
       <AiButton
         onClick={async () => {
           setBusy(true);
-          setErr("");
-          const { ok, data } = await post("/api/problems", { action, id });
+          const { ok, data } = await post<{ failed?: { reason: string }[]; left?: string[]; error?: string }>("/api/problems", action === "finish" ? { action, ids: [id] } : { action, id });
           setBusy(false);
-          if (ok) refresh(); else setErr(data.error ?? "Có lỗi.");
+          const err = ok ? data.failed?.[0]?.reason ?? (data.left?.length ? "Hết thời gian, bấm lại để làm tiếp." : "") : data.error ?? "Có lỗi.";
+          if (err) toast("danger", err); else refresh();
         }}
         pending={busy ? busyLabel : rp ? "Đang cập nhật..." : undefined}
         className="self-start"
       >
         {label}
       </AiButton>
-      {err && <Alert tone="danger">{err}</Alert>}
     </div>
   );
 }

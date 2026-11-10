@@ -1,0 +1,33 @@
+
+> mathstep-ai@0.1.0 eval
+> vitest run --config vitest.eval.config.mts
+
+
+ RUN  v5.1.0 C:/Users/Admin/Desktop/finmath8
+
+stdout | evals/_regen.eval.ts > regen
+TARGETS 
+
+ ❯ evals/_regen.eval.ts (1 test | 1 failed) 1218ms
+   × regen 1217ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  evals/_regen.eval.ts > regen
+TypeError: The "path" argument must be of type string or an instance of Buffer or URL. Received undefined
+ ❯ evals/_regen.eval.ts:16:3
+     14|   console.log("TARGETS", todo.map((r) => r.code + "@" + r.id.slice(0, …
+     15|   if (process.env.DRY) return;
+     16|   writeFileSync(process.env.BACKUP!, JSON.stringify(todo, null, 1));
+       |   ^
+     17|   const cfg = { provider: "gemini" as const, key: env.GEMINI_KEY, mode…
+     18|   for (const r of todo) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 1 passed (2)
+   Start at  17:11:51
+   Duration  1101.59s (tests 100%)
+

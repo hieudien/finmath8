@@ -10,6 +10,12 @@ export type ProviderInfo = {
 
 export const TEMPERATURE = 0.3; // cố định cho mọi giáo viên
 
+// Model cho việc chạy một lần mỗi đề (kiểm chéo đáp án). Đo bằng npm run eval (3 đề, nạp lại đáp án + chỉ dẫn từ đề trống):
+// model đầu đạt 2/3 đáp án, 3/3 chỉ dẫn, ~2,5 giây/lượt; models[2] đạt 1/3, ~4 giây; models[3] đạt 0/3, ~113 giây. Model mạnh hơn chưa tốt hơn nên dùng models[0].
+// Đổi chỉ số khi đo lại thấy khác.
+export const SMART_INDEX = 0;
+export const smartModel = (p: Provider) => PROVIDERS[p].models[SMART_INDEX] ?? PROVIDERS[p].models[0];
+
 // Model cố định, đi từ nhanh đến chậm. Ưu tiên tốc độ: hội thoại đơn giản, server đã tự kiểm đáp án.
 export const PROVIDERS: Record<Provider, ProviderInfo> = {
   gemini: {

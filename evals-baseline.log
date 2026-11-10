@@ -1,0 +1,40 @@
+
+> mathstep-ai@0.1.0 eval
+> vitest run --config vitest.eval.config.mts
+
+
+ RUN  v5.1.0 C:/Users/Admin/Desktop/finmath8
+
+stdout | evals/run.eval.ts > đo chất lượng AI theo cấu hình
+student prod {"đúng":"2/2","mơ hồ":"12/12","đòi kết quả":"12/12","sai số":"2/10","leak":"3/36","calls":40,"ms":2511,"usd":0.00667}
+
+stdout | evals/run.eval.ts > đo chất lượng AI theo cấu hình
+student prod+think {"đúng":"2/2","mơ hồ":"12/12","đòi kết quả":"12/12","sai số":"0/10","leak":"2/36","calls":37,"ms":3076,"usd":0.00703}
+
+stdout | evals/run.eval.ts > đo chất lượng AI theo cấu hình
+student mid {"đúng":"2/2","mơ hồ":"12/12","đòi kết quả":"12/12","sai số":"2/10","leak":"4/36","calls":39,"ms":2900,"usd":0.00791}
+
+ ❯ evals/run.eval.ts (1 test | 1 failed) 1800017ms
+   × đo chất lượng AI theo cấu hình 1800015ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  evals/run.eval.ts > đo chất lượng AI theo cấu hình
+Error: Test timed out in 1800000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ evals/run.eval.ts:94:1
+     92|   for (const c of CONFIGS) {
+     93|     if (!ONLY || ONLY === "student") { save(`student:${c.name}`, await…
+     94|   }
+       | ^
+     95|   for (const c of CONFIGS.filter((x) => x.think === "low")) {
+     96|     if (!ONLY || ONLY === "teacher") { save(`teacher:${c.name}`, await…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  16:39:25
+   Duration  1800.60s (tests 100%)
+

@@ -1,16 +1,16 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Alert, Button, Confirm, CopyButton, Field, post, useRefresh } from "@/components/ui";
+import Link from "next/link";
+import { Alert, Badge, Button, Confirm, CopyButton, Field, post, toast, useRefresh } from "@/components/ui";
 
 import { ExplainButton } from "@/components/ProblemViewTools";
 
-type P = { id: string; code: string; title: string; missing: string[] };
+type P = { id: string; code: string; title: string; missing: string[]; unconfirmed: boolean };
 
 export function CreateLink({ problems }: { problems: P[] }) {
   const [rp, refresh] = useRefresh();
   const [sel, setSel] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
   const [open, setOpen] = useState(false);
   const [created, setCreated] = useState(false);
   // Đóng form khi liên kết mới đã hiện trong danh sách.
@@ -19,10 +19,10 @@ export function CreateLink({ problems }: { problems: P[] }) {
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
-    setBusy(true); setErr("");
+    setBusy(true);
     const { ok, data } = await post("/api/links", { action: "create", label: f.get("label"), tag: f.get("tag") || null, problemIds: sel, maxMessages: Number(f.get("max")) });
     setBusy(false);
-    if (!ok) return setErr(data.error ?? "Có lỗi.");
+    if (!ok) return toast("danger", data.error ?? "Có lỗi.");
     setSel([]); (e.target as HTMLFormElement).reset(); setCreated(true); refresh();
   }
 
@@ -40,13 +40,16 @@ export function CreateLink({ problems }: { problems: P[] }) {
         {problems.map((p) => (
           <div key={p.id} className="flex flex-col gap-2">
             <label className="flex min-h-11 items-center gap-3">
-              <input type="checkbox" className="size-5 accent-[var(--color-primary)]" disabled={p.missing.length > 0} checked={sel.includes(p.id)} onChange={(e) => setSel((s) => e.target.checked ? [...s, p.id] : s.filter((x) => x !== p.id))} />
-              <span><span className="tnum text-text-muted">{p.code}</span> {p.title}</span>
+              <input type="checkbox" className="size-5 accent-[var(--color-primary)]" disabled={p.missing.length > 0 || p.unconfirmed} checked={sel.includes(p.id)} onChange={(e) => setSel((s) => e.target.checked ? [...s, p.id] : s.filter((x) => x !== p.id))} />
+              <span className="flex flex-wrap items-center gap-2"><span><span className="tnum text-text-muted">{p.code}</span> {p.title}</span>{p.unconfirmed && <Badge tone="warn">Chưa xác nhận đáp án</Badge>}</span>
             </label>
+            {p.unconfirmed && (
+              <p className="ml-8 text-sm text-text-muted">Chưa chọn được: giáo viên cần kiểm tra và khóa đáp án. <Link href={`/dashboard/problems/${p.id}`} className="text-primary underline">Mở đề để xác nhận đáp án</Link></p>
+            )}
             {p.missing.length > 0 && (
               <div className="ml-8 flex flex-col gap-2">
                 <Alert tone="warning">Chưa tạo liên kết được với đề này: thiếu {p.missing.join(", ")}. Đề cần đủ để dùng cho cả chat và từng bước.</Alert>
-                <ExplainButton id={p.id} action="fill" label="Nạp thêm bằng AI" busyLabel="AI đang nạp thêm..." />
+                <ExplainButton id={p.id} />
               </div>
             )}
           </div>
@@ -65,7 +68,6 @@ export function CreateLink({ problems }: { problems: P[] }) {
         </div>
         <Field label="Số tin tối đa mỗi phiên" name="max" type="number" inputMode="numeric" min={5} max={200} defaultValue={40} required />
       </div>
-      {err && <Alert tone="danger">{err}</Alert>}
       <Button type="submit" disabled={!sel.length} pending={busy || rp ? "Đang tạo..." : undefined} className="self-start">Tạo liên kết công khai</Button>
     </form>
   );
@@ -74,13 +76,12 @@ export function CreateLink({ problems }: { problems: P[] }) {
 export function LinkActions({ id, slug, active }: { id: string; slug: string; active: boolean }) {
   const [rp, refresh] = useRefresh();
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
   const url = typeof window === "undefined" ? "" : `${window.location.origin}/c/${slug}`;
   async function toggle() {
-    setBusy(true); setErr("");
+    setBusy(true);
     const { ok, data } = await post("/api/links", { action: "toggle", id, active: !active });
     setBusy(false);
-    if (ok) refresh(); else setErr(data.error ?? "Có lỗi.");
+    if (ok) refresh(); else toast("danger", data.error ?? "Có lỗi.");
   }
   return (
     <div className="flex flex-col gap-2">
@@ -89,7 +90,6 @@ export function LinkActions({ id, slug, active }: { id: string; slug: string; ac
         <Button variant="secondary" onClick={toggle} pending={busy || rp ? (active ? "Đang tắt..." : "Đang bật...") : undefined}>{active ? "Tắt" : "Bật"}</Button>
         <Confirm label="Xóa liên kết" message="Liên kết bị ẩn, học sinh không vào được nữa. Dữ liệu phiên chat của liên kết này vẫn được lưu lại." onConfirm={async () => { const { ok, data } = await post("/api/links", { action: "delete", id }); if (!ok) return data.error ?? "Có lỗi."; }} />
       </div>
-      {err && <Alert tone="danger">{err}</Alert>}
     </div>
   );
 }

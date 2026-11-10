@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { AiButton, Alert, Badge, post, ScoreBadge, StatusBadge } from "@/components/ui";
+import { AiButton, Badge, post, ScoreBadge, StatusBadge, toast } from "@/components/ui";
 import { MathText } from "@/components/MathText";
 
 type Item = { role: "student" | "bot"; time: string; html: string };
@@ -22,12 +22,11 @@ export default function ChatLog({ id, head, open, note }: { id: string; head: He
   const [an, setAn] = useState<Analysis | null>(null);
   const [prob, setProb] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
-  const [anErr, setAnErr] = useState("");
   const analyze = async () => {
-    setBusy(true); setAnErr("");
+    setBusy(true);
     const { ok, data } = await post<{ analysis: Analysis }>("/api/students", { action: "analyze_session", id });
     setBusy(false);
-    if (ok) setAn(data.analysis); else setAnErr(data.error ?? "Có lỗi.");
+    if (ok) setAn(data.analysis); else toast("danger", data.error ?? "Có lỗi.");
   };
   const load = async () => {
     if (items) return;
@@ -37,7 +36,7 @@ export default function ChatLog({ id, head, open, note }: { id: string; head: He
       if (!r.ok) throw new Error();
       const j = await r.json();
       setItems(j.items); setProb(j.problem ?? null); setAn(j.analysis ?? null);
-    } catch { setErr(true); }
+    } catch { setErr(true); toast("danger", "Không tải được. Đóng rồi mở lại để thử lại."); }
   };
   useEffect(() => {
     if (!open || !box.current) return;
@@ -75,7 +74,6 @@ export default function ChatLog({ id, head, open, note }: { id: string; head: He
         ))}
         {items?.length === 0 && <li className="text-sm text-text-muted">Chưa có tin nhắn.</li>}
         {!items && !err && <li className="text-sm text-text-muted">Đang tải…</li>}
-        {err && <li className="text-sm text-danger">Không tải được. Đóng rồi mở lại để thử lại.</li>}
       </ul>
       {items && items.length > 0 && !items.some((m) => m.role === "student") && <p className="border-t border-border py-3 text-sm text-text-muted">Học sinh chưa trả lời tin nào, nên chưa có gì để phân tích.</p>}
       {items && items.some((m) => m.role === "student") && (
@@ -90,7 +88,6 @@ export default function ChatLog({ id, head, open, note }: { id: string; head: He
             </div>
           )}
           <div><AiButton variant="secondary" onClick={analyze} pending={busy ? "AI đang phân tích..." : undefined} className="text-sm">{an ? "Phân tích lại phiên này" : "AI phân tích phiên này"}</AiButton></div>
-          {anErr && <Alert tone="danger">{anErr}</Alert>}
         </div>
       )}
     </details>

@@ -12,6 +12,7 @@ export type LlmCfg = {
   onFallback?: (from: string, to: string, reason: string) => void; // để ghi nhật ký khi tự đổi model
   onUsage?: (u: Usage) => void; // mỗi lượt gọi thành công: số token để đo chi phí và kiểm tra cache
   signal?: AbortSignal; // askJson đặt khi hủy lượt gọi chậm, khỏi bị tính tiền thêm
+  seed?: number; // Gemini: cùng seed + cùng input thì (gần như) cùng câu trả lời. Không bảo đảm tuyệt đối. OpenAI chưa dùng.
   teacherId?: string; // giáo viên sở hữu key: để nơi nuốt lỗi AI vẫn ghi được vào nhật ký lỗi của giáo viên đó
   use?: string; // nhãn "dùng làm gì" của lượt gọi, ghi vào nhật ký để thống kê token
 };
@@ -25,7 +26,7 @@ const jsonSchema = (schema: z.ZodType) => { try { return clean(z.toJSONSchema(sc
 
 async function callGemini(cfg: LlmCfg, system: string, turns: Turn[], schema?: z.ZodType) {
   const ai = new GoogleGenAI({ apiKey: cfg.key });
-  const base = { systemInstruction: system, responseMimeType: "application/json", responseJsonSchema: schema && jsonSchema(schema), temperature: cfg.temperature, maxOutputTokens: cfg.maxTokens, abortSignal: cfg.signal };
+  const base = { systemInstruction: system, responseMimeType: "application/json", responseJsonSchema: schema && jsonSchema(schema), temperature: cfg.temperature, seed: cfg.seed, maxOutputTokens: cfg.maxTokens, abortSignal: cfg.signal };
   const run = (extra: object) => ai.models.generateContent({ model: cfg.model, contents: turns.map((t) => ({ role: t.role, parts: [{ text: t.text }, ...(t.image ? [{ inlineData: { mimeType: t.image.mime, data: t.image.b64 } }] : [])] })), config: { ...base, ...extra } });
   // Tắt suy nghĩ để trả lời nhanh; model không hỗ trợ mức này (báo lỗi liên quan "thinking") thì gọi lại như thường.
   let res;
@@ -73,7 +74,7 @@ const isOverload = (e: unknown) => /\b50\d\b|UNAVAILABLE|overload|high demand|AI
 const isLongQuota = (e: unknown) => /PerDay|insufficient_quota|no longer available|404/i.test(String(e));
 
 // Hết quota (hoặc model không còn) thì tự thử model kế tiếp của cùng nhà cung cấp, tối đa 4 model.
-export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string, turns: Turn[], schema: T, opts: { think?: boolean | "low"; maxTokens?: number; deadlineMs?: number; attemptMs?: number; use?: string } = {}): Promise<z.infer<T>> {
+export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string, turns: Turn[], schema: T, opts: { think?: boolean | "low"; maxTokens?: number; deadlineMs?: number; attemptMs?: number; use?: string; temperature?: number; seed?: number } = {}): Promise<z.infer<T>> {
   const cfg = { ...cfg0, ...opts };
   const deadline = Date.now() + (opts.deadlineMs ?? Infinity); // chat đặt hạn chót để trả lỗi thân thiện trước khi trình duyệt tự báo timeout
   const all = [cfg.model, ...PROVIDERS[cfg.provider].models.filter((id) => id !== cfg.model)].slice(0, 4);

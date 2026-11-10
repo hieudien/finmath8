@@ -1,21 +1,22 @@
+import { readFileSync } from "node:fs";
+import { lintProblem } from "../lib/lint";
 import { describe, expect, it } from "vitest";
 import { scrub } from "../lib/pii";
 import { decrypt, encrypt } from "../lib/crypto";
-import { chatState, leaks } from "../lib/chat/prompt";
+import { leaks } from "../lib/chat/prompt";
 import { parseProblems } from "../lib/schema/problem";
 import { friendly, kindOf } from "../lib/errors";
 import { describe as describe_, ERR_KIND } from "../lib/log-labels";
 import { plain } from "../lib/plain";
-import { missingInfo, readiness } from "../lib/ready";
+import { missingInfo, needsWork, readiness } from "../lib/ready";
 import { ladder, revealLine, scoreCap, STALL_LIMIT } from "../lib/chat/assist";
-import { ASK_METHOD, ASK_NEXT, keepOrAsk, earlyClose, checkpoints, countDone, hasNum, markByNumbers, offStreak, OFF_REPLIES, sim, stepOf, tighten, verdict, verify } from "../lib/chat/progress";
+import { ASK_METHOD, ASK_NEXT, keepOrAsk, earlyClose, checkpoints, countDone, hasEq, hasNum, markByNumbers, needsEq, offStreak, OFF_REPLIES, shapeOk, sim, stepOf, tighten, verdict, verify } from "../lib/chat/progress";
 import { SEED } from "../lib/seed";
-import { DEFAULT_MODE, isMode, modeFor } from "../lib/modes";
 import { hardSteps, weakSteps } from "../lib/stats";
 import { leaksCalc } from "../lib/chat/prompt";
-import { cannedStuck, looksLikeStep, misses, NOT_JUDGE, offReply } from "../lib/chat/steps";
-import { ASK_ANSWER, ASK_IS_STEP, ASK_LEAK, ASK_LIMIT, ASK_NOT_JUDGE, CLOSINGS, CLOSINGS_HELP, isOff, OFF_AGAIN, OFF_FIRST, pick, QUIZ_NOHINT, REPEAT, RETRY, STEP_LEAK, STUCK_HINT, STUCK_NOHINT } from "../lib/chat/canned";
-import { choiceOptions, hasChoices, hasGuides, stepCue, stepGoal, stepLead, stepsGreeting } from "../lib/chat/goals";
+import { cannedStuck, looksLikeStep, misses, NOT_JUDGE, offReply, PRAISE } from "../lib/chat/steps";
+import { ASK_ANSWER, ASK_IS_STEP, ASK_LEAK, ASK_LIMIT, ASK_NOT_JUDGE, CLOSINGS, CLOSINGS_HELP, isOff, OFF_AGAIN, OFF_FIRST, pick, REPEAT, RETRY, STEP_LEAK, STUCK_HINT, STUCK_NOHINT } from "../lib/chat/canned";
+import { hasGuides, stepCue, stepGoal, stepLead, stepsGreeting } from "../lib/chat/goals";
 import { machineCheck, recent } from "../lib/chat/steps";
 
 describe("pii", () => {
@@ -84,10 +85,6 @@ describe("may kiem so hoc sinh", () => {
     expect(v.match).toContain("9");
     expect(v.miss).toContain("7777");
     expect(verdict("em khong biet", p, cps)).toEqual({ match: [], miss: [] });
-  });
-  it("chatState chi them dong kiem khi co so", () => {
-    expect(chatState(cps, 0, 1)).not.toContain("Máy kiểm");
-    expect(chatState(cps, 0, 1, { match: ["9"], miss: [] })).toContain("khớp lời giải: 9");
   });
 });
 
@@ -175,6 +172,17 @@ describe("buoc khong co so", () => {
     expect(verify(cps[0], "đối nhau", "đối nhau")).toBe(true);
     expect(verify(cps[0], "không có trong tin", "đối nhau")).toBe(false);
   });
+  it("buoc ra phuong trinh: bat buoc co dau =, khong nhan loi noi hay hai tong roi nhau", () => {
+    const cps = checkpoints({ ...p, solution_steps: ["Bước 1: Hệ số của $y$ đối nhau.", "Bước 2: Cộng vế ta được $(3x+2x)+(2y-2y)=6+14$."] });
+    expect(needsEq(cps[0])).toBe(false);
+    expect(needsEq(cps[1])).toBe(true);
+    expect(shapeOk(cps[0], "đối nhau")).toBe(true); // bước nhận xét: chữ thuần vẫn được
+    expect(shapeOk(cps[1], "(3x+2y)+(2x-2y)=6+14")).toBe(true);
+    expect(shapeOk(cps[1], "(3x+2y) + (2x - 2y) và 6 + 14")).toBe(false); // thiếu "="
+    expect(shapeOk(cps[1], "cộng hai vế lại với nhau")).toBe(false);
+    expect(shapeOk(cps[1], "= cộng hai vế")).toBe(false); // có "=" nhưng không có số
+    expect(hasEq("5x ＝ 20")).toBe(true);
+  });
 });
 
 describe("thang goi y: hien loi giai khi ket", () => {
@@ -184,8 +192,6 @@ describe("thang goi y: hien loi giai khi ket", () => {
     expect(ladder("steps", 3, 0, false)).toEqual({ stall: 1, reveal: false });
     expect(ladder("steps", 3, STALL_LIMIT - 1, false)).toEqual({ stall: STALL_LIMIT, reveal: true });
     expect(ladder("steps", 3, 4, true)).toEqual({ stall: 0, reveal: false });
-    expect(ladder("chat", 3, 4, false).reveal).toBe(false); // chat het goi y o muc 4
-    expect(ladder("chat", 4, 4, false).reveal).toBe(true);
   });
   it("scoreCap: chi tinh phan tu lam", () => {
     const cps = [cp(0), cp(1), cp(2), cp(3)];
@@ -223,29 +229,22 @@ describe("missingInfo", () => {
 
 describe("readiness", () => {
   const base = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
-  const full = { ...base, solution: { x: 4 }, solution_steps: ["a", "b"], step_goals: ["a", "b"], step_hints: [["h"], ["h"]], greeting: "Chào", reviewed: true };
+  const full = { ...base, solution: { x: 4 }, solution_steps: ["a", "b"], step_goals: ["a", "b"], step_hints: [["h"], ["h"]], step_checks: [{ result: "", accepts: [] }, { result: "", accepts: [] }], reviewed: true };
   it("dem tung nhom", () => {
-    expect(readiness(full)).toMatchObject({ ok: true, needGuides: false, noGreeting: false, pending: false });
+    expect(readiness(full)).toMatchObject({ ok: true, needGuides: false, pending: false, lint: [] });
     expect(readiness({ ...full, step_goals: [] })).toMatchObject({ ok: false, needGuides: true });
-    expect(readiness({ ...full, greeting: "" })).toMatchObject({ ok: false, noGreeting: true });
+    expect(readiness({ ...full, step_checks: [] })).toMatchObject({ ok: false, needGuides: true }); // đề cũ chưa có kết quả chuẩn từng bước
     expect(readiness({ ...full, reviewed: false })).toMatchObject({ ok: false, pending: true });
+    expect(readiness({ ...full, check_note: "lệch" })).toMatchObject({ ok: false }); // có cảnh báo thì không được tính đạt chuẩn
+    expect(needsWork({ ...full, check_note: "lệch" })).toBe(true);
+    expect(needsWork(full)).toBe(false);
+    expect(needsWork({ nonsense: 1 })).toBe(false);
     expect(readiness({ nonsense: 1 })).toMatchObject({ bad: true, ok: false });
   });
 });
 
 describe("kieu tuong tac", () => {
   const p = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
-  it("isMode chi nhan kieu hop le", () => {
-    expect(isMode("steps")).toBe(true);
-    expect(isMode("toString")).toBe(false);
-    expect(isMode(undefined)).toBe(false);
-    expect(DEFAULT_MODE).toBe("steps");
-  });
-  it("de thieu loi giai tung buoc chay chat", () => {
-    expect(modeFor("steps", { solution_steps: [] })).toBe("chat");
-    expect(modeFor("steps", { solution_steps: ["a"] })).toBe("steps");
-    expect(modeFor("chat", { solution_steps: ["a"] })).toBe("chat");
-  });
   it("markByNumbers: nhay coc van duoc ghi nhan, gop buoc", () => {
     const cp = (id: number, must: string[]) => ({ id, label: "", anchors: must, must });
     const cps = [cp(0, ["8"]), cp(1, ["4"]), cp(2, [])];
@@ -330,7 +329,7 @@ describe("chi dan tung buoc", () => {
     expect(OFF_AGAIN.some((x) => r3.startsWith(x))).toBe(true); // lạc đề liên tiếp vẫn nhận ra, không quay về câu lần 1
   });
   it("canned: moi nhom 5 bien the khac nhau, pick tranh lap tin truoc", () => {
-    for (const a of [STUCK_HINT, STUCK_NOHINT, QUIZ_NOHINT, ASK_ANSWER, REPEAT, OFF_FIRST, OFF_AGAIN, ASK_LIMIT, ASK_IS_STEP, ASK_NOT_JUDGE, ASK_LEAK, STEP_LEAK, RETRY, CLOSINGS, CLOSINGS_HELP]) expect(new Set(a).size).toBe(5);
+    for (const a of [STUCK_HINT, STUCK_NOHINT, ASK_ANSWER, REPEAT, OFF_FIRST, OFF_AGAIN, ASK_LIMIT, ASK_IS_STEP, ASK_NOT_JUDGE, ASK_LEAK, STEP_LEAK, RETRY, CLOSINGS, CLOSINGS_HELP]) expect(new Set(a).size).toBe(5);
     for (let i = 0; i < 30; i++) expect(pick(RETRY, RETRY[2])).not.toBe(RETRY[2]);
     expect(pick(["a"], "a")).toBe("a"); // chỉ còn một biến thể thì vẫn dùng được
     expect(isOff(OFF_FIRST[3])).toBe(true);
@@ -381,26 +380,6 @@ describe("steps: may kiem va lich su", () => {
   });
 });
 
-describe("trac nghiem tung buoc", () => {
-  const ch = { right: "x = 4", traps: [{ text: "x = -4", why: "Quen doi dau." }, { text: "x = 8", why: "Chia sai." }, { text: "x = 2", why: "Nham cong thuc." }] };
-  it("modeFor: quiz thieu trac nghiem lui ve steps, thieu loi giai lui ve chat", () => {
-    expect(modeFor("quiz", { solution_steps: ["a"], step_choices: [ch] })).toBe("quiz");
-    expect(modeFor("quiz", { solution_steps: ["a"], step_choices: [] })).toBe("steps");
-    expect(modeFor("quiz", { solution_steps: [], step_choices: [] })).toBe("chat");
-  });
-  it("choiceOptions: xao on dinh theo seed, du 4 dap an", () => {
-    const p = { step_choices: [ch] };
-    const a = choiceOptions(p, 0, "sess-1");
-    expect(a).toEqual(choiceOptions(p, 0, "sess-1"));
-    expect([...a].sort()).toEqual(["x = -4", "x = 2", "x = 4", "x = 8"]);
-    expect(choiceOptions(p, 5, "s")).toEqual([]);
-  });
-  it("hasChoices khop so buoc", () => {
-    expect(hasChoices({ solution_steps: ["a"], step_choices: [ch] })).toBe(true);
-    expect(hasChoices({ solution_steps: ["a", "b"], step_choices: [ch] })).toBe(false);
-  });
-});
-
 describe("nhat ky loi va hoat dong", () => {
   it("kindOf phan loai loi AI va he thong", () => {
     expect(kindOf("429 RESOURCE_EXHAUSTED quota")).toBe("quota");
@@ -418,5 +397,38 @@ describe("nhat ky loi va hoat dong", () => {
     expect(describe_("rate_limited", { rule: "too_fast" })).toMatch(/2 giây/);
     expect(describe_("link_closed", { reason: "expired" })).toMatch(/hết hạn/);
     expect(describe_("settings_changed", { provider: "openai", changed: { provider: { from: "gemini", to: "openai" } } })).toMatch(/Google Gemini sang OpenAI/);
+  });
+});
+
+describe("sua chat luong tung buoc", () => {
+  const tc05 = parseProblems(JSON.parse(readFileSync("de-mau-10.json", "utf8"))).ok.find((x) => x.id === "TC05")!;
+  it("loi khen khi buoc chua qua bi nhan ra; 'chua dung' va 'dung huong' thi khong", () => {
+    for (const t of ["Bạn đã tính đúng số tiền là $320.000$ đồng.", "Bạn tính rất chính xác.", "Giỏi lắm!", "Tuyệt vời, đúng rồi!"]) expect(PRAISE.test(t)).toBe(true);
+    for (const t of ["Mình thấy chưa đúng, bạn kiểm tra lại.", "Kết quả chưa chính xác.", "Bạn đang đúng hướng, còn thiếu một vế.", "Không đúng phép tính nào."]) expect(PRAISE.test(t)).toBe(false);
+  });
+  it("buoc ket qua trung gian co must tu dau = cuoi", () => {
+    const cps = checkpoints(tc05);
+    expect(cps[1].must).toEqual(["53000000"]);
+    expect(cps[2].must).toEqual(["56180000"]);
+    expect(markByNumbers("50.000.000 × 1,06 = 53.000.000", cps, 0) & 2).toBe(2);
+    expect(markByNumbers("mình tính ra 54.000.000", cps, 0) & 2).toBe(0);
+  });
+  it("he so nho chi la toan hang khong bi coi la lo dap an; ket qua van bi chan", () => {
+    const g = [tc05.data, tc05.statement];
+    expect(leaks("Hãy nhân số tiền gốc với $1,06$.", tc05.solution, g, tc05.solution_steps)).toBe(false);
+    expect(leaks("Năm 1 bạn được 53.000.000 đồng.", tc05.solution, g, tc05.solution_steps)).toBe(true);
+    expect(leaks("Tổng là 56.180.000 đồng.", tc05.solution, g, tc05.solution_steps)).toBe(true);
+  });
+});
+
+describe("lint: ky tu hong va buoc bi cat vun", () => {
+  const base = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
+  it("bao ky tu dieu khien va buoc khong mo dau bang Buoc N", () => {
+    const tab = String.fromCharCode(9);
+    const bad = { ...base, statement: `Tính ${tab}imes 2`, solution_steps: ["Bước 1: Điều kiện $D", "eq 0$.", "Bước 2: Kết luận."] };
+    const w = lintProblem(bad).join(" | ");
+    expect(w).toMatch(/ký tự điều khiển/);
+    expect(w).toMatch(/Bước 2 không mở đầu/);
+    expect(lintProblem({ ...base, solution_steps: ["Bước 1: a = 1.", "Bước 2: b = 2."] }).join(" ")).not.toMatch(/ký tự điều khiển|không mở đầu/);
   });
 });

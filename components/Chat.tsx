@@ -3,15 +3,13 @@ import { useEffect, useRef, useState } from "react";
 import Brand from "@/components/Brand";
 import { Alert, Button, Field, post } from "@/components/ui";
 import { MathText } from "@/components/MathText";
-import { INPUTS } from "@/components/ChatInputs";
-import type { Mode } from "@/lib/modes";
+import { StepInput } from "@/components/ChatInputs";
 import { shortId } from "@/lib/sid";
 
-type P = { id: string; title: string; statement: string; greeting: string; mode: Mode; total: number; goal: string; options?: string[] };
+type P = { id: string; title: string; statement: string; greeting: string; total: number; goal: string };
 type M = { role: "student" | "bot"; text: string };
-type Prog = { done: number; total: number; next?: number; goal?: string; options?: string[] };
-type R = { sessionId?: string; reply?: string; step?: number; done?: boolean; mode?: Mode; progress?: Prog; ok?: boolean };
-
+type Prog = { done: number; total: number; next?: number; goal?: string };
+type R = { sessionId?: string; reply?: string; step?: number; done?: boolean; progress?: Prog };
 
 export default function Chat({ slug, label, problems }: { slug: string; label: string; problems: P[] }) {
   const [prob, setProb] = useState<P | null>(null);
@@ -23,12 +21,10 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   const [rated, setRated] = useState(false);
   const [sure, setSure] = useState(false); // đã tự đánh giá mức hiểu bài
   const [text, setText] = useState("");
-  const [smode, setSmode] = useState<Mode | null>(null); // kiểu server chốt cho phiên (khác dự đoán của trang khi giáo viên vừa đổi cài đặt)
   const [prog, setProg] = useState<Prog | null>(null);
-  const [asking, setAsking] = useState(false); // kiểu từng bước: ô đang dùng để hỏi "Em chưa hiểu"
-  const [wrong, setWrong] = useState(0); // kiểu từng bước: số lần nộp liên tiếp chưa qua bước, từ 2 thì nhắc bấm Gợi ý
-  const [tried, setTried] = useState<string[]>([]); // kiểu trắc nghiệm: các đáp án đã chọn sai ở bước hiện tại
-  const [showStmt, setShowStmt] = useState(true); // đề bài ghim phía trên, luôn mở lúc vào; học sinh tự thu gọn khi cần thêm chỗ
+  const [asking, setAsking] = useState(false); // ô đang dùng để hỏi "Em chưa hiểu"
+  const [wrong, setWrong] = useState(0); // số lần nộp liên tiếp chưa qua bước, từ 2 thì nhắc bấm Gợi ý
+  const [showStmt, setShowStmt] = useState(false); // mobile: đề thu gọn 1 dòng, bấm mở bottom sheet; desktop: đề luôn hiện đủ ở cột trái
   const [who, setWho] = useState<{ code: string; name: string } | null>(null); // thông tin học sinh, nhập một lần rồi nhớ trong trình duyệt
   const [ready, setReady] = useState(false);
   const [fCode, setFCode] = useState("");
@@ -42,20 +38,14 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
 
   async function start(p: P) {
     const my = ++tok.current;
-    // Kiểu trắc nghiệm: đáp án bước 1 đã có trong trang, xáo ngẫu nhiên ngay ở máy học sinh (mỗi lần mở một thứ tự); phản hồi của server không đè lại thứ tự này.
-    const mine = p.options && [...p.options].sort(() => Math.random() - 0.5);
-    setProb(p); setBusy(!p.greeting); setErr(""); setSmode(null); setAsking(false); setWrong(0); setTried([]); setProg(p.mode !== "chat" ? { done: 0, total: p.total, next: 1, goal: p.goal, options: mine } : null);
-    if (p.greeting) setMsgs([{ role: "bot", text: p.greeting }]); // hiện lời chào ngay; server tạo phiên song song, có sid thì mở ô nhập
+    setProb(p); setBusy(false); setErr(""); setAsking(false); setWrong(0); setProg({ done: 0, total: p.total, next: 1, goal: p.goal });
+    setMsgs([{ role: "bot", text: p.greeting }]); // hiện lời chào ngay; server tạo phiên song song, có sid thì mở ô nhập
     const { ok, data } = await post<R>("/api/chat", { action: "start", slug, problemCode: p.id, studentCode: who?.code, studentName: who?.name });
     if (my !== tok.current) return;
     setBusy(false);
     if (!ok) { setErr(data.error ?? "Có lỗi."); started.current = false; setMsgs([]); if (problems.length > 1) setProb(null); return; } // lỗi: bỏ lời chào đã hiện, nhiều đề thì về danh sách (lỗi hiện ở đó)
     setSid(data.sessionId);
-    setSmode(data.mode ?? null);
-    const theirs = data.progress?.options; // khác tập đáp án (đề vừa được sửa) hoặc khác kiểu thì dùng của server
-    const same = mine && theirs && mine.length === theirs.length && mine.every((o) => theirs.includes(o));
-    setProg(data.progress ? { ...data.progress, ...(same && { options: mine }) } : null);
-    if (!p.greeting || (data.mode && data.mode !== p.mode)) setMsgs([{ role: "bot", text: data.reply ?? "" }]); // lời chào dự đoán sai kiểu: thay bằng lời chào của server
+    if (data.progress) setProg(data.progress);
   }
 
   useEffect(() => {
@@ -82,7 +72,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   function changeWho() {
     try { localStorage.removeItem("ms_student"); } catch {}
     started.current = false; tok.current++;
-    setWho(null); setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setSure(false); setErr(""); setSmode(null); setProg(null); setAsking(false); setWrong(0); setTried([]);
+    setWho(null); setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setSure(false); setErr(""); setProg(null); setAsking(false); setWrong(0);
   }
 
   async function send(e: React.FormEvent) {
@@ -102,21 +92,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
     if (data.done) setDone(true);
   }
 
-  // Kiểu trắc nghiệm: gửi đáp án đã chọn, server chấm. Sai thì đáp án đó bị loại khỏi danh sách; đúng hoặc qua bước thì làm mới.
-  async function pick(choice: string) {
-    if (!sid || busy) return;
-    setErr(""); setBusy(true);
-    setMsgs((m) => [...m, { role: "student", text: choice }]);
-    const { ok, data } = await post<R>("/api/chat", { action: "pick", slug, sessionId: sid, choice });
-    setBusy(false);
-    if (!ok) { setMsgs((m) => m.slice(0, -1)); return setErr(data.error ?? "Có lỗi. Bạn thử lại nhé."); }
-    setMsgs((m) => [...m, { role: "bot", text: data.reply ?? "" }]);
-    setTried(data.ok === false && data.progress?.next === prog?.next ? (t) => [...t, choice] : []);
-    if (data.progress) setProg(data.progress);
-    if (data.done) setDone(true);
-  }
-
-  // Nút Gợi ý (kiểu từng bước, trắc nghiệm): gợi ý có sẵn của đề, không gọi AI.
+  // Nút Gợi ý: gợi ý có sẵn của đề, không gọi AI.
   async function hint() {
     if (!sid || busy) return;
     setErr(""); setBusy(true);
@@ -131,16 +107,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   // Quay lại danh sách đề. Phiên đang làm dở để nguyên ("Bỏ dở"), giống khi học sinh đóng tab.
   function back() {
     tok.current++;
-    setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setSure(false); setText(""); setErr(""); setBusy(false); setShowStmt(true); setSmode(null); setProg(null); setAsking(false); setWrong(0); setTried([]);
-  }
-
-  async function finishNow() {
-    if (!sid) return;
-    setBusy(true); setErr("");
-    const { ok, data } = await post("/api/chat", { action: "end", slug, sessionId: sid });
-    setBusy(false);
-    if (!ok) return setErr(data.error ?? "Có lỗi.");
-    setDone(true);
+    setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setSure(false); setText(""); setErr(""); setBusy(false); setShowStmt(false); setProg(null); setAsking(false); setWrong(0);
   }
 
   async function rateSure(n: number) {
@@ -192,13 +159,12 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
     );
   }
 
-  const Input = INPUTS[smode ?? prob.mode];
   return (
-    <div className="h-screen-d mx-auto flex max-w-2xl flex-col overflow-hidden text-sm">
+    <div className="h-screen-d mx-auto flex max-w-2xl flex-col overflow-hidden text-sm lg:max-w-6xl">
       <header className="shrink-0 border-b border-border bg-surface px-4 py-2 sm:py-3">
-        <div className="flex items-center justify-between gap-3 sm:mb-2">
+        <div className="mb-2 hidden items-center justify-between gap-3 sm:flex">
           <Brand size="sm" />
-          <p className="truncate text-sm text-text-muted" title={label}>{label}</p>
+          <p className="truncate text-sm text-text-muted" title={label}>{label}{sid && <span className="tnum ml-2 font-mono text-xs">#{shortId(sid)}</span>}</p>
         </div>
         <div className="flex items-center justify-between gap-2">
           <h1 className="truncate text-sm font-semibold sm:text-lg">{prob.title}</h1>
@@ -206,16 +172,29 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
         </div>
       </header>
 
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
       {prob.statement && (
-        <section aria-label="Đề bài" className="shrink-0 border-b border-border border-l-4 border-l-primary bg-primary-soft px-4 py-1">
+        <section aria-label="Đề bài" className="shrink-0 border-b border-border border-l-4 border-l-primary bg-primary-soft px-4 py-1 lg:w-2/5 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:py-4 lg:text-base">
           <div className="flex h-7 items-center justify-between gap-2">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-primary">Đề bài</h2>
-            <button type="button" onClick={() => setShowStmt(!showStmt)} aria-expanded={showStmt} className="-mr-2 h-7 rounded-sm px-2 text-xs font-medium text-primary hover:bg-surface">{showStmt ? "Thu gọn" : "Xem đề"}</button>
+            <button type="button" onClick={() => setShowStmt(true)} className="-mr-2 h-7 rounded-sm px-2 text-xs font-medium text-primary hover:bg-surface lg:hidden">Xem đủ</button>
           </div>
-          {showStmt && <div className="max-h-[28dvh] overflow-y-auto leading-tight [&_.katex]:text-[1.05em] [&_.katex-display]:my-0.5 [&_.py-1]:py-0"><MathText text={prob.statement.replace(/\n{2,}/g, "\n").trim()} /></div>}
+          <div onClick={() => setShowStmt(true)} className="max-h-[5.5rem] cursor-pointer overflow-hidden leading-tight [mask-image:linear-gradient(to_bottom,black_65%,transparent)] lg:max-h-none lg:cursor-auto lg:overflow-visible lg:leading-normal lg:[mask-image:none][&_.katex]:text-[1.05em] [&_.katex-display]:my-0.5 [&_.py-1]:py-0"><MathText text={prob.statement.replace(/\n{2,}/g, "\n").trim()} /></div>
         </section>
       )}
+      {showStmt && prob.statement && (
+        <div className="fixed inset-0 z-30 flex flex-col justify-end bg-black/40 lg:hidden" onClick={() => setShowStmt(false)}>
+          <div role="dialog" aria-label="Đề bài" className="max-h-[75dvh] overflow-y-auto rounded-t-xl bg-surface px-4 pb-6 pt-3 text-base" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-primary">Đề bài</h2>
+              <Button variant="ghost" type="button" onClick={() => setShowStmt(false)} className="-mr-3 text-sm">Đóng</Button>
+            </div>
+            <MathText text={prob.statement.replace(/\n{2,}/g, "\n").trim()} />
+          </div>
+        </div>
+      )}
 
+      <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3" role="log" aria-live="polite">
         <ul className="flex flex-col gap-3">
           {msgs.map((m, i) => (
@@ -228,7 +207,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
         <div ref={end} />
       </div>
 
-      <footer className="max-h-[55dvh] shrink-0 overflow-y-auto border-t border-border bg-surface px-4 pt-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
+      <footer className="max-h-[45dvh] shrink-0 overflow-y-auto border-t border-border bg-surface px-4 pt-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
         {err && <div className="mb-2"><Alert tone="danger">{err}{sid ? ` (Mã phiên: ${shortId(sid)})` : ""}</Alert></div>}
         {done ? (
           <div className="flex flex-col gap-3">
@@ -247,10 +226,11 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
             )}
           </div>
         ) : (
-          <Input text={text} setText={setText} busy={busy} ready={!!sid} onSend={send} onFinish={finishNow} onHint={hint} onPick={pick} tried={tried} canFinish={msgs.length >= 3} progress={prog} asking={asking} setAsking={setAsking} stuck={wrong >= 2} box={box} />
+          <StepInput text={text} setText={setText} busy={busy} ready={!!sid} onSend={send} onHint={hint} progress={prog} asking={asking} setAsking={setAsking} stuck={wrong >= 2} box={box} />
         )}
-        {sid && <p className="mt-2 hidden text-xs sm:block text-text-muted">Mã phiên: <span className="tnum font-mono">{shortId(sid)}</span></p>}
       </footer>
+      </div>
+      </div>
     </div>
   );
 }

@@ -14,7 +14,7 @@ const STUDENT = [
   ["Vào bằng liên kết", "Nhập mã và họ tên một lần, không cần tài khoản."],
   ["Được hỏi từng bước", "Đọc đề, nêu dữ kiện, chọn cách giải, tự tính. Bot không nói đáp án."],
   ["Gợi ý khi kẹt", "Gợi ý tăng dần: định hướng, chỉ cách giải, nêu bước kế. Kẹt quá lâu thì bot hiện lời giải của bước đó để em đi tiếp."],
-  ["Nộp từng bước hoặc chọn đáp án", "Mỗi lần một bước vào ô ngắn, hoặc chọn 1 trong 4 đáp án. Chọn sai thì được giải thích lỗi."],
+  ["Nộp từng bước", "Mỗi lần một bước vào ô ngắn. Chưa rõ đề thì bấm Em chưa hiểu để hỏi."],
   ["Gõ công thức dễ dàng", "Nút Công thức mở bàn phím toán: phân số, căn, số mũ."],
 ];
 

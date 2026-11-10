@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Empty, LinkButton } from "@/components/ui";
+import { Empty, LinkButton, toast } from "@/components/ui";
 import { describe, GROUPS, LOG, labelOf, type Meta } from "@/lib/log-labels";
 
 type Row = { id: number; ts: string; actor_type: string; action: string; meta: Meta; link: string | null; student: string | null };
@@ -34,7 +34,7 @@ export default function ActivityLog() {
       const r = await fetch(`/api/logs${a ? `?action=${encodeURIComponent(a)}` : ""}`);
       if (!r.ok) throw new Error();
       setRows((await r.json()).rows);
-    } catch { setErr(true); }
+    } catch { setErr(true); toast("danger", "Không tải được. Đóng rồi mở lại để thử lại."); }
   };
   return (
     <details className="rounded-lg border border-border bg-surface px-4" onToggle={(e) => e.currentTarget.open && !rows && !err && void load(action)}>
@@ -56,7 +56,6 @@ export default function ActivityLog() {
           </div>
           <LinkButton variant="secondary" href="/api/export?kind=logs">Tải CSV</LinkButton>
         </div>
-        {err && <p className="text-sm text-danger">Không tải được. Đóng rồi mở lại để thử lại.</p>}
         {!rows && !err && <p className="text-sm text-text-muted">Đang tải…</p>}
         {rows && (rows.length === 0 ? <Empty text="Chưa có hoạt động nào khớp." /> : group(rows).map((g) => (
           <section key={g.key} className="flex flex-col gap-1">

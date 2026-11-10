@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
-import { useEffect, useId, useState, useTransition, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
+import { useEffect, useId, useState, useSyncExternalStore, useTransition, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 
 const BTN = "inline-flex min-h-11 items-center justify-center gap-2 rounded-sm px-4 text-base font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 const VARIANT = {
@@ -115,6 +115,21 @@ export function Field({ label, hint, error, ...p }: InputHTMLAttributes<HTMLInpu
   );
 }
 
+// Chọn lớp bắt buộc: không có giá trị mặc định, để AI dùng đúng kiến thức lớp đó.
+export function GradeSelect({ value, onChange, hint }: { value: string; onChange: (v: string) => void; hint?: string }) {
+  const id = useId();
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="font-medium">Lớp (bắt buộc)</label>
+      <select id={id} value={value} onChange={(e) => onChange(e.target.value)} className={FIELD}>
+        <option value="">Chọn lớp</option>
+        {Array.from({ length: 12 }, (_, i) => <option key={i} value={i + 1}>Lớp {i + 1}</option>)}
+      </select>
+      <p className="text-sm text-text-muted">{hint ?? "AI chỉ dùng kiến thức học đến hết lớp này khi giải và hướng dẫn."}</p>
+    </div>
+  );
+}
+
 export function TextArea({ label, hint, className = "", ...p }: TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string; hint?: string }) {
   const id = useId();
   return (
@@ -142,6 +157,37 @@ export function Alert({ tone = "info", children }: { tone?: keyof typeof TONE; c
   );
 }
 
+// Thông báo nổi tự tắt (lỗi 8s, còn lại 5s). Gọi toast() từ bất kỳ đâu; ToastHost gắn một lần ở layout.
+type Toast = { id: number; tone: keyof typeof TONE; text: string };
+let toasts: Toast[] = [];
+let tid = 0;
+const subs = new Set<() => void>();
+const emit = () => subs.forEach((f) => f());
+export function dismissToast(id: number) { toasts = toasts.filter((t) => t.id !== id); emit(); }
+export function toast(tone: keyof typeof TONE, text: string) {
+  const id = ++tid;
+  toasts = [...toasts.slice(-2), { id, tone, text }]; // tối đa 3 cái cùng lúc
+  emit();
+  setTimeout(() => dismissToast(id), tone === "danger" ? 8000 : 5000);
+}
+const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f); }; };
+const NONE: Toast[] = [];
+
+export function ToastHost() {
+  const list = useSyncExternalStore(subscribe, () => toasts, () => NONE);
+  if (!list.length) return null;
+  return (
+    <div className="pointer-events-none fixed inset-x-0 top-3 z-[60] flex flex-col items-center gap-2 px-4">
+      {list.map((t) => (
+        <div key={t.id} role={t.tone === "danger" ? "alert" : "status"} className={`pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-sm px-4 py-3 text-sm shadow-[var(--shadow-2)] ring-1 ring-current/20 ${TONE[t.tone]}`}>
+          <p className="flex-1"><strong>{MARK[t.tone]}</strong> {t.text}</p>
+          <button type="button" aria-label="Đóng thông báo" onClick={() => dismissToast(t.id)} className="grid size-6 shrink-0 place-items-center rounded-sm hover:bg-black/10">✕</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Empty({ text, action }: { text: string; action?: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-3 border border-dashed border-border-strong rounded-lg p-8 text-center">
@@ -162,7 +208,6 @@ export function Skeleton({ lines = 3 }: { lines?: number }) {
 export function Confirm({ label, message, onConfirm, confirmLabel = "Xóa" }: { label: string; message: string; onConfirm: () => Promise<string | void> | string | void; confirmLabel?: string }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
   const [rp, refresh] = useRefresh();
   const [sent, setSent] = useState(false);
   // Đóng hộp thoại khi đã xóa xong VÀ danh sách đã tải lại.
@@ -175,15 +220,14 @@ export function Confirm({ label, message, onConfirm, confirmLabel = "Xóa" }: { 
           <div className="w-full max-w-md rounded-t-lg bg-surface p-6 sm:rounded-lg" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
             <h2>{label}?</h2>
             <p className="mt-2 text-text-muted">{message}</p>
-            {err && <p role="alert" className="mt-3 text-danger">{err}</p>}
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button variant="secondary" autoFocus onClick={() => setOpen(false)}>Hủy</Button>
               <Button variant="danger" pending={busy || rp ? "Đang xử lý..." : undefined} onClick={async () => {
-                setBusy(true); setErr("");
+                setBusy(true);
                 try {
                   const e = await onConfirm();
-                  if (e) setErr(e); else { setSent(true); refresh(); }
-                } catch { setErr("Có lỗi."); } finally { setBusy(false); }
+                  if (e) toast("danger", e); else { setSent(true); refresh(); }
+                } catch { toast("danger", "Có lỗi."); } finally { setBusy(false); }
               }}>{confirmLabel}</Button>
             </div>
           </div>

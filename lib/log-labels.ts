@@ -24,9 +24,10 @@ export const LOG: Record<string, Info> = {
   student_advice: { label: "AI đề xuất cải thiện cho học sinh", group: ACC, text: (m) => (m.code ? `Học sinh ${s(m.code)}` : "") },
 
   problem_created: { label: "Nạp đề", group: PROB, text: (m) => (m.code ? `Đề ${s(m.code)}` : "") },
-  problem_updated: { label: "Sửa đề", group: PROB, text: (m) => (m.code ? `Đề ${s(m.code)}${m.version ? ` (bản ${s(m.version)})` : ""}` : "") },
+  problem_updated: { label: "Sửa đề", group: PROB, text: (m) => (m.code ? `Đề ${s(m.code)}${m.version ? ` (bản ${s(m.version)})` : ""}` : "") + (m.answer ? ` · ${({ set: "nhập và khóa đáp án", lock: "khóa đáp án", unlock: "mở khóa đáp án" } as Record<string, string>)[s(m.answer)] ?? ""}` : "") },
   problem_deleted: { label: "Xóa đề", group: PROB },
-  problem_normalized: { label: "Chuẩn hóa đề từ văn bản", group: PROB, text: (m) => (m.code ? `Đề ${s(m.code)}` : "") },
+  problem_standardized: { label: "Chuẩn hóa đề", group: PROB, text: (m) => (m.code ? `Đề ${s(m.code)}${m.version ? ` (bản ${s(m.version)})` : ""}` : "") },
+  problem_normalized: { label: "Đọc đề từ văn bản", group: PROB, text: (m) => (m.code ? `Đề ${s(m.code)}` : "") },
   problem_image_read: { label: "Đọc đề từ ảnh", group: PROB },
   problem_selftest: { label: "Kiểm thử chatbot", group: PROB, text: (m) => `Đề ${s(m.code)}: đạt ${s(m.passed)}/${s(m.total)} tình huống` },
   problems_seeded: { label: "Thêm đề mẫu", group: PROB, text: (m) => `${s(m.count)} đề` },

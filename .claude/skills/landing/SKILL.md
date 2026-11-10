@@ -16,10 +16,9 @@ Ba đích:
 
 1. **Đọc hiện trạng hệ thống, không dựa vào trí nhớ.** Dùng Read/Grep/Glob và `git log --oneline -20`:
    - `supabase/migrations/`: tên file mới nhất cho biết tính năng nào đã vào DB.
-   - `lib/modes.ts`: các kiểu học sinh tương tác (`MODES`).
    - `lib/models.ts`: nhà cung cấp AI đang hỗ trợ.
    - `app/dashboard/`: các trang giáo viên đang có (đề, liên kết, học sinh, thống kê, nhật ký, cài đặt, hướng dẫn).
-   - `app/api/`: các action (ví dụ trong `app/api/problems/route.ts`: tạo lời giải, tạo gợi ý từng bước, lời chào, kiểm thử).
+   - `app/api/`: các action (ví dụ trong `app/api/problems/route.ts`: tạo lời giải, tạo gợi ý từng bước, hoàn thiện đề hàng loạt).
    - `lib/chat/`, `lib/schema/problem.ts`: cách chatbot chấm bước, các trường của đề.
    - Rút ra **danh sách tính năng thật** mà giáo viên và học sinh dùng được.
 2. **Đọc 3 đích**, ghi lại từng chỗ: lỗi thời, thiếu, nói sai, hoặc mô tả tính năng đã bỏ.

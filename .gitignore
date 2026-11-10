@@ -43,3 +43,7 @@ next-env.d.ts
 # dev logs
 dev.log
 dev.err
+
+# eval output
+/evals/out-*.json
+/evals/progress.log

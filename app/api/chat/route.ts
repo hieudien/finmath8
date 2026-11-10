@@ -4,12 +4,10 @@ import { cookies } from "next/headers";
 import { sweep } from "@/lib/sweep";
 import { z } from "zod";
 import { admin } from "@/lib/supabase/admin";
-import { llmCfg, teacherMode } from "@/lib/teacher";
+import { llmCfg } from "@/lib/teacher";
 import { getLink } from "@/lib/links";
-import { finish, openingTurn, turn, type Session, type Tm } from "@/lib/chat/engine";
-import { quizPick } from "@/lib/chat/quiz";
+import { finish, type Session, type Tm } from "@/lib/chat/engine";
 import { stepAsk, stepHint, stepsOpening, stepTurn } from "@/lib/chat/steps";
-import { modeFor } from "@/lib/modes";
 import { type Problem } from "@/lib/schema/problem";
 import { log } from "@/lib/log";
 import { failResponse, reportError } from "@/lib/errors";
@@ -17,10 +15,9 @@ import { clientIp, limited } from "@/lib/ratelimit";
 
 const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("start"), slug: z.string().min(4), problemCode: z.string(), studentCode: z.string().trim().toUpperCase().regex(/^[A-Z0-9._-]{1,20}$/), studentName: z.string().trim().min(2).max(60) }),
-  z.object({ action: z.literal("message"), slug: z.string().min(4), sessionId: z.string().uuid(), text: z.string().trim().min(1).max(500), ask: z.boolean().optional() }), // ask: câu hỏi "Em chưa hiểu" (kiểu từng bước)
-  z.object({ action: z.literal("pick"), slug: z.string().min(4), sessionId: z.string().uuid(), choice: z.string().min(1).max(300) }), // chỉ kiểu "quiz"
+  z.object({ action: z.literal("message"), slug: z.string().min(4), sessionId: z.string().uuid(), text: z.string().trim().min(1).max(500), ask: z.boolean().optional() }), // ask: câu hỏi "Em chưa hiểu"
   z.object({ action: z.literal("end"), slug: z.string().min(4), sessionId: z.string().uuid() }),
-  z.object({ action: z.literal("hint"), slug: z.string().min(4), sessionId: z.string().uuid() }), // kiểu "từng bước" và "quiz"
+  z.object({ action: z.literal("hint"), slug: z.string().min(4), sessionId: z.string().uuid() }),
   z.object({ action: z.literal("survey"), slug: z.string().min(4), sessionId: z.string().uuid(), likert: z.number().int().min(1).max(5).optional(), confidence: z.number().int().min(1).max(5).optional() }),
 ]);
 
@@ -90,9 +87,9 @@ async function handle(req: Request) {
     if ((today ?? 0) >= MAX_SESSIONS_PER_DAY) return denied("anon_day", b.slug, anon, "Hôm nay em đã làm nhiều bài rồi. Nghỉ một chút, mai làm tiếp nhé.", link);
     sweep(); // dọn phiên bỏ dở và nhật ký lỗi cũ sau khi trả phản hồi
     const { data: seq } = await db.rpc("next_seq", { p_link: link.id } as never); // sau khi qua mọi giới hạn, để số thứ tự không bị hụt
-    // Kiểu tương tác ghim vào phiên lúc bắt đầu; đề thiếu lời giải từng bước thì chạy chat.
-    const mode = modeFor(await teacherMode(link.teacher_id), prob);
-    const { data: s, error } = await db.from("chat_sessions").insert({ link_id: link.id, anon_id: anon, seq: (seq as number | null) ?? 1, problem_code: prob.id, student_code: b.studentCode, student_name: b.studentName, mode, ...(mode !== "chat" && { hint_level: 0 }) } as never).select("*").single();
+    if (!prob.solution_steps.length) return err("Bài này chưa sẵn sàng. Báo giáo viên của em.", 409); // đề cũ thiếu lời giải từng bước
+    const mode = "steps"; // cột mode giữ lại cho phiên cũ (chat, quiz)
+    const { data: s, error } = await db.from("chat_sessions").insert({ link_id: link.id, anon_id: anon, seq: (seq as number | null) ?? 1, problem_code: prob.id, student_code: b.studentCode, student_name: b.studentName, mode, hint_level: 0 } as never).select("*").single();
     if (error || !s) throw new Error("Không tạo được phiên chat: " + (error?.message ?? "rỗng"));
     // Học sinh có bảng riêng, sống sót khi xóa liên kết. Vào lại bằng cùng mã thì hiện lại (deleted_at = null).
     const up = await db.from("students").upsert({ teacher_id: link.teacher_id, code: b.studentCode, name: b.studentName, last_seen_at: new Date().toISOString(), deleted_at: null } as never);
@@ -100,10 +97,10 @@ async function handle(req: Request) {
     const sess = s as Session & { seq: number };
     try {
       const [r] = await Promise.all([
-        mode !== "chat" ? stepsOpening(sess, prob) : prob.statement ? openingTurn(sess, prob) : turn(cfg, sess, prob, null, link.teacher_id, []),
+        stepsOpening(sess, prob),
         log({ actor: "student", action: "chat_session_started", teacherId: link.teacher_id, anonId: anon, linkId: link.id, meta: { problem: prob.id, seq: sess.seq, mode } }),
       ]);
-      return Response.json({ sessionId: sess.id, mode, ...r });
+      return Response.json({ sessionId: sess.id, ...r });
     } catch (e) {
       return geminiFail(e, link.teacher_id, anon, link.id);
     }
@@ -115,7 +112,7 @@ async function handle(req: Request) {
   const [{ data: sd }, cfg, { data: msgs }] = await Promise.all([
     db.from("chat_sessions").select("*").eq("id", b.sessionId).eq("link_id", link.id).eq("anon_id", anon).maybeSingle(),
     b.action === "survey" ? null : llmCfg(link.teacher_id),
-    b.action === "message" || b.action === "pick" ? db.from("messages").select("role,content,hint_level,ts").eq("session_id", b.sessionId).order("id") : { data: null },
+    b.action === "message" ? db.from("messages").select("role,content,hint_level,ts").eq("session_id", b.sessionId).order("id") : { data: null },
   ]);
   tm.db_pre = Date.now() - t0;
   const sess = sd as (Session & { problem_code: string }) | null;
@@ -146,10 +143,7 @@ async function handle(req: Request) {
       return Response.json({ ok: true, done: true });
     }
     if (sess.status !== "active") return err("Bài này đã kết thúc.", 409);
-    const quiz = sess.mode === "quiz";
-    const steps = sess.mode === "steps";
-    if (b.action === "hint") return steps || quiz ? Response.json(await stepHint(cfg, sess, prob, link.teacher_id)) : err("Yêu cầu không hợp lệ.");
-    if ((b.action === "pick") !== quiz) return err("Yêu cầu không hợp lệ.");
+    if (b.action === "hint") return Response.json(await stepHint(cfg, sess, prob, link.teacher_id));
     // Một lần đọc (ở trên) cho cả giới hạn số tin, chống gửi dồn và ngữ cảnh của lượt này.
     const all = (msgs ?? []) as { role: "student" | "bot"; content: string; hint_level: number | null; ts: string }[];
     const said = all.filter((m) => m.role === "student");
@@ -157,12 +151,7 @@ async function handle(req: Request) {
     // Chống gửi dồn: cách tin trước ít nhất 2 giây trong cùng phiên.
     const last = said.at(-1);
     if (last && Date.now() - new Date(last.ts).getTime() < 2000) return denied("too_fast", b.slug, anon, "Bạn gửi nhanh quá. Chờ một chút rồi gửi lại nhé.", link);
-    if (b.action === "pick") {
-      const r = await quizPick(cfg, sess, prob, b.choice, link.teacher_id);
-      return r ? Response.json(r) : err("Yêu cầu không hợp lệ.");
-    }
-    if (b.ask && !steps) return err("Yêu cầu không hợp lệ.");
-    const r = await (steps ? (b.ask ? stepAsk : stepTurn) : turn)(cfg, sess, prob, b.text, link.teacher_id, all, tm);
+    const r = await (b.ask ? stepAsk : stepTurn)(cfg, sess, prob, b.text, link.teacher_id, all, tm);
     tm.total = Date.now() - t0;
     return Response.json(r, { headers: { "Server-Timing": Object.entries(tm).map(([k, v]) => `${k};dur=${v}`).join(", ") } });
   } catch (e) {

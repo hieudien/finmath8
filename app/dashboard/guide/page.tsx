@@ -4,15 +4,13 @@ const BLOCKS: [string, string[]][] = [
     "Giới thiệu chatbot: \"Chatbot gợi ý từng bước, em cố gắng trả lời trước khi xin gợi ý\".",
     "Mỗi học sinh tự làm riêng trên thiết bị của mình.",
   ]],
-  ["Kiểu làm bài", [
-    "Từng bước: học sinh nộp một bước giải mỗi lần vào ô ngắn. Nhanh hơn, ít lạc đề. Có nút Em chưa hiểu để hỏi khi chưa rõ đề hoặc cách bắt đầu.",
-    "Đề thiếu lời giải từng bước sẽ tự chạy kiểu Chat: học sinh nhắn tin tự do với chatbot.",
+  ["Cách học sinh làm bài", [
+    "Học sinh nộp một bước giải mỗi lần vào ô ngắn. Có nút Gợi ý và nút Em chưa hiểu để hỏi khi chưa rõ đề hoặc cách bắt đầu.",
   ]],
-  ["Chuẩn bị đề cho kiểu Từng bước", [
-    "Đề cần có lời giải từng bước. Nếu chưa có, bấm \"Tạo lời giải bằng AI\" ở trang đề.",
-    "Bấm \"Tạo chỉ dẫn từng bước\" (ở danh sách đề hoặc trang từng đề) để AI viết việc cần làm và 3 mức gợi ý cho từng bước.",
+  ["Chuẩn bị đề", [
+    "Đề cần có lời giải từng bước, nếu thiếu thì học sinh chưa làm được (bổ sung rồi tạo liên kết mới). Nếu chưa có, bấm \"Chuẩn hóa đề\" ở trang đề.",
+    "Bấm \"Chuẩn hóa đề\" (ở trang từng đề, hoặc nút Chuẩn hóa N đề ở danh sách đề) để AI sửa công thức hỏng, viết lời giải nếu thiếu, và viết việc cần làm cùng 3 mức gợi ý cho từng bước.",
     "Đọc lại lời giải và đáp án AI viết.",
-    "Đề thiếu lời giải từng bước sẽ chạy kiểu Chat.",
   ]],
   ["Phân công và giám sát", [
     "Quan sát học sinh hiểu giao diện, không sao lãng.",
@@ -23,6 +21,7 @@ const BLOCKS: [string, string[]][] = [
     "Xem hồ sơ từng học sinh ở mục Học sinh: kỹ năng cần củng cố, lỗi hay mắc và kiến thức nền còn thiếu (ghi khi em được giải hộ bước).",
     "Mở một phiên (ở Thống kê hoặc hồ sơ học sinh) rồi bấm \"AI phân tích phiên này\" để có nhận xét riêng cho phiên đó: làm tốt ở đâu, yếu ở bước nào, nên làm gì tiếp. Kết quả được lưu, bấm \"Phân tích lại\" khi cần.",
     "Thống kê, hồ sơ và danh sách Học sinh cho biết bước nào học sinh hay gặp khó (bấm Gợi ý, hỏi, làm sai hoặc được giải hộ). AI đề xuất cải thiện có thêm mục Ôn tập theo bước.",
+    "Cài đặt có mục Chi phí AI và Nhật ký lỗi để xem lượng AI đã dùng và lúc nào học sinh gặp lỗi.",
     "Xóa liên kết hoặc xóa học sinh chỉ ẩn đi, dữ liệu vẫn được giữ. Học sinh vào lại bằng cùng mã thì hiện lại.",
     "Chỉnh gợi ý trong đề rồi tạo liên kết mới (liên kết cũ giữ bản đề cũ).",
   ]],
@@ -49,7 +48,7 @@ export default function Page() {
         <ol className="list-decimal space-y-1 pl-5">
           <li>Khám phá tình huống</li><li>Phân tích dữ kiện</li><li>Đề xuất phương án</li><li>Thực hiện giải quyết</li><li>Đánh giá kết quả</li>
         </ol>
-        <p className="text-text-muted">Gợi ý tăng dần khi học sinh kẹt. Kiểu Từng bước có 3 mức riêng cho từng bước: định hướng, chỉ cách làm, nêu tên phép tính cần dùng. Kiểu Chat (khi đề thiếu lời giải từng bước) có 4 mức, mức 4 là làm mẫu bằng số khác. Hết gợi ý mà vẫn kẹt thì chatbot hiện lời giải của bước đó để em đi tiếp; bước được giải hộ không được tính điểm.</p>
+        <p className="text-text-muted">Gợi ý tăng dần khi học sinh kẹt. Mỗi bước có 3 mức riêng: định hướng, chỉ cách làm, nêu tên phép tính cần dùng. Hết gợi ý mà vẫn kẹt thì chatbot hiện lời giải của bước đó để em đi tiếp; bước được giải hộ không được tính điểm.</p>
       </section>
     </div>
   );

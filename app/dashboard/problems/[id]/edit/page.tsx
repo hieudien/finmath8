@@ -11,5 +11,5 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const { data } = await (await supabaseServer()).from("problems").select("content").eq("id", id).is("deleted_at", null).maybeSingle();
   const p = problemSchema.safeParse((data as { content: unknown } | null)?.content);
   if (!p.success) notFound();
-  return <ProblemEditor initial={p.data} />;
+  return <ProblemEditor initial={p.data} rowId={id} />;
 }

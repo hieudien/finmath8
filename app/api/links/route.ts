@@ -34,10 +34,13 @@ export const POST = api(async (req) => {
     const { data } = await db.from("problems").select("content").eq("teacher_id", u.id).is("deleted_at", null).in("id", b.problemIds);
     const snap = ((data ?? []) as { content: unknown }[]).map((r) => r.content);
     if (!snap.length) return bad("Không tìm thấy đề đã chọn.");
+    // Chặn ở server (giao diện chỉ khóa ô chọn): đáp án phải do giáo viên xác nhận, vì AI có thể giải sai.
+    const unconfirmed = snap.filter((c) => (c as { answer_locked?: boolean }).answer_locked !== true).map((c) => (c as { id?: string }).id ?? "?");
+    if (unconfirmed.length) return bad(`Đề ${unconfirmed.join(", ")} chưa xác nhận đáp án. Mở đề, kiểm tra rồi khóa đáp án trước khi tạo liên kết.`);
     if (snap.some((c) => (c as { reviewed?: boolean }).reviewed === false)) return bad("Có đề AI tạo chưa duyệt. Mở đề, kiểm tra rồi lưu trước khi tạo liên kết.");
     // Đề phải đủ cho cả chat và từng bước: giáo viên đổi kiểu sau này thì liên kết cũ vẫn chạy được.
     const lack = snap.flatMap((c) => { const m = missingInfo(c); return m.length ? [`${(c as { id?: string }).id ?? "?"} (thiếu ${m.join(", ")})`] : []; });
-    if (lack.length) return bad(`Có đề chưa đủ thông tin cho cả chat và từng bước: ${lack.join("; ")}. Vào Đề bài, bấm "Nạp thêm bằng AI" cho đề đó rồi tạo lại.`);
+    if (lack.length) return bad(`Có đề chưa đủ thông tin cho cả chat và từng bước: ${lack.join("; ")}. Vào Đề bài, bấm "Chuẩn hóa đề" cho đề đó rồi tạo lại.`);
     const { data: row, error } = await db.from("public_links").insert({
       teacher_id: u.id, slug: slug(), label: b.label, tag: b.tag, problems_snapshot: snap, max_messages: b.maxMessages,
     } as never).select("id,slug").single();

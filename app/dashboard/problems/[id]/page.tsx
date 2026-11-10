@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { supabaseServer, currentUser } from "@/lib/supabase/server";
-import { teacherMode } from "@/lib/teacher";
-import { hasChoices, hasGuides } from "@/lib/chat/goals";
+import { supabaseServer } from "@/lib/supabase/server";
+import { hasGuides } from "@/lib/chat/goals";
 import { problemSchema } from "@/lib/schema/problem";
+import { lintProblem } from "@/lib/lint";
 import { entries, problemToText } from "@/lib/problem-text";
 import { ExplainButton, ViewTools } from "@/components/ProblemViewTools";
-import { Alert } from "@/components/ui";
+import { Alert, Badge } from "@/components/ui";
+import { AnswerBox } from "@/components/AnswerBox";
+import { substituteState } from "@/lib/verify-solution";
 import { MathText } from "@/components/MathText";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -44,10 +46,9 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
     );
   }
   const p = parsed.data;
-  const tmode = await teacherMode((await currentUser())!.id);
-  const stepsMode = tmode !== "chat";
   const guided = hasGuides(p);
   const hints = [...p.hints].sort((a, b) => a.level - b.level);
+  const lint = [...(p.check_note ? [p.check_note] : []), ...lintProblem(p)];
 
   return (
     <article className="flex max-w-3xl flex-col gap-6">
@@ -56,10 +57,24 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       </div>
       <header className="flex flex-col gap-1">
         <p className="tnum text-sm text-text-muted">{p.id} · Lớp {p.grade}{p.topic ? ` · ${p.topic}` : ""}</p>
-        <h1>{p.title}</h1>
+        <h1 className="flex flex-wrap items-center gap-2">{p.title} <Badge tone={p.answer_locked ? "success" : "warn"}>{p.answer_locked ? "Đáp án đã khóa" : "Chưa xác nhận đáp án"}</Badge></h1>
       </header>
 
+      <AnswerBox id={id} solution={p.solution} locked={p.answer_locked} check={substituteState(p).state} />
+
       <ViewTools text={problemToText(p)} />
+
+      <div className="flex flex-col gap-2 print:hidden">
+        <ExplainButton id={id} />
+        <p className="text-sm text-text-muted">AI tạo lại dữ kiện, đáp án, lời giải, sai lầm thường gặp, gợi ý và câu mở rộng từ đề bài, ghi đè nội dung cũ. Luôn dùng được, kể cả khi đề đã đạt chuẩn.</p>
+      </div>
+
+      {lint.length > 0 && (
+        <Alert tone="warning">
+          <p className="font-medium">Nên xem lại đề này:</p>
+          <ul className="list-disc space-y-1 pl-5">{lint.map((t) => <li key={t}>{t}</li>)}</ul>
+        </Alert>
+      )}
 
       <Section title="Đề bài">
         {p.statement ? <p className="max-w-prose"><MathText text={p.statement} /></p> : <Alert tone="warning">Đề chưa có phần nội dung bài (statement). Chatbot sẽ tự nêu tình huống từ dữ kiện.</Alert>}
@@ -77,32 +92,25 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   <div>
                     <MathText text={s} />
                     {hasGuides(p) && p.step_goals[i] && <p className="text-sm text-text-muted">Học sinh thấy: <MathText text={p.step_goals[i]} /></p>}
-                    {hasChoices(p) && (
-                      <ul className="mt-1 text-sm text-text-muted">
-                        <li>✓ <MathText text={p.step_choices[i].right} /></li>
-                        {p.step_choices[i].traps.map((t, k) => <li key={k}>✗ <MathText text={t.text} /> — <MathText text={t.why} /></li>)}
-                      </ul>
-                    )}
+                    {p.step_checks.length === p.solution_steps.length && p.step_checks[i].result && <p className="text-sm text-text-muted">Kết quả chuẩn (server chấm theo đây): <MathText text={p.step_checks[i].result} /></p>}
+                    {p.error_traps.filter((e) => e.step === i + 1).map((e, k) => <p key={k} className="text-sm text-text-muted">Nếu học sinh nộp <MathText text={e.wrong} />: <MathText text={e.why} /></p>)}
                   </div>
                 </li>
               ))}
             </ol>
-            {stepsMode && !guided && (
-              <div className="flex flex-col gap-3">
-                <Alert tone="info">Chưa đủ chỉ dẫn cho từng bước (việc cần làm, gợi ý), nên học sinh chỉ thấy lời nhắc chung và gợi ý chung của đề. AI có thể viết chỉ dẫn cho từng bước. Sửa lời giải xong thì bấm tạo lại.</Alert>
-                <ExplainButton id={id} action="step_guides" label="Tạo chỉ dẫn và gợi ý từng bước bằng AI" busyLabel="AI đang viết chỉ dẫn..." />
-              </div>
+            {!guided && (
+              <Alert tone="info">Chưa đủ chỉ dẫn cho từng bước (việc cần làm, gợi ý), nên học sinh chỉ thấy lời nhắc chung và gợi ý chung của đề. Bấm Chuẩn hóa đề ở đầu trang để AI viết chỉ dẫn cho từng bước. Sửa lời giải xong thì bấm lại.</Alert>
             )}
           </>
         ) : (
-          <div className="flex flex-col gap-3">
-            <Alert tone={stepsMode ? "warning" : "info"}>Đề này chưa có lời giải từng bước.{stepsMode ? " Đang bật kiểu Từng bước nên đề này chạy kiểu chat cho đến khi có lời giải (liên kết cũ giữ đề cũ, cần tạo liên kết mới)." : ""} AI có thể viết giúp; lời giải được kiểm tra khớp đáp án trước khi lưu.</Alert>
-            <ExplainButton id={id} />
-          </div>
+          <Alert tone="warning">Đề này chưa có lời giải từng bước nên học sinh chưa làm được (liên kết cũ giữ đề cũ, cần tạo liên kết mới). Bấm Chuẩn hóa đề ở đầu trang để AI viết giúp; lời giải được kiểm tra khớp đáp án trước khi lưu.</Alert>
         )}
       </Section>
 
-      <Section title="Kết quả"><Rows items={entries(p.solution)} /></Section>
+      <Section title="Kết quả">
+        <Rows items={entries(p.solution)} />
+        {Object.keys(p.solution).length > 0 && <ExplainButton id={id} action="verify" label="Kiểm tra đáp án bằng AI" busyLabel="AI đang giải lại để so..." />}
+      </Section>
 
       {p.common_errors.length > 0 && (
         <Section title="Sai lầm thường gặp"><ul className="list-disc space-y-1 pl-5">{p.common_errors.map((e, i) => <li key={i}><MathText text={e} /></li>)}</ul></Section>

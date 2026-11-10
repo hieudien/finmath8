@@ -26,14 +26,6 @@ export const STUCK_NOHINT = [
   "Bước này đã hết gợi ý. Bạn bấm Em chưa hiểu để hỏi về đề, hoặc thử viết bước theo cách bạn hiểu nhé.",
 ] as const;
 
-export const QUIZ_NOHINT = [
-  "Bạn đã dùng hết gợi ý của bước này. Bạn tự tính rồi chọn đáp án nhé.",
-  "Bước này đã hết gợi ý. Bạn tự tính rồi chọn đáp án mình nghĩ là đúng nhé.",
-  "Mình đã đưa hết gợi ý cho bước này rồi. Bạn tính thử rồi chọn đáp án nhé.",
-  "Hết gợi ý cho bước này rồi. Bạn tự tính từng bước rồi chọn đáp án nhé.",
-  "Bạn dùng hết gợi ý của bước này rồi. Hãy tự tính và chọn đáp án nhé.",
-] as const;
-
 export const ASK_ANSWER = [
   "Mình không cho đáp án được, nhưng mình sẽ giúp từng bước.",
   "Đáp án thì mình không nói trước được, nhưng mình đi cùng bạn từng bước nhé.",
@@ -106,6 +98,9 @@ export const STEP_LEAK = [
   "Mình chưa thấy bước này đúng. Bạn kiểm tra lại phép tính nhé.",
   "Bước này chưa khớp lắm. Bạn thử rà lại phép tính nhé.",
 ] as const;
+
+// Bước cần phương trình mà tin không có dấu "=": một câu cố định (không bốc ngẫu nhiên) để cùng input luôn ra cùng lời.
+export const NEED_EQ = "Bước này cần viết thành một phương trình có dấu =. Bạn thêm dấu = vào rồi gửi lại nhé.";
 
 export const RETRY = [
   "Bạn thử lại nhé.",

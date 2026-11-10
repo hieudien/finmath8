@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui";
-import { costUsd, DEFAULT_PRICES, FALLBACK_PRICE, OTHER, RANGES, STUDENT, TEACHER, USD_VND, purposeInfo, type Range, type UsageRow } from "@/lib/pricing";
+import { AVG_USES, costUsd, DEFAULT_PRICES, FALLBACK_PRICE, OTHER, RANGES, STUDENT, TEACHER, USD_VND, purposeInfo, sumUses, type Range, type UsageRow } from "@/lib/pricing";
 
 type Edit = { in: string; cached: string; out: string };
 const KEY = "ai-prices-v1";
@@ -12,7 +12,7 @@ const cell = "min-h-11 w-24 rounded-sm border border-border-strong bg-surface px
 
 const defaultEdit = (m: string): Edit => { const p = DEFAULT_PRICES[m] ?? FALLBACK_PRICE; return { in: String(p.in), cached: String(p.cached), out: String(p.out) }; };
 
-export default function AiCost({ rows, range }: { rows: UsageRow[]; range: Range }) {
+export default function AiCost({ rows, range, problems, sessions }: { rows: UsageRow[]; range: Range; problems: number; sessions: number }) {
   const models = useMemo(() => [...new Set(rows.map((r) => r.model))].sort(), [rows]);
   // Giá đã sửa theo model; model chưa sửa (kể cả model mới xuất hiện khi đổi khoảng thời gian) dùng giá mặc định.
   const [prices, setPrices] = useState<Record<string, Edit>>({});
@@ -46,6 +46,17 @@ export default function AiCost({ rows, range }: { rows: UsageRow[]; range: Range
   const total = list.reduce((s, x) => ({ calls: s.calls + x.calls, tokens: s.tokens + x.tokens, vnd: s.vnd + x.vnd }), { calls: 0, tokens: 0, vnd: 0 });
   const tokIn = rows.reduce((s, r) => s + r.input, 0);
 
+  // Trung bình: tổng token và tiền của nhóm `use` chia cho mẫu số (đề nạp, phiên chat, lượt phân tích). Mẫu số 0 thì hiện "—".
+  const avg = (uses: readonly string[], n: (calls: number) => number, label: string, unit: string) => {
+    const t = sumUses(rows, uses, vnd), d = n(t.calls);
+    return { label, value: d ? `${nf.format(Math.round(t.tokens / d))} token` : "—", note: d ? `${nf.format(Math.round(t.vnd / d))} đ ${unit}, từ ${nf.format(d)} ${unit.replace("mỗi ", "")}` : `chưa có ${unit.replace("mỗi ", "")} nào` };
+  };
+  const avgs = [
+    avg(AVG_USES.problem, () => problems, "Trung bình GV nạp 1 đề", "mỗi đề"),
+    avg(AVG_USES.session, () => sessions, "Trung bình HS chat 1 phiên", "mỗi phiên"),
+    avg(AVG_USES.analysis, (c) => c, "Trung bình 1 lần phân tích kết quả HS", "mỗi lần"),
+  ];
+
   return (
     <section aria-labelledby="ai-cost" className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -62,6 +73,10 @@ export default function AiCost({ rows, range }: { rows: UsageRow[]; range: Range
             <Stat label="Số lượt gọi AI" value={nf.format(total.calls)} />
             <Stat label="Tổng token" value={nf.format(total.tokens)} note={`đầu vào ${nf.format(tokIn)}, còn lại là đầu ra`} />
             <Stat label="Ước tính tiền" value={`${nf.format(Math.round(total.vnd))} đ`} note="theo giá bên dưới" />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            {avgs.map((a) => <Stat key={a.label} label={a.label} value={a.value} note={a.note} />)}
           </div>
 
           {[STUDENT, TEACHER, OTHER].map((g) => {

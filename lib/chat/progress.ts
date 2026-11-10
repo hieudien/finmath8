@@ -1,5 +1,6 @@
 import type { Problem } from "@/lib/schema/problem";
 import { plain } from "@/lib/plain";
+import { canon } from "@/lib/answer-check";
 
 // Chuẩn hóa số: bỏ dấu phân cách nghìn, dấu phẩy thập phân -> chấm. "300.000" -> 300000, "0,85" -> 0.85
 // Học sinh hay gõ "90k", "90 nghìn": đổi thành 90000.
@@ -11,7 +12,8 @@ export const norm = (t: string) =>
 export const numsIn = (t: string) => norm(t).match(/\d+(\.\d+)?/g) ?? [];
 export const hasNum = (text: string, n: string) => new RegExp(`(?<!\\d)${n}(?!\\d)`).test(norm(text));
 
-export type Cp = { id: number; label: string; anchors: string[]; must: string[] };
+// must = số kết quả chuẩn của mốc; alt = các bộ số khác cũng được (accepts); words = dạng chữ/biểu thức chuẩn hóa (từ step_checks).
+export type Cp = { id: number; label: string; anchors: string[]; must: string[]; alt?: string[][]; words?: string[] };
 
 export const stripStep = (s: string) => s.replace(/^Bước \d+\s*[:.)-]\s*/i, "");
 // Mốc = từng bước của solution_steps. must = số đáp án (có trong solution, đề chưa nêu) mà bước đó ra; anchors = mọi số của bước.
@@ -20,16 +22,41 @@ export function checkpoints(p: Problem): Cp[] {
   const given = new Set(numsIn(JSON.stringify([p.data, p.statement ?? ""])));
   const sol = new Set(numsIn(JSON.stringify(p.solution)).filter((n) => !given.has(n)));
   if (!p.solution_steps.length) return [{ id: 0, label: "Nêu đáp án", anchors: [...sol], must: [...sol] }];
+  const chk = p.step_checks.length === p.solution_steps.length ? p.step_checks : []; // lệch số bước (giáo viên sửa lời giải) thì không dùng
+  // Kết quả chuẩn dạng số thuần (45000, 15%, 0,5): so bằng số. Còn lại (x=2, vô nghiệm, biểu thức): so chuỗi chính tắc.
+  const isNum = (x: string) => /^[-+]?[\d.,\s]+\s*(%|đồng|nghìn|ngàn|k|tuần|tháng|năm|ngày|bạn|gb|cm|kg|m)?$/iu.test(x.trim().replace(/^\$|\$$/g, ""));
   return p.solution_steps.map((label, id) => {
     const anchors = [...new Set(numsIn(stripStep(label)))]; // bỏ "Bước N:" khỏi nhãn: số thứ tự bước không phải số của lời giải
-    return { id, label, anchors, must: anchors.filter((n) => sol.has(n)) };
+    const cand = chk[id]?.result ? [chk[id].result, ...chk[id].accepts] : [];
+    const sets = cand.filter(isNum).map((x) => [...new Set(numsIn(x))].filter((n) => !given.has(n))).filter((s) => s.length);
+    const words = cand.filter((x) => !isNum(x)).map(canon).filter((w) => w.length >= 2);
+    // Không có kết quả chuẩn và không có số đáp án: lấy số ngay sau dấu "=" cuối của bước (kết quả trung gian), bỏ số nhỏ để khỏi khớp nhầm.
+    const tail = stripStep(label).split("=").slice(1).pop() ?? "";
+    const eq = numsIn(tail).slice(0, 1).filter((n) => !given.has(n) && (n.length >= 3 || n.includes(".")));
+    const own = anchors.filter((n) => sol.has(n));
+    return { id, label, anchors, must: sets[0] ?? (own.length ? own : eq), alt: sets.slice(1), words };
   });
 }
 
-// Kiểu "từng bước": mốc có số đáp án đủ khi bước học sinh viết có mọi số của mốc. Mốc nào đủ thì ghi nhận, không cần đúng thứ tự
+// Dạng chữ/biểu thức w có trong tin không (không dính vào số dài hơn: "x=2" không khớp "x=25").
+export function hasWord(text: string, w: string) {
+  const t = canon(text);
+  for (let i = t.indexOf(w); i >= 0; i = t.indexOf(w, i + 1)) {
+    const nx = t[i + w.length] ?? "", nn = t[i + w.length + 1] ?? "";
+    const longer = /\d/.test(nx) || (/[.,]/.test(nx) && /\d/.test(nn)); // x=2 không khớp x=25 hay x=2.5; "x=2." cuối câu thì khớp
+    if (!longer && !(/^\d/.test(w) && /\d/.test(t[i - 1] ?? ""))) return true;
+  }
+  return false;
+}
+
+// Mốc đủ khi tin của học sinh có mọi số của mốc, hoặc một bộ số khác được chấp nhận, hoặc đúng dạng chữ/biểu thức chuẩn.
+export const met = (c: Cp, text: string) =>
+  (c.must.length > 0 && c.must.every((n) => hasNum(text, n))) || !!c.alt?.some((s) => s.every((n) => hasNum(text, n))) || !!c.words?.some((w) => hasWord(text, w));
+
+// Kiểu "từng bước": mốc nào đủ thì ghi nhận, không cần đúng thứ tự
 // (học sinh nhảy cóc thì không bị chặn oan); một bước gộp nhiều mốc cũng ghi nhận hết.
 export function markByNumbers(text: string, cps: Cp[], mask: number) {
-  for (const c of cps) if (c.must.length && c.must.every((n) => hasNum(text, n))) mask |= 1 << c.id;
+  for (const c of cps) if (met(c, text)) mask |= 1 << c.id;
   return mask;
 }
 
@@ -99,6 +126,12 @@ export function verify(c: Cp, evidence: string, said: string) {
   // Trích dẫn thật và số đáp án của mốc đủ. Mốc không có số (nhận xét, nêu cách làm) thì không đòi chữ số: "đối nhau" là câu trả lời đúng.
   return ev.length >= 3 && norm(said).replace(/\s+/g, " ").toLowerCase().includes(ev) && c.must.every((n) => hasNum(said, n));
 }
+
+// Bước mà lời giải mẫu viết thành phương trình/đẳng thức: học sinh bắt buộc phải viết có dấu "=" (không nhận lời nói hay hai biểu thức rời nhau).
+// Server kiểm cứng, không để AI phán: cùng một tin luôn cho cùng một kết quả.
+export const needsEq = (c: Cp) => /[=＝]/.test(stripStep(c.label));
+export const hasEq = (t: string) => /[=＝]/.test(t);
+export const shapeOk = (c: Cp, said: string) => !needsEq(c) || (hasEq(said) && /\d/.test(said));
 
 // Thanh 5 bước Polya hiển thị: tính từ tiến độ thật, không do AI quyết định.
 export const stepOf = (done: number, total: number) => (done >= total ? 5 : Math.min(4, 1 + Math.floor((done / total) * 4)));

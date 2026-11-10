@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { AiBadge, Alert, Button, Field, post } from "@/components/ui";
+import { AiBadge, Button, Field, post, toast } from "@/components/ui";
 import { PROVIDERS, type Provider } from "@/lib/models";
 
 type Props = { provider: Provider; last4: Record<Provider, string | null> };
@@ -11,12 +11,10 @@ export default function SettingsForm(props: Props) {
   const [provider, setProvider] = useState<Provider>(props.provider);
   const [tails, setTails] = useState(props.last4);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
   const info = PROVIDERS[provider];
 
   function pickProvider(p: Provider) {
     setProvider(p);
-    setMsg(null);
   }
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
@@ -24,14 +22,13 @@ export default function SettingsForm(props: Props) {
     const form = e.currentTarget;
     const f = new FormData(form);
     setBusy(true);
-    setMsg(null);
     const key = String(f.get("key") ?? "").trim();
     const { ok, data } = await post<{ last4?: string }>("/api/settings", { provider, key: key || undefined });
     setBusy(false);
-    if (!ok) return setMsg({ tone: "danger", text: data.error ?? "Có lỗi." });
+    if (!ok) return toast("danger", data.error ?? "Có lỗi.");
     if (data.last4) setTails((t) => ({ ...t, [provider]: data.last4! }));
     form.reset();
-    setMsg({ tone: "success", text: `Đã lưu. Chatbot dùng ${info.label}.` });
+    toast("success", `Đã lưu. Chatbot dùng ${info.label}.`);
   }
 
   return (
@@ -64,7 +61,6 @@ export default function SettingsForm(props: Props) {
         <Field label="API key" name="key" type="password" autoComplete="off" placeholder={tails[provider] ? `Đã lưu (…${tails[provider]}). Nhập key mới để thay.` : "Dán key vào đây"} hint="Key được mã hóa trên máy chủ và không hiển thị lại. Học sinh chat bằng key này." />
       </section>
 
-      {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
       <Button type="submit" pending={busy ? "Đang kiểm tra key..." : undefined} className="self-start">Lưu cài đặt <AiBadge /></Button>
     </form>
   );

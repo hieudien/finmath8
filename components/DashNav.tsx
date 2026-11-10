@@ -3,7 +3,7 @@ import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Brand from "@/components/Brand";
-import { Alert, Button, post } from "@/components/ui";
+import { Button, post, toast } from "@/components/ui";
 
 function Pending() {
   const { pending } = useLinkStatus();
@@ -24,7 +24,6 @@ export default function DashNav({ email }: { email: string }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
   const burger = useRef<HTMLButtonElement>(null);
   const closeBtn = useRef<HTMLButtonElement>(null);
   const cur = (href: string) => (href === "/dashboard" ? path === href : path.startsWith(href));
@@ -50,11 +49,10 @@ export default function DashNav({ email }: { email: string }) {
 
   async function logout() {
     setBusy(true);
-    setErr("");
     const { ok, data } = await post("/api/auth/logout", {}, 10000);
     if (!ok) {
       setBusy(false);
-      return setErr(data.error ?? "Chưa đăng xuất được. Thử lại.");
+      return toast("danger", data.error ?? "Chưa đăng xuất được. Thử lại.");
     }
     // Tải lại hẳn trang (không dùng router.replace) để xóa bộ nhớ đệm trang của tài khoản vừa thoát: máy dùng chung không lộ dữ liệu cho người sau.
     window.location.assign("/login");
@@ -108,7 +106,6 @@ export default function DashNav({ email }: { email: string }) {
             </nav>
             <div className="flex flex-col gap-2 border-t border-border p-4">
               <p className="truncate text-sm text-text-muted" title={email}>{email}</p>
-              {err && <Alert tone="danger">{err}</Alert>}
               <Button variant="secondary" onClick={logout} pending={busy ? "Đang đăng xuất..." : undefined}>Đăng xuất</Button>
             </div>
           </div>
@@ -121,7 +118,6 @@ export default function DashNav({ email }: { email: string }) {
         <nav aria-label="Chính" className="min-h-0 flex-1 overflow-y-auto flex flex-col gap-1">{ITEMS.map(([h, l]) => link(h, l, "flex min-h-11 items-center rounded-sm px-3"))}</nav>
         <div className="mt-auto flex shrink-0 flex-col gap-2 border-t border-border pt-3">
           <p className="truncate text-sm text-text-muted" title={email}>{email}</p>
-          {err && <Alert tone="danger">{err}</Alert>}
               <Button variant="secondary" onClick={logout} pending={busy ? "Đang đăng xuất..." : undefined}>Đăng xuất</Button>
         </div>
       </aside>

@@ -37,10 +37,25 @@ export const USES: Record<string, [string, string]> = {
   answer: ["Tính đáp án", TEACHER],
   step_guides: ["Viết chỉ dẫn và gợi ý từng bước", TEACHER],
   greeting: ["Viết lời chào", TEACHER],
+  cross_check: ["Kiểm chéo đáp án", TEACHER],
   normalize: ["Chuẩn hóa và tạo đề", TEACHER],
   read_image: ["Đọc ảnh đề", TEACHER],
   selftest: ["Kiểm thử chatbot", TEACHER],
   analyze_session: ["Phân tích phiên", TEACHER],
   advise: ["Phân tích học sinh", TEACHER],
 };
-export const purposeInfo = (u: string): [string, string] => USES[u] ?? ["Chưa rõ (dữ liệu cũ)", OTHER];
+
+// Nhóm `use` cho các số trung bình ở Cài đặt: nạp 1 đề, HS chat 1 phiên, phân tích kết quả HS.
+export const AVG_USES = {
+  problem: ["normalize", "read_image", "solution_steps", "answer", "step_guides", "greeting", "cross_check"],
+  session: ["chat", "step", "ask", "eval"],
+  analysis: ["analyze_session", "advise"],
+} as const;
+
+// Cộng calls, token và tiền (đã quy đổi bởi money) của các dòng thuộc tập `use`.
+export function sumUses(rows: UsageRow[], uses: readonly string[], money: (r: UsageRow) => number) {
+  const t = { calls: 0, tokens: 0, vnd: 0 };
+  for (const r of rows) if (uses.includes(r.use)) { t.calls += r.calls; t.tokens += r.input + outBilled(r); t.vnd += money(r); }
+  return t;
+}
+export const purposeInfo =(u: string): [string, string] => USES[u] ?? ["Chưa rõ (dữ liệu cũ)", OTHER];

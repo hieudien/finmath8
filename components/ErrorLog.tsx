@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Empty, LinkButton } from "@/components/ui";
+import { Empty, LinkButton, toast } from "@/components/ui";
 import { group, hour } from "@/components/ActivityLog";
 import { ERR_KIND } from "@/lib/log-labels";
 
@@ -23,7 +23,7 @@ export default function ErrorLog() {
       const res = await fetch(`/api/errors?${sp}`);
       if (!res.ok) throw new Error();
       setRows((await res.json()).rows);
-    } catch { setErr(true); }
+    } catch { setErr(true); toast("danger", "Không tải được. Đóng rồi mở lại để thử lại."); }
   };
   return (
     <details className="rounded-lg border border-border bg-surface px-4" onToggle={(e) => e.currentTarget.open && !rows && !err && void load(kind, ref)}>
@@ -47,7 +47,6 @@ export default function ErrorLog() {
           </div>
           <LinkButton variant="secondary" href="/api/export?kind=errors">Tải CSV</LinkButton>
         </form>
-        {err && <p className="text-sm text-danger">Không tải được. Đóng rồi mở lại để thử lại.</p>}
         {!rows && !err && <p className="text-sm text-text-muted">Đang tải…</p>}
         {rows && (rows.length === 0 ? <Empty text="Không có lỗi nào khớp. Đó là tin tốt." /> : group(rows).map((g) => (
           <section key={g.key} className="flex flex-col gap-1">

@@ -1,12 +1,11 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui";
+import { useEffect, useRef } from "react";
+import { Button, toast } from "@/components/ui";
 
 // Hộp soạn công thức (MathLive). Tải thư viện khi mở hộp. Trả về LaTeX qua onInsert; callers bọc trong $...$.
 export default function FormulaDialog({ initial = "", onInsert, onClose }: { initial?: string; onInsert: (latex: string) => void; onClose: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const field = useRef<{ getValue: () => string; focus: () => void } | null>(null);
-  const [err, setErr] = useState(false);
 
   useEffect(() => {
     let gone = false;
@@ -21,7 +20,7 @@ export default function FormulaDialog({ initial = "", onInsert, onClose }: { ini
       host.current.appendChild(mf);
       field.current = mf;
       mf.focus();
-    }).catch(() => setErr(true));
+    }).catch(() => toast("danger", "Không tải được bộ soạn công thức. Bạn gõ công thức dạng $...$ cũng được."));
     return () => { gone = true; box?.replaceChildren(); window.mathVirtualKeyboard?.hide(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -38,7 +37,6 @@ export default function FormulaDialog({ initial = "", onInsert, onClose }: { ini
         <h2 className="text-lg">Soạn công thức</h2>
         <p className="text-sm text-text-muted">Gõ trực tiếp hoặc dùng bàn phím công thức. Gõ <code>/</code> để tạo phân số, <code>^</code> để viết số mũ, <code>sqrt</code> để viết căn.</p>
         <div ref={host} />
-        {err && <p className="text-sm text-danger">Không tải được bộ soạn công thức. Bạn gõ công thức dạng $...$ cũng được.</p>}
         <div className="flex justify-end gap-2">
           <Button variant="ghost" type="button" onClick={onClose}>Hủy</Button>
           <Button type="button" onClick={insert}>Chèn</Button>
