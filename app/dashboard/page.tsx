@@ -1,7 +1,8 @@
 import { supabaseServer, currentUser } from "@/lib/supabase/server";
 import { Badge, LinkButton, StatusBadge } from "@/components/ui";
 import { check } from "@/lib/db";
-import { fmtTime, r1, sessionState, studentMsgs, who } from "@/lib/stats";
+import Link from "next/link";
+import { fmtTime, hardSteps, r1, sessionState, studentMsgs, who, type StepInfo } from "@/lib/stats";
 import { MathText } from "@/components/MathText";
 
 type L = { id: string; label: string; active: boolean };
@@ -18,7 +19,7 @@ export default async function Page() {
     sb.from("public_links").select("id,label,active").order("created_at", { ascending: false }),
     sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code,student_code,student_name").order("started_at", { ascending: false }).limit(5),
     sb.from("overview_stats").select("*").maybeSingle(),
-    sb.from("error_counts").select("name,value").order("value", { ascending: false }).limit(3),
+    sb.from("error_counts").select("name,value").order("value", { ascending: false }).limit(5),
   ]);
   res.forEach(check);
   const [{ data: s }, { count: np }, { data: ln }, { data: ss }, { data: ov }, { data: er }] = res as unknown as [
@@ -26,7 +27,14 @@ export default async function Page() {
   ];
   const links = ln ?? [];
   const recent = ss ?? [];
-  const msgs = await studentMsgs(sb, recent.map((x) => x.id));
+  // Bước gặp khó của cả lớp: chỉ lấy phiên có bước gặp khó (PostgREST cắt 1000 dòng), phiên mới nhất trước.
+  const [msgs, hs, pr] = await Promise.all([
+    studentMsgs(sb, recent.map((x) => x.id)),
+    sb.from("chat_sessions").select("id,problem_code,student_code,student_name,struggled").gt("struggled", 0).order("started_at", { ascending: false }).limit(1000),
+    sb.from("problems").select("code,title:content->>title,steps:content->solution_steps,goals:content->step_goals").is("deleted_at", null),
+  ]);
+  const info = new Map<string, StepInfo>(((pr.data ?? []) as { code: string; title: string | null; steps: string[] | null; goals: string[] | null }[]).map((x) => [x.code, { title: x.title ?? x.code, steps: x.steps ?? [], goals: x.goals?.length === x.steps?.length ? x.goals ?? [] : [] }]));
+  const hard = hardSteps((hs.data ?? []) as { id: string; problem_code: string; student_code: string | null; student_name: string | null; struggled: number }[], info).slice(0, 5); // lỗi đọc thì bỏ khối này, không làm hỏng trang
   const hasKey = !!(s && (s.provider === "openai" ? s.openai_key_enc : s.gemini_key_enc));
   const steps = [
     { done: hasKey, text: "Chọn nhà cung cấp AI (Gemini hoặc ChatGPT) và nhập API key", href: "/dashboard/settings", cta: "Mở cài đặt" },
@@ -79,6 +87,41 @@ export default async function Page() {
               ))}
             </ul>
           </section>
+          {(hard.length > 0 || m.errors.length > 0) && (
+            <div className="grid gap-6 border-t border-border pt-4 md:grid-cols-2">
+              {hard.length > 0 && (
+                <section className="flex flex-col gap-2" aria-labelledby="hard">
+                  <div className="flex items-center justify-between gap-2"><h2 id="hard">Bước học sinh hay gặp khó</h2><LinkButton href="/dashboard/stats" variant="ghost">Xem thống kê</LinkButton></div>
+                  <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
+                    {hard.map((h) => (
+                      <li key={`${h.code}-${h.step}`}>
+                        <details className="group">
+                          <summary className="flex min-h-11 cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-primary-soft">
+                            <span className="min-w-0"><Badge tone="info">{h.code}</Badge> <span className="font-medium">Bước {h.step}</span>: {h.label}</span>
+                            <span className="tnum font-semibold">{h.n} học sinh <span className="text-text-muted group-open:hidden">▾</span><span className="hidden text-text-muted group-open:inline">▴</span></span>
+                          </summary>
+                          <ul className="flex flex-col gap-1 border-t border-border px-4 py-2 text-sm">
+                            {h.students.map((w, i) => (
+                              <li key={w.code ?? i} className="flex flex-wrap items-center justify-between gap-2">
+                                {w.code ? <Link href={`/dashboard/students/${encodeURIComponent(w.code)}`} className="text-primary underline">{w.name ?? "Học sinh"} ({w.code})</Link> : <span>Ẩn danh (cũ)</span>}
+                                <span className="tnum text-text-muted">{w.times} phiên</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {m.errors.length > 0 && (
+                <section className="flex flex-col gap-2" aria-labelledby="errs">
+                  <h2 id="errs">Lỗi học sinh hay gặp</h2>
+                  <ul className="list-disc rounded-lg border border-border bg-surface py-3 pl-9 pr-4">{m.errors.map((e) => <li key={e.name}><MathText text={e.name} /> <span className="tnum text-text-muted">({e.value})</span></li>)}</ul>
+                </section>
+              )}
+            </div>
+          )}
           {o.evals > 0 && (
             <section className="flex flex-col gap-2 border-t border-border pt-4" aria-labelledby="sum">
               <h2 id="sum">Kết quả chung</h2>
@@ -87,12 +130,6 @@ export default async function Page() {
                   <div key={k}><dt className="text-sm text-text-muted">{k}</dt><dd className="tnum text-2xl font-bold">{v}</dd></div>
                 ))}
               </dl>
-              {m.errors.length > 0 && (
-                <div>
-                  <p className="text-sm text-text-muted">Lỗi học sinh hay gặp nhất</p>
-                  <ul className="list-disc pl-5">{m.errors.slice(0, 3).map((e) => <li key={e.name}><MathText text={e.name} /> <span className="tnum text-text-muted">({e.value})</span></li>)}</ul>
-                </div>
-              )}
             </section>
           )}
         </>

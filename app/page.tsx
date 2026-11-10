@@ -1,19 +1,19 @@
 import Brand from "@/components/Brand";
 import { LinkButton } from "@/components/ui";
 
-const NUMS = [["3", "kiểu làm bài: chat, từng bước, trắc nghiệm"], ["4", "tiêu chí chấm: nhận diện, kế hoạch, tính toán, giải thích"], ["5", "bước giải quyết vấn đề theo Polya"]];
+const NUMS = [["2", "kiểu làm bài: từng bước, trắc nghiệm"], ["4", "tiêu chí chấm: nhận diện, kế hoạch, tính toán, giải thích"], ["5", "bước giải quyết vấn đề theo Polya"]];
 
 const TEACHER = [
   ["Tạo đề nhanh", "Soạn đề trực tiếp, dán văn bản, nạp JSON hoặc chụp ảnh đề để AI đọc. Công thức soạn bằng bàn phím toán, không cần biết LaTeX."],
   ["AI làm phần nặng", "AI tạo đáp án, lời giải từng bước, gợi ý từng bước, câu trắc nghiệm 4 đáp án và câu chào. Đề do AI tạo phải được thầy cô duyệt mới đưa vào liên kết."],
-  ["Chọn kiểu làm bài", "Ở Cài đặt, chọn cho cả lớp: chat tự do, nộp từng bước hoặc trắc nghiệm từng bước."],
+  ["Chọn kiểu làm bài", "Ở Cài đặt, chọn cho cả lớp: nộp từng bước hoặc trắc nghiệm từng bước."],
   ["Gửi một liên kết", "Chọn đề, tạo liên kết công khai, đặt nhãn nhóm và giới hạn số tin. Chạy bằng API key Gemini hoặc OpenAI của chính thầy cô."],
 ];
 
 const STUDENT = [
   ["Vào bằng liên kết", "Nhập mã và họ tên một lần, không cần tài khoản."],
   ["Được hỏi từng bước", "Đọc đề, nêu dữ kiện, chọn cách giải, tự tính. Bot không nói đáp án."],
-  ["Gợi ý khi kẹt", "Gợi ý tăng dần: định hướng, chỉ cách giải, nêu bước kế (kiểu chat có thêm mức làm mẫu bằng số khác). Kẹt quá lâu thì bot hiện lời giải của bước đó để em đi tiếp."],
+  ["Gợi ý khi kẹt", "Gợi ý tăng dần: định hướng, chỉ cách giải, nêu bước kế. Kẹt quá lâu thì bot hiện lời giải của bước đó để em đi tiếp."],
   ["Nộp từng bước hoặc chọn đáp án", "Mỗi lần một bước vào ô ngắn, hoặc chọn 1 trong 4 đáp án. Chọn sai thì được giải thích lỗi."],
   ["Gõ công thức dễ dàng", "Nút Công thức mở bàn phím toán: phân số, căn, số mũ."],
 ];
@@ -22,7 +22,9 @@ const FEATURES = [
   ["Hồ sơ từng học sinh", "Điểm 4 tiêu chí, kỹ năng cần củng cố, lỗi hay mắc, kiến thức nền còn thiếu, các bài đã làm và bài bỏ dở."],
   ["Chấm đúng phần tự làm", "Bước được giải hộ không được tính điểm. Điểm chỉ phản ánh phần học sinh tự làm."],
   ["AI đề xuất cải thiện", "Một bấm để có nhận định điểm yếu, việc nên làm và dạng bài nên luyện thêm."],
+  ["Bước học sinh hay gặp khó", "Thấy ngay bước nào cả lớp hay vướng và bước nào từng em hay vướng, kèm gợi ý ôn tập theo bước."],
   ["Thống kê theo liên kết", "Số phiên, tỉ lệ hoàn thành, điểm trung bình, mức gợi ý, so sánh giữa các nhóm."],
+  ["Xóa an toàn", "Xóa liên kết hay học sinh chỉ là ẩn đi. Bài làm, tin nhắn và điểm vẫn được giữ."],
   ["Xem lại hội thoại", "Đọc từng phiên chat, xuất CSV để phân tích tiếp."],
   ["Chống lộ đáp án", "Server kiểm tra từng lượt: bot không nêu kết quả, không xác nhận đáp án sai."],
   ["Riêng tư có kiểm soát", "Tự che số điện thoại, email trong tin nhắn. API key mã hóa AES-256-GCM."],
