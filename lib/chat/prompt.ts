@@ -82,3 +82,18 @@ export const mentions = (text: string, nums: string[]) => nums.filter((n) => has
 export function leaks(reply: string, solution: unknown, given: unknown = "", steps: string[] = []) {
   return mentions(reply, answerNums(solution, given, steps)).length > 0;
 }
+
+// Lời bot viết phép tính ra thẳng kết quả bí mật (ví dụ "cộng lại 6+14" khi 20 là kết quả của bước): không nêu số kết quả nhưng gần như nói hộ.
+// Bí mật = mọi số của lời giải (kể cả số nhỏ) mà đề và học sinh chưa nêu. Chỉ dùng cho lời AI viết tự do, không dùng cho gợi ý giáo viên soạn sẵn.
+// ponytail: chỉ bắt "số ⊕ số" (không hiểu "3x + 2x" hay biểu thức ba số). Nâng cấp: parser biểu thức.
+export function leaksCalc(reply: string, solution: unknown, given: unknown = "", steps: string[] = []) {
+  const known = new Set(numsIn(JSON.stringify(given)));
+  const secret = new Set([...numsIn(JSON.stringify(solution)), ...numsIn(steps.join(" "))].filter((n) => !known.has(n)));
+  const t = reply.replace(/\\(times|cdot)/g, "*").replace(/\\div/g, "/").replace(/[−–]/g, "-").replace(/[×x]/g, (c, i, s) => (/\d\s*$/.test(s.slice(0, i)) && /^\s*\d/.test(s.slice(i + 1)) ? "*" : c)).replace(/÷/g, "/");
+  for (const m of t.matchAll(/(\d+(?:[.,]\d+)?)\s*([+\-*/:])\s*(\d+(?:[.,]\d+)?)/g)) {
+    const a = parseFloat(m[1].replace(",", ".")), b = parseFloat(m[3].replace(",", "."));
+    const r = m[2] === "+" ? a + b : m[2] === "-" ? a - b : m[2] === "*" ? a * b : b === 0 ? NaN : a / b;
+    if (Number.isFinite(r) && secret.has(String(+Math.abs(r).toFixed(4)))) return true;
+  }
+  return false;
+}

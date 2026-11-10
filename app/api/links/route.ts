@@ -48,14 +48,15 @@ export const POST = api(async (req) => {
   }
 
   if (b.action === "toggle") {
-    check(await db.from("public_links").update({ active: b.active } as never).eq("id", b.id).eq("teacher_id", u.id));
+    check(await db.from("public_links").update({ active: b.active } as never).eq("id", b.id).eq("teacher_id", u.id).is("deleted_at", null));
     getLink.clear();
     await log({ actor: "teacher", action: "link_toggled", teacherId: u.id, linkId: b.id, meta: { active: b.active } });
     return Response.json({ ok: true });
   }
 
+  // Xóa mềm: giữ liên kết, phiên, tin nhắn, điểm trong DB (không bao giờ xóa cứng).
+  check(await db.from("public_links").update({ deleted_at: new Date().toISOString() } as never).eq("id", b.id).eq("teacher_id", u.id).is("deleted_at", null));
   await log({ actor: "teacher", action: "link_deleted", teacherId: u.id, meta: { id: b.id } });
-  check(await db.from("public_links").delete().eq("id", b.id).eq("teacher_id", u.id));
   getLink.clear();
   return Response.json({ ok: true });
 });

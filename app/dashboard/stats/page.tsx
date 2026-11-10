@@ -6,7 +6,7 @@ import "katex/dist/katex.min.css";
 import { Badge, Empty, ScoreBadge, StatusBadge } from "@/components/ui";
 import { check } from "@/lib/db";
 import { shortId } from "@/lib/sid";
-import { bits, compareStats, fmtTime, r1, sessionState, studentMsgs, who, type Ev, type Sess, type Summary } from "@/lib/stats";
+import { bits, compareStats, fmtTime, hardSteps, r1, sessionState, studentMsgs, who, type Ev, type Sess, type StepInfo, type Summary } from "@/lib/stats";
 
 const helpedN = (x: Sess) => (x.revealed ? bits(x.revealed) : 0); // số bước bot đã hiện lời giải vì học sinh kẹt: không tính là tự làm
 const Helped = ({ x }: { x: Sess }) => helpedN(x) > 0 ? <Badge tone="warn">Giải hộ {helpedN(x)} bước</Badge> : null;
@@ -25,7 +25,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
   const res = await Promise.all([
     sb.from("public_links").select("id,label,tag").order("created_at", { ascending: false }),
     sb.from("link_stats").select("*"),
-    link ? sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code,student_code,student_name,revealed").eq("link_id", link).order("seq", { ascending: false }).limit(RECENT) : null,
+    link ? sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code,student_code,student_name,revealed,struggled").eq("link_id", link).order("seq", { ascending: false }).limit(RECENT) : null,
     link ? sb.rpc("link_summary", { p_link: link } as never) : null,
     link ? null : sb.from("tag_stats").select("*"),
   ]);
@@ -46,6 +46,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
     const evBy = new Map(e.map((x) => [x.session_id, x]));
     const msgs = await studentMsgs(sb, s.map((x) => x.id));
     const stateOf = (x: Sess) => sessionState(x, evBy.get(x.id), msgs.get(x.id));
+    const codes = [...new Set(s.filter((x) => x.struggled).map((x) => x.problem_code))];
+    const pr = codes.length ? (((await sb.from("problems").select("code,content").in("code", codes).is("deleted_at", null)).data ?? []) as { code: string; content: { title?: string; solution_steps?: string[]; step_goals?: string[] } }[]) : [];
+    const probs = new Map<string, StepInfo>(pr.map((r) => [r.code, { title: r.content.title ?? r.code, steps: r.content.solution_steps ?? [], goals: r.content.step_goals?.length === r.content.solution_steps?.length ? r.content.step_goals ?? [] : [] }]));
+    const hard = hardSteps(s, probs);
     return (
       <div className="flex flex-col gap-6">
         <div>
@@ -66,6 +70,33 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
             <Section title="Lỗi thường gặp"><BarBox data={m.errors} horizontal /></Section>
             */}
             <Kpis items={[["Đúng kết luận", `${m.correctPct}%`], ["Thời gian TB (phút)", m.durationMin], ["Lần tăng gợi ý TB", m.hintAvg], ["Hài lòng (1–5)", m.likertAvg == null ? "—" : `${m.likertAvg} (${m.likertN})`]]} />
+            <Section title="Bước học sinh hay gặp khó">
+              {hard.length ? (
+                <>
+                  <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
+                    {hard.map((h) => (
+                      <li key={`${h.code}-${h.step}`}>
+                        <details className="group">
+                          <summary className="flex min-h-11 cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-primary-soft">
+                            <span className="min-w-0"><Badge tone="info">{h.code}</Badge> <span className="font-medium">Bước {h.step}</span>: {h.label}</span>
+                            <span className="tnum font-semibold">{h.n} học sinh <span className="text-text-muted group-open:hidden">▾</span><span className="hidden text-text-muted group-open:inline">▴</span></span>
+                          </summary>
+                          <ul className="flex flex-col gap-1 border-t border-border px-4 py-2 text-sm">
+                            {h.students.map((w, i) => (
+                              <li key={w.code ?? i} className="flex flex-wrap items-center justify-between gap-2">
+                                {w.code ? <Link href={`/dashboard/students/${encodeURIComponent(w.code)}`} className="text-primary underline">{w.name ?? "Học sinh"} ({w.code})</Link> : <span>Ẩn danh (cũ)</span>}
+                                <span className="tnum text-text-muted">{w.times} phiên</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-sm text-text-muted">Tính khi học sinh bấm Gợi ý, bấm Em chưa hiểu, nộp sai hoặc được giải hộ ở bước đó. Chỉ tính trong các phiên gần nhất bên dưới, kiểu từng bước và trắc nghiệm.</p>
+                </>
+              ) : <p className="text-text-muted">Chưa có học sinh nào gặp khó ở một bước cụ thể.</p>}
+            </Section>
             <Section title={`Từng phiên (${s.length}/${m.sessions} phiên gần nhất)`}>
               <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface md:hidden">
                 {s.map((x) => { const ev = evBy.get(x.id); return (

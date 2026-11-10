@@ -8,7 +8,8 @@ export const MODES: Record<Mode, { label: string; desc: string }> = {
   quiz: { label: "Trắc nghiệm từng bước", desc: "Mỗi bước là một câu hỏi 4 đáp án (1 đúng, 3 đáp án dễ nhầm). Học sinh phải tự tính mới chọn đúng. Không gọi AI khi làm bài; đề cần có trắc nghiệm AI tạo sẵn." },
 };
 export const MODE_IDS = Object.keys(MODES) as [Mode, ...Mode[]];
-export const DEFAULT_MODE: Mode = "chat";
+export const DEFAULT_MODE: Mode = "steps";
+export const PICKABLE = MODE_IDS.filter((m) => m !== "chat"); // kiểu giáo viên được chọn ở Cài đặt (chat chỉ còn là kiểu lùi khi đề thiếu lời giải từng bước)
 export const isMode = (v: unknown): v is Mode => typeof v === "string" && Object.hasOwn(MODES, v);
 
 // Chuỗi lùi: "quiz" thiếu trắc nghiệm thì chạy "steps"; "steps" thiếu lời giải từng bước thì chạy chat.

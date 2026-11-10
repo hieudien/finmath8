@@ -1,12 +1,12 @@
 "use client";
 import { useState } from "react";
 import { Alert, Button, post } from "@/components/ui";
-import { MODES, type Mode } from "@/lib/modes";
+import { MODES, PICKABLE, type Mode } from "@/lib/modes";
 
 const RADIO = "mt-1 size-5 shrink-0 accent-[var(--color-primary)]";
 
 export default function ModeForm({ mode }: { mode: Mode }) {
-  const [cur, setCur] = useState<Mode>(mode);
+  const [cur, setCur] = useState<Mode>(mode === "chat" ? "steps" : mode);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
 
@@ -22,8 +22,8 @@ export default function ModeForm({ mode }: { mode: Mode }) {
     <form onSubmit={submit} className="flex max-w-2xl flex-col gap-3">
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 font-medium">Cách học sinh làm bài</legend>
-        <div className="grid gap-2 sm:grid-cols-3">
-          {(Object.keys(MODES) as Mode[]).map((m) => (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {PICKABLE.map((m) => (
             <label key={m} className={`flex min-h-11 cursor-pointer items-start gap-3 rounded-sm border px-3 py-3 ${cur === m ? "border-primary bg-primary-soft" : "border-border-strong bg-surface"}`}>
               <input type="radio" name="mode" className={RADIO} checked={cur === m} onChange={() => { setCur(m); setMsg(null); }} />
               <span>

@@ -4,20 +4,20 @@ import { admin } from "@/lib/supabase/admin";
 import { askJson, type LlmCfg } from "@/lib/llm";
 import { chatState, chatSystem, evalSchema, evalSystem, leaks, turnSchema } from "@/lib/chat/prompt";
 import { keepOrAsk, METHOD, checkpoints, countDone, hasNum, norm, offStreak, OFF_REPLIES, SOS_REPLY, stepOf, tighten, verdict, verify } from "@/lib/chat/progress";
-import { CLOSING_HELP, ladder, revealLine, reviewText, scoreCap } from "@/lib/chat/assist";
+import { ladder, revealLine, reviewText, scoreCap } from "@/lib/chat/assist";
+import { closing, closingHelp } from "@/lib/chat/canned";
 import { stepGoal } from "@/lib/chat/goals";
 import { GREETING_FALLBACK } from "@/lib/greeting";
 import { scrub } from "@/lib/pii";
 import { log } from "@/lib/log";
 import type { Problem } from "@/lib/schema/problem";
 
-export type Session = { id: string; link_id: string; anon_id: string; step: number; hint_level: number; progress?: number; stall?: number; wrong?: number; revealed?: number; started_at: string; status: string; mode?: string };
+export type Session = { id: string; link_id: string; anon_id: string; step: number; hint_level: number; progress?: number; stall?: number; wrong?: number; revealed?: number; struggled?: number; started_at: string; status: string; mode?: string };
 export type Msg = { role: "student" | "bot"; content: string; hint_level: number | null };
 
 export const SOS = /tự tử|muốn chết|tự (làm )?đau|tự hại|bị (đánh|bắt nạt|bạo hành)/i; // dấu hiệu cần người lớn: không gọi AI, trả câu mẫu và gắn cờ cho giáo viên
 const IDK = /không biết|ko biết|chịu|bó tay|khó quá|không hiểu|giải (giúp|hộ)|cho (mình )?đáp án/i;
 export const MAX_TURNS = 20; // trần số tin học sinh mỗi phiên: quá mức này mà chưa xong thì chốt phiên, không để lặp vô hạn
-export const CLOSING = "Bạn đã tự giải xong bài này, cách làm của bạn hợp lý. Làm tốt lắm!";
 export const INJECT = /ignore (all |previous |the )?(instruction|prompt)|system prompt|prompt (của|cua) (bạn|mày)|bỏ qua (mọi |các |tất cả )?(hướng dẫn|chỉ dẫn|quy tắc|lệnh)|quên (mọi |các )?(hướng dẫn|quy tắc)|đóng vai|jailbreak|developer mode/i;
 
 export type Tm = Record<string, number>; // thời gian từng bước (ms), route đưa ra header Server-Timing
@@ -95,7 +95,7 @@ ${chatState(cps, mask0, s.hint_level, v)}` },
   if (onTopic && !finished) reply = keepOrAsk(reply, done >= cps.length);
   // ponytail: không còn gọi AI lần hai khi bot lặp câu trước (tốn 2-3s mỗi lần). Nếu lặp nhiều, thêm câu mẫu thay phiên dựa vào sim().
   // Lời kết phải là lời kết: không câu hỏi, không mời làm thêm. AI lỡ viết thế thì dùng câu kết mẫu.
-  if (finished && /\?|làm thêm|bài (khác|tiếp)|mở rộng/i.test(reply)) reply = CLOSING;
+  if (finished && /\?|làm thêm|bài (khác|tiếp)|mở rộng/i.test(reply)) reply = closing();
   const given = [p.data, p.statement, said, cps.filter((c) => mask >> c.id & 1).map((c) => c.must)];
   if (leaks(reply, p.solution, given, p.solution_steps)) {
     reply = "Mình thấy bạn đang đi đúng hướng. Bạn thử viết tiếp bước tính tiếp theo của mình nhé?"; // không gọi AI viết lại: chậm thêm 2-3s
@@ -103,7 +103,7 @@ ${chatState(cps, mask0, s.hint_level, v)}` },
   }
   // Lời giải hiện cho học sinh là chủ ý (đã hết gợi ý): đặt sau kiểm tra lộ đáp án. Phiên có bước được giải hộ thì lời kết là lời kết "có giúp", không khen tự giải.
   const nextCp = cps.find((c) => !(mask >> c.id & 1));
-  if (finished && revealed) reply = `${revLine ? revLine + " " : ""}${CLOSING_HELP}`;
+  if (finished && revealed) reply = `${revLine ? revLine + " " : ""}${closingHelp()}`;
   else if (revLine) {
     const g = nextCp ? stepGoal(p, nextCp.id, cps.filter((c) => mask >> c.id & 1).map((c) => c.must)) : "";
     reply = `${revLine} ${g ? `Việc tiếp theo: ${g}` : "Bạn thử viết bước tiếp theo của mình nhé?"}`;

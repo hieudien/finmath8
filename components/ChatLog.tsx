@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Badge, Button, post, ScoreBadge, StatusBadge } from "@/components/ui";
 import { MathText } from "@/components/MathText";
 
@@ -14,7 +14,9 @@ const Block = ({ title, items }: { title: string; items: string[] }) => items.le
 );
 
 // Chỉ tải và dựng hội thoại khi giáo viên mở từng học sinh (trước đây dựng KaTeX cho mọi tin nhắn ngay lúc tải trang).
-export default function ChatLog({ id, head }: { id: string; head: Head }) {
+// open: mở sẵn và cuộn tới (đến từ link "bước yếu"); note: các bước học sinh gặp khó trong phiên này.
+export default function ChatLog({ id, head, open, note }: { id: string; head: Head; open?: boolean; note?: string[] }) {
+  const box = useRef<HTMLDetailsElement>(null);
   const [items, setItems] = useState<Item[] | null>(null);
   const [err, setErr] = useState(false);
   const [an, setAn] = useState<Analysis | null>(null);
@@ -37,8 +39,15 @@ export default function ChatLog({ id, head }: { id: string; head: Head }) {
       setItems(j.items); setProb(j.problem ?? null); setAn(j.analysis ?? null);
     } catch { setErr(true); }
   };
+  useEffect(() => {
+    if (!open || !box.current) return;
+    box.current.open = true;
+    box.current.scrollIntoView({ block: "start" });
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   return (
-    <details className="rounded-sm border border-border bg-surface px-3" onToggle={(e) => e.currentTarget.open && void load()}>
+    <details id={`s-${id}`} ref={box} className="scroll-mt-4 rounded-sm border border-border bg-surface px-3 target:border-primary" onToggle={(e) => e.currentTarget.open && void load()}>
       <summary className="min-h-11 cursor-pointer py-2">
         <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 align-middle">
           <Badge mono>{head.sid}</Badge>
@@ -50,6 +59,7 @@ export default function ChatLog({ id, head }: { id: string; head: Head }) {
           {!!head.helped && <Badge tone="warn">Giải hộ {head.helped} bước</Badge>}
         </span>
       </summary>
+      {!!note?.length && <p className="mb-3 rounded-lg border border-border bg-primary-soft p-3 text-sm">Học sinh gặp khó ở: {note.join("; ")}</p>}
       {prob && (
         <div className="mb-3 rounded-lg border border-border bg-primary-soft p-3 text-sm">
           <p className="font-medium"><span className="tnum text-text-muted">{prob.id}</span> {prob.title}</p>

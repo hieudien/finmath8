@@ -1,4 +1,5 @@
 import { leaks } from "@/lib/chat/prompt";
+import { stripStep } from "@/lib/chat/progress";
 import { QUIZ_GREETING, STEPS_GREETING } from "@/lib/modes";
 import type { Problem } from "@/lib/schema/problem";
 
@@ -29,9 +30,24 @@ export function stepGoal(p: Problem, i: number, known: unknown[] = []): string {
   return g && !leaks(g, p.solution, [p.data, p.statement, known], p.solution_steps) ? g : "";
 }
 
+// Như stepGoal nhưng không bao giờ rỗng khi đề có lời giải: thiếu mục tiêu thì lấy lời giải bước đó, thay mọi số bằng "…" (không lộ kết quả).
+export function stepCue(p: Problem, i: number, known: unknown[] = []): string {
+  const g = stepGoal(p, i, known);
+  if (g) return g;
+  const t = p.solution_steps[i];
+  return t ? stripStep(t).replace(/\d[\d.,]*(?![\d.,\p{L}])/gu, "…").trim() : "";
+}
+
+// Định hướng nhẹ cho bước i (gợi ý mức 1 của đề, đã qua kiểm tra lộ đáp án). Rỗng nếu đề không có hoặc trùng với việc cần làm.
+export function stepLead(p: Problem, i: number, known: unknown[] = []): string {
+  const n = p.solution_steps.length;
+  const h = (p.step_hints.length === n && p.step_hints[i]?.[0]) || "";
+  return h && h !== stepGoal(p, i, known) && !leaks(h, p.solution, [p.data, p.statement, known], p.solution_steps) ? h : "";
+}
+
 // Lời chào kiểu từng bước (trình duyệt hiện ngay, server lưu cùng nội dung): nêu luôn việc của bước 1.
 export function stepsGreeting(p: Problem, quiz = false) {
-  const g = stepGoal(p, 0);
+  const g = stepCue(p, 0);
   const hi = quiz ? QUIZ_GREETING : STEPS_GREETING;
   return g ? `${hi} Bước 1/${p.solution_steps.length}: ${g}` : hi;
 }

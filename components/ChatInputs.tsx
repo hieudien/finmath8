@@ -44,7 +44,7 @@ const STEP_MAX = 150;
 // Ô nhập một bước giải: ngắn, một việc mỗi lần. Gợi ý lấy từ đề, không gọi AI. "Em chưa hiểu" chuyển ô thành câu hỏi (có giới hạn lượt ở server).
 function StepInput({ text, setText, busy, ready, onSend, onHint, progress, asking, setAsking, stuck, box }: InputProps) {
   const n = progress ? Math.min(progress.next ?? progress.done + 1, progress.total) : 1;
-  const label = asking ? "Bạn chưa hiểu chỗ nào? Hỏi ngắn thôi" : "Viết bước giải của bạn";
+  const label = asking ? "Bạn chưa hiểu chỗ nào?" : "Viết bước giải của bạn";
   return (
     <form onSubmit={onSend} className="flex flex-col gap-2">
       {progress && (

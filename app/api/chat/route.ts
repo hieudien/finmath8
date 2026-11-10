@@ -79,6 +79,9 @@ async function handle(req: Request) {
     const mode = modeFor(await teacherMode(link.teacher_id), prob);
     const { data: s, error } = await db.from("chat_sessions").insert({ link_id: link.id, anon_id: anon, seq: (seq as number | null) ?? 1, problem_code: prob.id, student_code: b.studentCode, student_name: b.studentName, mode, ...(mode !== "chat" && { hint_level: 0 }) } as never).select("*").single();
     if (error || !s) throw new Error("Không tạo được phiên chat: " + (error?.message ?? "rỗng"));
+    // Học sinh có bảng riêng, sống sót khi xóa liên kết. Vào lại bằng cùng mã thì hiện lại (deleted_at = null).
+    const up = await db.from("students").upsert({ teacher_id: link.teacher_id, code: b.studentCode, name: b.studentName, last_seen_at: new Date().toISOString(), deleted_at: null } as never);
+    if (up.error) console.error("student upsert failed", up.error.message);
     const sess = s as Session & { seq: number };
     try {
       const [r] = await Promise.all([

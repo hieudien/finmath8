@@ -12,15 +12,16 @@ const UUID = z.string().uuid();
 const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("advise"), code: z.string().regex(/^[A-Z0-9._-]{1,20}$/) }),
   z.object({ action: z.literal("analyze_session"), id: UUID }),
+  z.object({ action: z.literal("delete"), code: z.string().regex(/^[A-Z0-9._-]{1,20}$/) }),
 ]);
 const sessionOut = z.object({ summary: z.string().min(1), strengths: z.array(z.string()).max(5), weaknesses: z.array(z.string()).max(5), next_steps: z.array(z.string()).max(5) });
 
 const SESSION_SYSTEM = `Bạn là trợ lý cho giáo viên Toán. Dưới đây là một phiên học sinh làm một bài với chatbot gợi mở: đề, các bước lời giải, điểm tự chấm (rubric 0–3: nhận diện, lập kế hoạch, tính toán, giải thích) nếu có, và hội thoại (HS = học sinh, Bot = chatbot). Hãy nhận xét riêng phiên này cho giáo viên: học sinh làm tốt ở đâu, yếu ở bước nào và vì sao, cần làm gì tiếp. Dựa đúng vào hội thoại, không bịa. Phiên làm dở hoặc ít tin thì nói rõ là nhận xét sơ bộ. Bước chatbot phải hiện lời giải thì học sinh chưa tự làm được: coi là điểm yếu. Viết tiếng Việt, ngắn gọn, cụ thể, công thức đặt trong $...$ theo LaTeX.
 Chỉ trả JSON {"summary":"2-3 câu tổng quát","strengths":[điểm làm tốt],"weaknesses":[điểm yếu, nêu bước nào],"next_steps":[việc giáo viên nên làm với học sinh này sau phiên]}.`;
-const out = z.object({ weak_areas: z.array(z.string()).max(6), suggestions: z.array(z.string()).max(6), practice: z.array(z.string()).max(5) });
+const out = z.object({ weak_areas: z.array(z.string()).max(6), suggestions: z.array(z.string()).max(6), practice: z.array(z.string()).max(5), step_review: z.array(z.object({ step: z.string().min(1), review: z.string().min(1) })).max(6).default([]) });
 
-const SYSTEM = `Bạn là trợ lý cho giáo viên Toán. Dựa trên số liệu một học sinh làm bài với chatbot gợi mở (rubric 0–3: nhận diện, lập kế hoạch, tính toán, giải thích; lỗi đã mắc; kỹ năng của các bài làm chưa tốt), hãy chỉ ra học sinh yếu ở đâu và đề xuất cách cải thiện. Viết tiếng Việt, ngắn gọn, cụ thể, dùng được ngay. Không bịa số liệu. Bài "bỏ dở" (mở bài nhưng chưa nhắn gì, hoặc làm dở chưa kết thúc) cũng là tín hiệu: nêu rõ thói quen bỏ bài, có thể do bài khó, thiếu động lực hay ngại hỏi, và gợi ý cách khuyến khích. Bài có "bot phải hiện lời giải N bước" nghĩa là học sinh kẹt, không tự làm được các bước đó: coi là điểm yếu thật, dựa vào "kien_thuc_nen_con_thieu" để đề xuất ôn tập. Ít dữ liệu thì nói rõ là nhận định sơ bộ.
-Chỉ trả JSON {"weak_areas":[điểm yếu],"suggestions":[việc giáo viên/học sinh nên làm],"practice":[dạng bài nên luyện thêm]}.`;
+const SYSTEM = `Bạn là trợ lý cho giáo viên Toán. Dựa trên số liệu một học sinh làm bài với chatbot gợi mở (rubric 0–3: nhận diện, lập kế hoạch, tính toán, giải thích; lỗi đã mắc; kỹ năng của các bài làm chưa tốt), hãy chỉ ra học sinh yếu ở đâu và đề xuất cách cải thiện. Viết tiếng Việt, ngắn gọn, cụ thể, dùng được ngay. Không bịa số liệu. Bài "bỏ dở" (mở bài nhưng chưa nhắn gì, hoặc làm dở chưa kết thúc) cũng là tín hiệu: nêu rõ thói quen bỏ bài, có thể do bài khó, thiếu động lực hay ngại hỏi, và gợi ý cách khuyến khích. Bài có "bot phải hiện lời giải N bước" nghĩa là học sinh kẹt, không tự làm được các bước đó: coi là điểm yếu thật, dựa vào "kien_thuc_nen_con_thieu" để đề xuất ôn tập. "buoc_yeu" là các bước học sinh hay gặp khó (bấm gợi ý, hỏi, làm sai hoặc bị giải hộ): với MỖI bước (tối đa 6, ưu tiên bước bị giải hộ) viết một mục trong "step_review" gồm step = tên bước ngắn (ví dụ "Bước 4 · Cộng vế") và review = một đến hai câu ôn tập cụ thể: kiến thức hoặc quy tắc cần ôn và cách luyện (ví dụ làm thêm dạng bài nào). Không nêu đáp án của đề. Ít dữ liệu thì nói rõ là nhận định sơ bộ.
+Chỉ trả JSON {"weak_areas":[điểm yếu],"suggestions":[việc giáo viên/học sinh nên làm],"practice":[dạng bài nên luyện thêm],"step_review":[{"step":string,"review":string}]}.`;
 
 type Sb = Awaited<ReturnType<typeof supabaseServer>>;
 type Cfg = NonNullable<Awaited<ReturnType<typeof llmCfg>>>;
@@ -55,6 +56,13 @@ export const POST = api(async (req) => {
   const u = await requireUser();
   const p = body.safeParse(await req.json().catch(() => null));
   if (!p.success) return bad("Dữ liệu không hợp lệ.");
+  if (p.data.action === "delete") {
+    // Xóa mềm: chỉ ẩn khỏi danh sách; phiên, tin nhắn, điểm giữ nguyên.
+    const { data } = await admin().from("students").update({ deleted_at: new Date().toISOString() } as never).eq("teacher_id", u.id).eq("code", p.data.code).is("deleted_at", null).select("name");
+    if (!(data as unknown[] | null)?.length) return bad("Không tìm thấy học sinh này.", 404);
+    await log({ actor: "teacher", action: "student_deleted", teacherId: u.id, meta: { code: p.data.code, name: (data as { name: string | null }[])[0].name } });
+    return Response.json({ ok: true });
+  }
   const cfg = await llmCfg(u.id);
   if (!cfg) return bad("Chưa có API key. Vào Cài đặt để nhập.");
   const sb = await supabaseServer();
@@ -72,6 +80,7 @@ export const POST = api(async (req) => {
     rubric_tb: prof.rubric.map((r) => `${r.name}: ${r.value.toFixed(1)}/3`),
     loi_da_mac: prof.errors.slice(0, 8),
     ky_nang_bai_lam_chua_tot: prof.weakSkills.slice(0, 8),
+    buoc_yeu: prof.weakSteps.slice(0, 8).map((w) => `${w.title}, bước ${w.step}: ${w.label} (gặp khó ${w.struggled}/${w.of} phiên${w.revealed ? `, bị giải hộ ${w.revealed} phiên` : ""})`),
     kien_thuc_nen_con_thieu: prof.gaps.slice(0, 8), // AI ghi khi chấm các phiên có bước được giải hộ
     cac_bai: prof.attempts.filter((a) => a.ev).slice(0, 10).map((a) => `${a.title}: ${a.ev!.total}/12, ${a.ev!.final_correct ? "đúng" : "chưa đúng"}, ${a.ev!.hint_count} gợi ý${a.revealed ? `, bot phải hiện lời giải ${a.revealed} bước vì kẹt (không tính là tự làm)` : ""}`),
     // Chưa chấm: 0 tin = vào bài rồi bỏ, không nhắn gì; có tin = làm dở, chưa kết thúc.

@@ -1,5 +1,5 @@
 import type { supabaseServer } from "@/lib/supabase/server";
-import { bits } from "@/lib/stats";
+import { bits, weakSteps, type StepInfo } from "@/lib/stats";
 
 type Sb = Awaited<ReturnType<typeof supabaseServer>>;
 
@@ -16,6 +16,7 @@ export type Profile = {
   errors: { name: string; value: number }[];
   gaps: { name: string; value: number }[]; // kiến thức nền còn thiếu (AI ghi khi chấm phiên có bước được giải hộ)
   weakSkills: { name: string; value: number }[]; // kỹ năng của các bài làm chưa tốt (tổng < 8/12 hoặc chưa đúng)
+  weakSteps: ReturnType<typeof weakSteps>; // bước làm khó học sinh (gặp khó / bị giải hộ), bị giải hộ trước
   evaluated: number;
 };
 
@@ -24,15 +25,21 @@ const top = (m: Map<string, number>) => [...m].map(([name, value]) => ({ name, v
 
 // RLS của supabaseServer giới hạn: giáo viên chỉ đọc được học sinh của mình.
 export async function loadStudent(sb: Sb, code: string): Promise<Profile | null> {
-  const [s, p] = await Promise.all([
-    sb.from("chat_sessions").select("id,problem_code,status,started_at,student_name,revealed,session_evals(identify,plan,calculate,explain,total,final_correct,hint_count,errors,gaps)").eq("student_code", code).order("started_at", { ascending: false }).limit(200),
-    sb.from("problems").select("code,title:content->>title,skills:content->skills").is("deleted_at", null), // chỉ lấy tiêu đề và kỹ năng, không tải cả đề
+  const [st, s, p] = await Promise.all([
+    sb.from("students").select("name").eq("code", code).maybeSingle(), // RLS: chỉ học sinh của giáo viên này và chưa xóa
+
+    sb.from("chat_sessions").select("id,problem_code,status,started_at,student_name,revealed,struggled,session_evals(identify,plan,calculate,explain,total,final_correct,hint_count,errors,gaps)").eq("student_code", code).order("started_at", { ascending: false }).limit(200),
+    sb.from("problems").select("code,title:content->>title,skills:content->skills,steps:content->solution_steps,goals:content->step_goals").is("deleted_at", null), // chỉ lấy tiêu đề và kỹ năng, không tải cả đề
   ]);
   if (s.error) throw new Error("Lỗi cơ sở dữ liệu: " + s.error.message);
-  type SR = { id: string; problem_code: string; status: string; started_at: string; student_name: string | null; revealed: number; session_evals: Attempt["ev"] | Attempt["ev"][] | null };
+  type SR = { id: string; problem_code: string; status: string; started_at: string; student_name: string | null; revealed: number; struggled: number; session_evals: Attempt["ev"] | Attempt["ev"][] | null };
   const rows = (s.data ?? []) as SR[];
-  if (!rows.length) return null;
-  const prob = new Map(((p.data ?? []) as { code: string; title: string | null; skills: string[] | null }[]).map((x) => [x.code, { title: x.title ?? undefined, skills: x.skills ?? undefined }]));
+  if (st.error) throw new Error("Lỗi cơ sở dữ liệu: " + st.error.message);
+  if (!st.data) return null; // học sinh không có hoặc đã xóa; còn học sinh mà hết phiên (liên kết đã xóa) thì vẫn trả hồ sơ rỗng
+  const stName = (st.data as { name: string | null }).name;
+  const pd = (p.data ?? []) as { code: string; title: string | null; skills: string[] | null; steps: string[] | null; goals: string[] | null }[];
+  const prob = new Map(pd.map((x) => [x.code, { title: x.title ?? undefined, skills: x.skills ?? undefined }]));
+  const info = new Map<string, StepInfo>(pd.map((x) => [x.code, { title: x.title ?? x.code, steps: x.steps ?? [], goals: x.goals?.length === x.steps?.length ? x.goals ?? [] : [] }]));
   const attempts = rows.map((r) => ({ id: r.id, problem_code: r.problem_code, title: prob.get(r.problem_code)?.title ?? r.problem_code, status: r.status, started_at: r.started_at, revealed: bits(r.revealed ?? 0), ev: arr(r.session_evals)[0] ?? null }));
   const done = attempts.filter((a) => a.ev);
   const rubric = CRITERIA.map(([key, name]) => ({ key, name, value: done.length ? done.reduce((n, a) => n + (a.ev as never as Record<string, number>)[key], 0) / done.length : 0 })).sort((a, b) => a.value - b.value);
@@ -42,5 +49,5 @@ export async function loadStudent(sb: Sb, code: string): Promise<Profile | null>
     (a.ev!.gaps ?? []).forEach((g) => gaps.set(g, (gaps.get(g) ?? 0) + 1));
     if (a.ev!.total < 8 || !a.ev!.final_correct || a.revealed > 0) (prob.get(a.problem_code)?.skills ?? []).forEach((k) => skills.set(k, (skills.get(k) ?? 0) + 1));
   }
-  return { code, names: [...new Set(rows.map((r) => r.student_name).filter((x): x is string => !!x))], attempts, rubric, errors: top(errors), gaps: top(gaps), weakSkills: top(skills), evaluated: done.length };
+  return { code, names: stName ? [stName] : [...new Set(rows.map((r) => r.student_name).filter((x): x is string => !!x))], attempts, rubric, errors: top(errors), gaps: top(gaps), weakSkills: top(skills), weakSteps: weakSteps(rows.map((r) => ({ id: r.id, problem_code: r.problem_code, student_code: code, struggled: r.struggled, revealed: r.revealed, started_at: r.started_at })), info), evaluated: done.length };
 }

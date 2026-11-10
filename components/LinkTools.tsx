@@ -87,7 +87,7 @@ export function LinkActions({ id, slug, active }: { id: string; slug: string; ac
       <div className="flex flex-wrap items-center gap-2">
         <CopyButton text={url || `/c/${slug}`} />
         <Button variant="secondary" onClick={toggle} pending={busy || rp ? (active ? "Đang tắt..." : "Đang bật...") : undefined}>{active ? "Tắt" : "Bật"}</Button>
-        <Confirm label="Xóa liên kết" message="Học sinh không vào được nữa. Toàn bộ phiên chat và thống kê của liên kết này bị xóa vĩnh viễn." onConfirm={async () => { const { ok, data } = await post("/api/links", { action: "delete", id }); if (!ok) return data.error ?? "Có lỗi."; }} />
+        <Confirm label="Xóa liên kết" message="Liên kết bị ẩn, học sinh không vào được nữa. Dữ liệu phiên chat của liên kết này vẫn được lưu lại." onConfirm={async () => { const { ok, data } = await post("/api/links", { action: "delete", id }); if (!ok) return data.error ?? "Có lỗi."; }} />
       </div>
       {err && <Alert tone="danger">{err}</Alert>}
     </div>

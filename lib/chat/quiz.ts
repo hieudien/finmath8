@@ -4,9 +4,10 @@ import { admin } from "@/lib/supabase/admin";
 import type { LlmCfg } from "@/lib/llm";
 import { leaks } from "@/lib/chat/prompt";
 import { checkpoints, countDone } from "@/lib/chat/progress";
-import { CLOSING, finish, withReview, type Session } from "@/lib/chat/engine";
-import { CLOSING_HELP, revealLine } from "@/lib/chat/assist";
-import { known, nextLine as baseLine, progress, stepNo } from "@/lib/chat/steps";
+import { finish, withReview, type Session } from "@/lib/chat/engine";
+import { revealLine } from "@/lib/chat/assist";
+import { closing, closingHelp } from "@/lib/chat/canned";
+import { known, nextLine as baseLine, progress, stepNo, struggle } from "@/lib/chat/steps";
 import { MAX_WRONG } from "@/lib/modes";
 import { log } from "@/lib/log";
 import type { Problem } from "@/lib/schema/problem";
@@ -17,7 +18,7 @@ import type { Problem } from "@/lib/schema/problem";
 
 export const PICK = "[Chọn] "; // tiền tố tin học sinh chọn, để nhật ký giáo viên đọc được
 
-const nextLine = (p: Problem, cps: ReturnType<typeof checkpoints>, mask: number) => baseLine(p, cps, mask, "chọn đáp án đúng nhé.");
+const nextLine = (p: Problem, cps: ReturnType<typeof checkpoints>, mask: number) => baseLine(p, cps, mask, "chọn đáp án đúng nhé.", false);
 
 // Trả null nếu đáp án gửi lên không nằm trong 4 đáp án của bước hiện tại (yêu cầu giả).
 export async function quizPick(cfg: LlmCfg, s: Session, p: Problem, choice: string, teacherId: string) {
@@ -45,7 +46,7 @@ export async function quizPick(cfg: LlmCfg, s: Session, p: Problem, choice: stri
     if (!trap || why !== trap.why) await log({ actor: "system", action: "answer_leak_blocked", teacherId, anonId: s.anon_id, linkId: s.link_id });
     reply = reveal ? `${why} ${revealLine(cur, cps.length)}` : `${why} Bạn thử chọn lại nhé.`;
   }
-  if (finished) reply = revealed ? `${right ? "" : reply + " "}${CLOSING_HELP}`.trim() : CLOSING;
+  if (finished) reply = revealed ? `${right ? "" : reply + " "}${closingHelp()}`.trim() : closing();
   else if (right) reply = `Đúng rồi! ${nextLine(p, cps, mask)}`;
   else if (reveal) reply = `${reply} ${nextLine(p, cps, mask)}`;
 
@@ -56,7 +57,7 @@ export async function quizPick(cfg: LlmCfg, s: Session, p: Problem, choice: stri
   const hl = moved ? 0 : s.hint_level;
   await Promise.all([
     db.from("messages").insert({ session_id: s.id, role: "bot", content: reply, step, hint_level: hl } as never).then(check),
-    db.from("chat_sessions").update({ step, progress: mask, hint_level: hl, wrong: moved ? 0 : wrong, ...(moved && { stall: 0 }), revealed } as never).eq("id", s.id).then(check),
+    db.from("chat_sessions").update({ step, progress: mask, hint_level: hl, wrong: moved ? 0 : wrong, ...(moved && { stall: 0 }), revealed, ...(!right && { struggled: struggle(s, cur) }) } as never).eq("id", s.id).then(check),
   ]);
   if (finished) after(() => finish(cfg, s, p, teacherId).catch((e) => console.error("finish failed", e)));
   return { reply, step, done: finished, ok: right, progress: progress(p, cps, mask, s) };

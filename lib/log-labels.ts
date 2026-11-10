@@ -18,6 +18,7 @@ export const LOG: Record<string, Info> = {
   password_reset: { label: "Đặt lại mật khẩu", group: ACC },
   settings_changed: { label: "Đổi cài đặt", group: ACC, text: (m) => [m.provider && `Nhà cung cấp ${PROVIDER[s(m.provider)] ?? s(m.provider)}`, m.mode && `kiểu ${MODE[s(m.mode)] ?? s(m.mode)}`, m.key_changed && "có đổi API key"].filter(Boolean).join(", ") },
   export: { label: "Tải dữ liệu", group: ACC, text: (m) => `Tải CSV${m.kind ? ` (${s(m.kind)})` : ""}${m.rows != null ? `, ${s(m.rows)} dòng` : ""}` },
+  student_deleted: { label: "Xóa học sinh", group: ACC, text: (m) => (m.code ? `${m.name ? `${s(m.name)} ` : ""}(${s(m.code)}), bài làm vẫn được giữ` : "") },
   student_advice: { label: "AI đề xuất cải thiện cho học sinh", group: ACC, text: (m) => (m.code ? `Học sinh ${s(m.code)}` : "") },
 
   problem_created: { label: "Nạp đề", group: PROB, text: (m) => (m.code ? `Đề ${s(m.code)}` : "") },
