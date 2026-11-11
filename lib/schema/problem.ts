@@ -14,6 +14,8 @@ export const problemSchema = z.object({
   solution: z.record(z.string(), z.unknown()),
   solution_steps: z.array(z.string()).default([]), // lời giải từng bước bằng văn bản, để giáo viên xem
   step_goals: z.array(z.string()).default([]), // việc cần làm ở từng bước (học sinh thấy), AI viết sẵn, song song solution_steps; lệch số bước thì không dùng
+  step_formats: z.array(z.string()).default([]), // dạng cần viết ở từng bước (vd "viết lại hệ với m = 1, mỗi phương trình có dấu ="), AI viết sẵn, song song solution_steps; lệch số bước thì không dùng
+  step_examples: z.array(z.string()).default([]), // ví dụ cách viết (không lộ kết quả) hiện trong ô nhập, song song solution_steps
   step_hints: z.array(z.array(z.string()).max(3)).default([]), // gợi ý riêng từng bước (mức 1-3), song song solution_steps; lệch số bước thì không dùng
   step_checks: z.array(z.object({ result: z.string(), accepts: z.array(z.string()).default([]) })).default([]), // kết quả chuẩn từng bước (số hoặc biểu thức/chữ) để server chấm, song song solution_steps; lệch số bước thì không dùng
   error_traps: z.array(z.object({ step: z.number().int().min(1), wrong: z.string(), why: z.string() })).default([]), // sai lầm cụ thể gắn bước: học sinh nộp đúng `wrong` thì server trả `why` (step đếm từ 1)

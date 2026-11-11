@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { it } from "vitest";
 import { checkpoints, stripStep } from "../lib/chat/progress";
 import { leaks, leaksCalc } from "../lib/chat/prompt";
-import { NEED_EQ } from "../lib/chat/canned";
 import type { Problem } from "../lib/schema/problem";
 
 // Giả lập học sinh gọi thẳng /api/chat trên dev server (dùng LLM thật, tốn key của giáo viên).
@@ -130,7 +129,7 @@ async function runSession(n: number, scen: Scen, p: Problem, link: { max_message
     check("survey 200", s.status === 200);
   }
   // Tin toàn lời nói (mơ hồ, xin đáp án, lạc đề) không được nhận câu "thêm dấu =" vô nghĩa.
-  if ("CDG".includes(scen)) check("phản hồi hợp ngữ cảnh (không nhắc dấu =)", calls.filter((c) => c.text).every((c) => c.reply !== NEED_EQ));
+  if ("CDG".includes(scen)) check("phản hồi hợp ngữ cảnh (không nhắc dấu =)", calls.filter((c) => c.text).every((c) => !/cần viết thành phương trình có dấu =|thêm dấu =/.test(c.reply ?? "")));
   check("không lỗi 5xx",calls.every((c) => c.status < 500 && c.status !== 0));
   check("không rò đáp án", calls.every((c) => !c.leak));
   check("không chậm quá 25s", calls.every((c) => c.ms <= 25_000));

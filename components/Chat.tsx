@@ -6,9 +6,9 @@ import { MathText } from "@/components/MathText";
 import { StepInput } from "@/components/ChatInputs";
 import { shortId } from "@/lib/sid";
 
-type P = { id: string; title: string; statement: string; greeting: string; total: number; goal: string };
+type P = { id: string; title: string; statement: string; greeting: string; total: number; goal: string; example: string };
 type M = { role: "student" | "bot"; text: string };
-type Prog = { done: number; total: number; next?: number; goal?: string };
+type Prog = { done: number; total: number; next?: number; goal?: string; example?: string };
 type R = { sessionId?: string; reply?: string; step?: number; done?: boolean; progress?: Prog };
 
 export default function Chat({ slug, label, problems }: { slug: string; label: string; problems: P[] }) {
@@ -67,7 +67,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
 
   async function start(p: P) {
     const my = ++tok.current;
-    setProb(p); setBusy(false); setErr(""); setAsking(false); setWrong(0); setProg({ done: 0, total: p.total, next: 1, goal: p.goal });
+    setProb(p); setBusy(false); setErr(""); setAsking(false); setWrong(0); setProg({ done: 0, total: p.total, next: 1, goal: p.goal, example: p.example });
     setMsgs([{ role: "bot", text: p.greeting }]); // hiện lời chào ngay; server tạo phiên song song, có sid thì mở ô nhập
     const { ok, data } = await post<R>("/api/chat", { action: "start", slug, problemCode: p.id, studentName: who?.name, studentClass: who?.cls });
     if (my !== tok.current) return;

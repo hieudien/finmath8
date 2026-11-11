@@ -29,6 +29,14 @@ export function stepLead(p: Problem, i: number, known: unknown[] = []): string {
   return h && h !== stepGoal(p, i, known) && !leaks(h, p.solution, [p.data, p.statement, known], p.solution_steps) ? h : "";
 }
 
+// Dạng cần viết ở bước i và ví dụ cách viết: AI viết sẵn lúc chuẩn hóa. Rỗng nếu đề chưa có, lệch số bước, hoặc lộ kết quả.
+const guideText = (list: string[], p: Problem, i: number, known: unknown[]) => {
+  const g = (list.length === p.solution_steps.length && list[i]) || "";
+  return g && !leaks(g, p.solution, [p.data, p.statement, known], p.solution_steps) ? g : "";
+};
+export const stepFormat = (p: Problem, i: number, known: unknown[] = []) => guideText(p.step_formats, p, i, known);
+export const stepExample = (p: Problem, i: number, known: unknown[] = []) => guideText(p.step_examples, p, i, known);
+
 const STEPS_GREETING = "Bạn viết từng bước giải vào ô bên dưới, mỗi lần một bước. Mình sẽ kiểm tra từng bước. Cần gợi ý thì bấm nút Gợi ý nhé.";
 
 // Lời chào kiểu từng bước (trình duyệt hiện ngay, server lưu cùng nội dung): nêu luôn việc của bước 1.

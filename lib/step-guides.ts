@@ -27,10 +27,28 @@ const out = z.object({
   })),
 });
 
+const FORMAT_SYSTEM = `Với từng bước của lời giải một bài Toán, viết cho học sinh biết bước đó cần VIẾT RA dạng gì. Mỗi bước gồm:
+- format: MỘT câu ngắn nói dạng cần viết (ví dụ "Viết lại hệ phương trình với giá trị m đã cho, mỗi phương trình một dòng có dấu =", "Viết một phương trình có dấu = rút ra từ điều kiện"). Chỉ nói DẠNG và việc viết, KHÔNG nêu kết quả, số mới của bước, hay biểu thức đã thay số.
+- example: MỘT ví dụ NGẮN cách viết với bài khác hoặc số khác hẳn (không dùng số của đề, không dùng kết quả của bước), viết chữ thường, không LaTeX, không dấu $, chữ tiếng Việt phải có dấu đầy đủ (ví dụ "2x = 14 - 6", "a khác 0"). Không có ví dụ phù hợp thì "".
+Xưng "mình", gọi học sinh là "bạn". Tuyệt đối không nêu kết quả của chính bước đó. Chỉ trả JSON {"steps": [{"format": string, "example": string}]} đúng một phần tử cho mỗi bước, theo thứ tự các bước.`;
+const formatOut = z.object({ steps: z.array(z.object({ format: z.string().min(3), example: z.string().default("") })) });
+
+// Chỉ bổ sung dạng cần viết và ví dụ cho từng bước (không đụng goal, hints, traps đã có). Trả null nếu AI hỏng hoặc lệch số bước.
+export async function makeStepFormats(cfg: LlmCfg, p: Problem, steps = p.solution_steps): Promise<{ formats: string[]; examples: string[] } | null> {
+  if (!steps.length) return null;
+  const text = `Có ĐÚNG ${steps.length} bước, trả đúng ${steps.length} phần tử.\n${p.statement}\nDữ liệu: ${JSON.stringify(p.data)}\nCác bước lời giải:\n${steps.map((s, i) => { const ban = newNumbers(steps, i, p); return `${i + 1}. ${s}${ban.length ? `\n   KHÔNG được nhắc: ${ban.join(", ")}` : ""}`; }).join("\n")}`;
+  const raw = await askJson(cfg, FORMAT_SYSTEM + gradeRule(p.grade), [{ role: "user", text }], formatOut, { maxTokens: 3000, use: "step_formats" }).catch(async (e) => { await reportError(e, `tạo dạng cần viết, đề ${p.id}`, { teacherId: cfg.teacherId, actor: "teacher" }); return null; });
+  const x = raw && (walk(raw) as typeof raw);
+  if (!x || x.steps.length !== steps.length) return null;
+  const given = [p.data, p.statement];
+  const ok = (s: string) => (s && !leaks(s, p.solution, given, steps) ? s.trim() : "");
+  return { formats: x.steps.map((s) => ok(s.format)), examples: x.steps.map((s) => ok(s.example)) };
+}
+
 export type Guides = { goals: string[]; hints: string[][]; checks: Problem["step_checks"]; traps: Problem["error_traps"] };
 
 // Ghi chỉ dẫn vào đề. Không có chỉ dẫn (g null) thì xóa hết: các phần song song với lời giải không được lệch số bước.
-export const withGuides = (p: Problem, g: Guides | null): Problem => ({ ...p, step_goals: g?.goals ?? [], step_hints: g?.hints ?? [], step_checks: g?.checks ?? [], error_traps: g?.traps ?? [] });
+export const withGuides = (p: Problem, g: Guides | null): Problem => ({ ...p, step_goals: g?.goals ?? [], step_hints: g?.hints ?? [], step_checks: g?.checks ?? [], error_traps: g?.traps ?? [], step_formats: [], step_examples: [] });
 
 // Kết quả chuẩn do AI viết phải có thật trong lời giải của bước đó, nếu không thì bỏ (AI bịa số).
 const inStep = (result: string, step: string) => {

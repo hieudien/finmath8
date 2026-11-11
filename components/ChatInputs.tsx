@@ -8,7 +8,7 @@ export type InputProps = {
   text: string; setText: (v: string) => void;
   busy: boolean; ready: boolean; // ready: phiên đã tạo xong, có sessionId
   onSend: (e: FormEvent) => void; onHint: () => void;
-  progress: { done: number; total: number; next?: number; goal?: string } | null;
+  progress: { done: number; total: number; next?: number; goal?: string; example?: string } | null;
   asking: boolean; setAsking: (v: boolean) => void; // đang gõ câu hỏi "Em chưa hiểu"
   stuck: boolean; // sai liên tiếp, nhắc bấm Gợi ý
   box: RefObject<HTMLTextAreaElement | null>;
@@ -34,7 +34,7 @@ export function StepInput({ text, setText, busy, ready, onSend, onHint, progress
       )}
       <label htmlFor="step" className={`text-xs font-medium sm:text-sm ${compact ? "sr-only" : ""}`}>{label}</label>
       <div className="flex items-end gap-2">
-        <textarea id="step" ref={box} rows={1} value={text} onChange={(e) => setText(e.target.value)} disabled={busy || !ready} maxLength={STEP_MAX} placeholder={!ready ? "Đang mở bài, chờ một chút..." : asking ? "Ví dụ: Đề hỏi gì vậy?" : "Ví dụ: 2x = 14 - 6"} className={BOX} />
+        <textarea id="step" ref={box} rows={1} value={text} onChange={(e) => setText(e.target.value)} disabled={busy || !ready} maxLength={STEP_MAX} placeholder={!ready ? "Đang mở bài, chờ một chút..." : asking ? "Ví dụ: Đề hỏi gì vậy?" : progress?.example ? `Ví dụ: ${progress.example}` : "Viết bước giải của bạn ở đây"} className={BOX} />
         <Button type="submit" block={false} className={SM} disabled={!text.trim() || !ready} pending={busy ? (ready ? "Đang kiểm tra..." : "Đang mở bài...") : undefined}>{asking ? "Gửi câu hỏi" : "Nộp bước"}</Button>
       </div>
       {(!compact || text.length >= STEP_MAX - 20) && <p className={`text-right text-xs tnum ${text.length >= STEP_MAX - 20 ? "text-danger" : "text-text-muted"}`} aria-live="off">{text.length}/{STEP_MAX}</p>}

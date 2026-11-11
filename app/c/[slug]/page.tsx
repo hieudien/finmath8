@@ -3,7 +3,7 @@ import { admin } from "@/lib/supabase/admin";
 import { liveProblems } from "@/lib/links";
 import Chat from "@/components/Chat";
 import Brand from "@/components/Brand";
-import { stepCue, stepsGreeting } from "@/lib/chat/goals";
+import { stepCue, stepExample, stepsGreeting } from "@/lib/chat/goals";
 import { checkpoints } from "@/lib/chat/progress";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +32,6 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   const linkId = l.id;
   after(async () => { await admin().rpc("bump_visit", { p_link: linkId } as never); }); // không chặn việc hiển thị trang
   // greeting: lời chào cố định hiện ngay khi bấm chọn bài; total = số bước để hiện "Bước k/n".
-  const problems = (await liveProblems(l.teacher_id, l.problems_snapshot)).map((p) => ({ id: p.id, title: p.title, statement: p.statement ?? "", total: checkpoints(p).length, goal: stepCue(p, 0), greeting: stepsGreeting(p) }));
+  const problems = (await liveProblems(l.teacher_id, l.problems_snapshot)).map((p) => ({ id: p.id, title: p.title, statement: p.statement ?? "", total: checkpoints(p).length, goal: stepCue(p, 0), example: stepExample(p, 0), greeting: stepsGreeting(p) }));
   return <Chat slug={slug} label={l.label} problems={problems} />;
 }

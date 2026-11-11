@@ -22,7 +22,7 @@ export default function FormulaDialog({ initial = "", onInsert, onClose }: { ini
           ["x", "y", "a", "b", "[7]", "[8]", "[9]", "[/]", k("\\frac{#@}{#?}"), k("\\sqrt{#?}")],
           ["<", ">", k("\\le"), k("\\ge"), "[4]", "[5]", "[6]", "[*]", k("#@^2"), k("#@^{#?}")],
           [k("\\ne"), k("="), k("\\pi"), k("^\\circ"), "[1]", "[2]", "[3]", "[-]", k("("), k(")")],
-          ["[left]", "[right]", "[0]", "[.]", k("\\%"), "[+]", "[backspace]"],
+          ["[left]", "[right]", "[0]", "[.]", k("\\%"), "[+]", k("\\begin{cases}#?\\\\#?\\end{cases}"), "[backspace]"],
         ],
       }];
       const mf = new MathfieldElement();
@@ -48,7 +48,7 @@ export default function FormulaDialog({ initial = "", onInsert, onClose }: { ini
     <div role="dialog" aria-modal="true" aria-label="Soạn công thức" className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4" onKeyDown={(e) => e.key === "Escape" && onClose()}>
       <div className="mt-8 flex w-full max-w-lg flex-col gap-3 rounded-lg bg-surface p-4 shadow-lg">
         <h2 className="text-lg">Soạn công thức</h2>
-        <p className="text-sm text-text-muted">Gõ trực tiếp hoặc dùng bàn phím công thức. Gõ <code>/</code> để tạo phân số, <code>^</code> để viết số mũ, <code>sqrt</code> để viết căn.</p>
+        <p className="text-sm text-text-muted">Gõ trực tiếp hoặc dùng bàn phím công thức. Gõ <code>/</code> để tạo phân số, <code>^</code> để viết số mũ, <code>sqrt</code> để viết căn. Phím <code>{"{"}</code> hai dòng để nhập hệ phương trình.</p>
         <div ref={host} />
         <div className="flex justify-end gap-2">
           <Button variant="ghost" type="button" onClick={onClose}>Hủy</Button>

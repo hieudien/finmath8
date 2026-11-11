@@ -99,9 +99,6 @@ export const STEP_LEAK = [
   "Bước này chưa khớp lắm. Bạn thử rà lại phép tính nhé.",
 ] as const;
 
-// Bước cần phương trình mà tin không có dấu "=": một câu cố định (không bốc ngẫu nhiên) để cùng input luôn ra cùng lời.
-export const NEED_EQ = "Bước này cần viết thành một phương trình có dấu =. Bạn thêm dấu = vào rồi gửi lại nhé.";
-
 export const RETRY = [
   "Bạn thử lại nhé.",
   "Bạn thử làm lại xem sao nhé.",

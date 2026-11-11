@@ -2,7 +2,7 @@ import { z } from "zod";
 import { askJson, type LlmCfg } from "@/lib/llm";
 import { missingAnswers, nums } from "@/lib/answer-check";
 import { hasGuides } from "@/lib/chat/goals";
-import { makeStepGuides, withGuides } from "@/lib/step-guides";
+import { makeStepFormats, makeStepGuides, withGuides } from "@/lib/step-guides";
 import { lintProblem } from "@/lib/lint";
 import { aboveGrade, gradeRule } from "@/lib/grade";
 import { checkSteps, crossCheck, substituteState } from "@/lib/verify-solution";
@@ -184,6 +184,11 @@ export async function finishProblem(cfg: LlmCfg, p0: Problem, trusted = false, r
     const g = await makeStepGuides(cfg, q);
     if (!g) break;
     q = withGuides(q, g);
+  }
+  // Dạng cần viết + ví dụ từng bước: bổ sung nếu thiếu. Lỗi AI thì bỏ qua (bot vẫn chạy bằng mục tiêu của bước).
+  if (q.step_formats.length !== q.solution_steps.length) {
+    const f = await makeStepFormats(cfg, q).catch(swallow("tạo dạng cần viết từng bước", { teacherId: cfg.teacherId, actor: "teacher" }));
+    if (f) q = { ...q, step_formats: f.formats, step_examples: f.examples };
   }
   const left = lintProblem(q);
   if (left.length || q.step_checks.length !== q.solution_steps.length) return `AI chưa làm đề này đạt chuẩn: ${left.join(" ") || "chưa viết được chỉ dẫn từng bước."}`;
