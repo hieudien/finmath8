@@ -90,6 +90,7 @@ export async function ProblemView({ id, inPanel = false }: { id: string; inPanel
                   <div>
                     <MathText text={s} />
                     {hasGuides(p) && p.step_goals[i] && <p className="text-sm text-text-muted">Học sinh thấy: <MathText text={p.step_goals[i]} /></p>}
+                    {p.step_formats.length === p.solution_steps.length && p.step_formats[i] && <p className="text-sm text-text-muted">Bot nhắc học sinh viết ra: <MathText text={p.step_formats[i]} />{p.step_examples[i] && <> (ví dụ ô nhập: <MathText text={p.step_examples[i]} />)</>}</p>}
                     {p.step_checks.length === p.solution_steps.length && p.step_checks[i].result && <p className="text-sm text-text-muted">Kết quả chuẩn (server chấm theo đây): <MathText text={p.step_checks[i].result} /></p>}
                     {p.error_traps.filter((e) => e.step === i + 1).map((e, k) => <p key={k} className="text-sm text-text-muted">Nếu học sinh nộp <MathText text={e.wrong} />: <MathText text={e.why} /></p>)}
                   </div>

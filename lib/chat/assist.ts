@@ -7,8 +7,10 @@ export const STALL_LIMIT = 5;
 export const MAX_HINT = { steps: 3 } as const;
 
 // stall chỉ tăng khi đã hết gợi ý và lượt đó không qua mốc; qua mốc thì về 0.
-export function ladder(mode: keyof typeof MAX_HINT, hint: number, stall: number, progressed: boolean) {
+// near: lượt nộp gần đúng (đúng hướng nhưng thiếu, hoặc chỉ sai một chỗ): không tính là kẹt nên không đẩy học sinh tới màn hiện lời giải.
+export function ladder(mode: keyof typeof MAX_HINT, hint: number, stall: number, progressed: boolean, near = false) {
   if (progressed) return { stall: 0, reveal: false };
+  if (near) return { stall, reveal: false };
   if (hint < MAX_HINT[mode]) return { stall, reveal: false };
   const n = stall + 1;
   return { stall: n, reveal: n >= STALL_LIMIT };

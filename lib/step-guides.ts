@@ -9,8 +9,8 @@ import { walk } from "@/lib/latex-fix";
 import type { Problem } from "@/lib/schema/problem";
 
 const SYSTEM = `Viết CHỈ DẪN cho từng bước của lời giải một bài Toán, cho học sinh đang làm bước đó. Mỗi bước gồm:
-- goal: MỘT câu ngắn nêu VIỆC học sinh cần làm ở bước đó (động từ + đại lượng cần tìm, ví dụ "Tìm số tiền Nam còn thiếu", "Gọi ẩn và viết phương trình"). KHÔNG nêu kết quả hay phép tính ra kết quả.
-- hints: 3 mức, mỗi mức 1 câu: mức 1 = định hướng nhẹ (nhìn vào đâu); mức 2 = chỉ cách làm (dùng công thức hay phép tính nào); mức 3 = nêu tên phép tính hoặc quy tắc cần dùng nhưng KHÔNG viết sẵn biểu thức đã thay số của bước và KHÔNG nêu kết quả (học sinh phải tự viết phép tính).
+- goal: MỘT câu ngắn nêu VIỆC học sinh cần làm ở bước đó (động từ + đại lượng cần tìm, ví dụ "Tìm số tiền Nam còn thiếu", "Gọi ẩn và viết phương trình"). KHÔNG nêu kết quả hay phép tính ra kết quả. goal nêu MỤC ĐÍCH (điều cần đạt) chứ KHÔNG nêu CÁCH LÀM mà học sinh phải tự nghĩ ra: không nêu thao tác kèm số/hệ số chọn ra ("nhân với 2", "cộng vế với vế", "trừ hai phương trình"), không chép lại câu của lời giải. Đúng: "Biến đổi để hệ số của x ở hai phương trình bằng nhau"; sai: "Nhân phương trình thứ nhất với 2" và cả "Nhân hai vế với một số thích hợp". Không mở đầu goal bằng động từ thao tác của lời giải (Nhân, Cộng, Trừ, Thế, Rút, Quy đồng, Khai triển, Chia); dùng động từ nêu đích như Biến đổi, Khử, Lập, Tìm, Tính, Kết luận, Viết lại. Cách làm cụ thể chỉ được xuất hiện ở hints mức 2 và 3. Dữ kiện đề đã cho (giá trị tham số, tên ẩn, tên hệ, ý a/b) thì PHẢI nêu cụ thể: đề cho m = 1 thì goal ghi "m = 1", ví dụ "Thay m = 1 vào hệ (I)", không viết chung chung như "thay giá trị của tham số vào hệ".
+- hints: 3 mức, mỗi mức 1 câu: mức 1 = định hướng nhẹ (nhìn vào đâu); mức 2 = chỉ cách làm (dùng công thức hay phép tính nào); mức 3 = nói rõ BẰNG LỜI phép biến đổi hoặc quy tắc cần dùng và lý do dùng nó (ví dụ "nhân hai vế của một phương trình với một số để hệ số của x bằng nhau"), nhưng KHÔNG viết sẵn biểu thức đã thay số của bước và KHÔNG nêu kết quả (học sinh phải tự viết phép tính). Mỗi mức phải có thông tin MỚI so với mức trước, không lặp lại ý, không dùng câu rỗng kiểu "thực hiện phép tính", "áp dụng quy tắc".
 - result: KẾT QUẢ CHUẨN của bước, chép đúng từ lời giải của bước đó. Số thì viết số thuần, không dấu ngăn nghìn, thập phân dùng dấu chấm (ví dụ "45000", "0.15"); biểu thức hoặc chữ thì viết ngắn gọn ("x=2", "vô nghiệm"). Bước chỉ nêu cách làm, không có kết quả cụ thể: "".
 - accepts: tối đa 3 cách viết khác CÙNG giá trị với result mà học sinh có thể viết (ví dụ "15" khi result là "0.15"; "x = 2" khi result "x=2"). Thường để [].
 - traps: 0 đến 2 sai lầm CỤ THỂ học sinh hay mắc ở bước này (dựa vào "Sai lầm thường gặp" nếu có): wrong = kết quả SAI mà học sinh sẽ nêu (số thuần hoặc biểu thức ngắn, KHÁC result); why = MỘT câu nói lỗi nằm ở đâu và bảo kiểm lại, KHÔNG nêu kết quả đúng.
@@ -28,7 +28,7 @@ const out = z.object({
 });
 
 const FORMAT_SYSTEM = `Với từng bước của lời giải một bài Toán, viết cho học sinh biết bước đó cần VIẾT RA dạng gì. Mỗi bước gồm:
-- format: MỘT câu ngắn nói dạng cần viết (ví dụ "Viết lại hệ phương trình với giá trị m đã cho, mỗi phương trình một dòng có dấu =", "Viết một phương trình có dấu = rút ra từ điều kiện"). Chỉ nói DẠNG và việc viết, KHÔNG nêu kết quả, số mới của bước, hay biểu thức đã thay số.
+- format: MỘT CỤM DANH TỪ ngắn nói bạn cần ra cái gì ở bước này, để ghép vào câu "Bạn thử viết ra ... nhé" (ví dụ "hệ phương trình mới sau khi thay m = 1", "một phương trình theo ẩn x", "câu kết luận nghiệm của hệ"). KHÔNG bắt đầu bằng động từ (không "Viết", "Tính", "Lập"), KHÔNG nói về bố cục (số dòng, "mỗi phương trình một dòng", "có dấu =", "dạng"), KHÔNG lặp lại ý của "Việc cần làm" đã cho kèm theo (kể cả từ khóa như "nhân", "trừ"), KHÔNG nêu lý do hay mục đích (không "để ..."), KHÔNG nêu thao tác của lời giải (không "sau khi nhân", "sau khi trừ", "sau khi thế"), KHÔNG nêu kết quả, số mới của bước, hay biểu thức đã thay số.
 - example: MỘT ví dụ NGẮN cách viết với bài khác hoặc số khác hẳn (không dùng số của đề, không dùng kết quả của bước), viết chữ thường, không LaTeX, không dấu $, chữ tiếng Việt phải có dấu đầy đủ (ví dụ "2x = 14 - 6", "a khác 0"). Không có ví dụ phù hợp thì "".
 Xưng "mình", gọi học sinh là "bạn". Tuyệt đối không nêu kết quả của chính bước đó. Chỉ trả JSON {"steps": [{"format": string, "example": string}]} đúng một phần tử cho mỗi bước, theo thứ tự các bước.`;
 const formatOut = z.object({ steps: z.array(z.object({ format: z.string().min(3), example: z.string().default("") })) });
@@ -36,13 +36,15 @@ const formatOut = z.object({ steps: z.array(z.object({ format: z.string().min(3)
 // Chỉ bổ sung dạng cần viết và ví dụ cho từng bước (không đụng goal, hints, traps đã có). Trả null nếu AI hỏng hoặc lệch số bước.
 export async function makeStepFormats(cfg: LlmCfg, p: Problem, steps = p.solution_steps): Promise<{ formats: string[]; examples: string[] } | null> {
   if (!steps.length) return null;
-  const text = `Có ĐÚNG ${steps.length} bước, trả đúng ${steps.length} phần tử.\n${p.statement}\nDữ liệu: ${JSON.stringify(p.data)}\nCác bước lời giải:\n${steps.map((s, i) => { const ban = newNumbers(steps, i, p); return `${i + 1}. ${s}${ban.length ? `\n   KHÔNG được nhắc: ${ban.join(", ")}` : ""}`; }).join("\n")}`;
+  const text = `Có ĐÚNG ${steps.length} bước, trả đúng ${steps.length} phần tử.\n${p.statement}\nDữ liệu: ${JSON.stringify(p.data)}\nCác bước lời giải:\n${steps.map((s, i) => { const ban = newNumbers(steps, i, p); const goal = p.step_goals.length === steps.length ? p.step_goals[i] : ""; return `${i + 1}. ${s}${goal ? `\n   Việc cần làm (học sinh đã thấy): ${goal}` : ""}${ban.length ? `\n   KHÔNG được nhắc: ${ban.join(", ")}` : ""}`; }).join("\n")}`;
   const raw = await askJson(cfg, FORMAT_SYSTEM + gradeRule(p.grade), [{ role: "user", text }], formatOut, { maxTokens: 3000, use: "step_formats" }).catch(async (e) => { await reportError(e, `tạo dạng cần viết, đề ${p.id}`, { teacherId: cfg.teacherId, actor: "teacher" }); return null; });
   const x = raw && (walk(raw) as typeof raw);
   if (!x || x.steps.length !== steps.length) return null;
   const given = [p.data, p.statement];
   const ok = (s: string) => (s && !leaks(s, p.solution, given, steps) ? s.trim() : "");
-  return { formats: x.steps.map((s) => ok(s.format)), examples: x.steps.map((s) => ok(s.example)) };
+  // Ví dụ viết tiếng Việt không dấu (ba từ ASCII liền nhau trở lên, khác với ký hiệu toán một chữ cái) thì bỏ.
+  const noAccent = (s: string) => /[a-z]{2,}(?:s+[a-z]{2,}){2,}/i.test(s);
+  return { formats: x.steps.map((s) => ok(s.format)), examples: x.steps.map((s) => (noAccent(s.example) ? "" : ok(s.example))) };
 }
 
 export type Guides = { goals: string[]; hints: string[][]; checks: Problem["step_checks"]; traps: Problem["error_traps"] };

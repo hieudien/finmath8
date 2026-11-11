@@ -4,10 +4,10 @@ import { check } from "@/lib/db";
 import { admin } from "@/lib/supabase/admin";
 import { askJson, type LlmCfg } from "@/lib/llm";
 import { leaks, leaksCalc } from "@/lib/chat/prompt";
-import { checkpoints, countDone, markByNumbers, met, numsIn, shapeOk, SOS_REPLY, stepOf, verify, type Cp } from "@/lib/chat/progress";
+import { checkpoints, countDone, hasNum, markByNumbers, met, numsIn, shapeOk, SOS_REPLY, stepOf, verify, type Cp } from "@/lib/chat/progress";
 import { botMsg, finish, INJECT, MAX_TURNS, SOS, withReview, type Msg, type Session, type Tm } from "@/lib/chat/engine";
 import { stepCue, stepExample, stepFormat, stepLead, stepsGreeting } from "@/lib/chat/goals";
-import { SCENARIO_GUIDE, SCENARIOS, scenarioReply } from "@/lib/chat/scenarios";
+import { SCENARIO_GUIDE, SCENARIOS, scenarioReply, withAiLine } from "@/lib/chat/scenarios";
 import { ladder, MAX_HINT, revealLine, stepText } from "@/lib/chat/assist";
 import { ASK_ANSWER, ASK_IS_STEP, ASK_LEAK, ASK_LIMIT, ASK_NOT_JUDGE, capped as cappedLine, closing, closingHelp, isOff, lastBot, OFF_AGAIN, OFF_FIRST, pick, REPEAT, RETRY, STEP_LEAK, STUCK_HINT, STUCK_NOHINT } from "@/lib/chat/canned";
 import { trapReply } from "@/lib/chat/traps";
@@ -24,7 +24,9 @@ import type { Problem } from "@/lib/schema/problem";
 
 // verdict 4 mức thay cho ok bool: rubric rõ nên cùng một bước học sinh viết cho cùng một kết quả (thử 8 lần: ok bool lệch, verdict đồng thuận 8/8). Server chỉ nhận ok khi verdict = "đủ".
 const VERDICTS = ["đủ", "thiếu", "sai", "chưa làm"] as const;
-// scenario: AI chỉ CHỌN kịch bản phản hồi (khi verdict khác "đủ"); lời nói do server ghép (lib/chat/scenarios.ts). reply chỉ dùng khi verdict = "đủ".
+// scenario: kịch bản phản hồi AI chọn khi verdict khác "đủ". reply: câu xác nhận khi verdict = "đủ"; với verdict khác là một câu nhắc đúng điều học sinh viết,
+// chỉ dùng nếu qua rào (không lộ kết quả, không khen, không đặt câu hỏi), không qua thì server dùng câu mẫu của kịch bản (lib/chat/scenarios.ts).
+const NEAR_MAX_TRIES = 6; // quá số lần nộp này ở một bước thì lượt gần đúng cũng tính vào bộ đếm kẹt (không để lặp vô hạn mà không bao giờ hiện lời giải)
 const stepSchema = z.object({ verdict: z.enum(VERDICTS).default("chưa làm"), evidence: z.string().default(""), scenario: z.enum(SCENARIOS).default("chua_lam"), reply: z.string().default("") });
 const askSchema = z.object({ reply: z.string().min(1) });
 // FNV-1a 32 bit: seed ổn định theo (đề, bước, tin học sinh, lời bot trước) để cùng input cho cùng câu trả lời (Gemini: gần như, không tuyệt đối).
@@ -46,7 +48,7 @@ ${bai(p, cps)}
   "chưa làm": chỉ nói bằng lời chung chung, hỏi lại, đòi đáp án, vô nghĩa, hoặc không có biểu thức cụ thể.
   Cùng một bước học sinh viết phải luôn cho cùng một verdict.
 - evidence = trích NGUYÊN VĂN từ bước học sinh viết (không sửa) khi verdict = "đủ"; các trường hợp khác để rỗng.
-- verdict "đủ": reply là MỘT câu xác nhận ngắn, KHÔNG đặt câu hỏi, KHÔNG nêu bước tiếp theo hay việc phải làm tiếp (hệ thống tự nói). Verdict khác: reply để chuỗi rỗng "" (hệ thống tự viết lời theo scenario).
+- verdict "đủ": reply là MỘT câu xác nhận ngắn, KHÔNG đặt câu hỏi, KHÔNG nêu bước tiếp theo hay việc phải làm tiếp (hệ thống tự nói). Verdict khác: reply là MỘT câu ngắn (tối đa 25 từ) nhắc lại bằng lời của bạn ĐIỀU HỌC SINH VỪA VIẾT và chỉ ra nó đang thiếu hoặc lệch chỗ nào so với việc của bước (ví dụ "Phương trình x + y = 5 chưa lấy từ hệ của đề."). Chỉ ra CHỖ sai hoặc thiếu (phương trình nào, vế nào, ẩn nào) mà KHÔNG nêu số hay biểu thức đúng. KHÔNG khen (không "ổn", "đúng", "tốt", "giỏi"), KHÔNG nêu kết quả hay phép tính ra kết quả, KHÔNG nêu cách làm bước sau, KHÔNG đặt câu hỏi, không chào hỏi. Nếu học sinh đã nêu điều ĐÚNG (trả lời câu gợi ý, làm đúng một phần), nhắc lại điều đó bằng lời của bạn (không dùng chữ "đúng", "sai", "ổn") rồi mới chỉ phần còn thiếu. Tin chỉ vô nghĩa, hỏi lại hoặc lạc đề thì reply "".
 - scenario: CHỌN đúng MỘT kịch bản hợp nhất với bước học sinh viết (chỉ dùng khi verdict khác "đủ"; verdict "đủ" thì để "chua_lam"):
 ${SCENARIO_GUIDE}
 - Dòng [Máy kiểm: KHÔNG khớp] là chính xác hơn phán đoán của bạn: verdict khác "đủ"; chọn sai_so, sai_phuong_phap hoặc sai_dang tùy tin.
@@ -151,6 +153,8 @@ export async function stepTurn(cfg: LlmCfg, s: Session, p: Problem, text: string
   // Nộp đúng một kết quả sai đã biết của bước này (do AI viết sẵn lúc tạo chỉ dẫn): trả lời giải thích lỗi đó, không gọi AI.
   const why = !off && cur && mask === mask0 && !stuck ? trapReply(p, cur, clean, known(cps, mask0)) : "";
   let canned = stuck || (why ? `${dot(why)} ${cueLine(p, cps, mask0)}` : "");
+  let near = false; // lượt gần đúng (đúng hướng/thiếu, sai số, thiếu dấu =): không tính vào bộ đếm kẹt
+  let vetted = false; // câu từ kịch bản (AI đã qua rào hoặc câu mẫu): bỏ qua rào lộ/khen và đoạn nhắc cuối, nhưng KHÔNG tắt phát hiện nhảy cóc như canned
   if (canned) reply = canned;
   else if (!off && cur && mask === mask0) {
     // Server không xác nhận được: nhờ AI nhận xét bước này. Mốc có số thì quyền quyết đúng/sai ở server, AI chỉ viết lời.
@@ -163,9 +167,21 @@ export async function stepTurn(cfg: LlmCfg, s: Session, p: Problem, text: string
     if (!cur.must.length && out.verdict === "đủ" && shapeOk(cur, clean) && verify(cur, out.evidence, clean)) mask |= 1 << cur.id;
     if (mask !== mask0) reply = out.reply;
     else {
-      // Chưa qua bước: AI chỉ chọn kịch bản, lời nói do server ghép (việc cần làm + dạng cần viết, đều đã kiểm lộ). Đánh dấu canned: đã kèm sẵn việc cần làm.
+      // Chưa qua bước: AI chọn kịch bản và viết một câu nhắc đúng điều học sinh viết. Câu đó phải qua rào (không lộ kết quả, không khen, không đặt câu hỏi);
+      // không qua thì dùng câu mẫu của kịch bản. Phần nhắc việc cần làm, dạng cần viết do server ghép (đã kiểm lộ). Đánh dấu vetted.
       const kn = known(cps, mask0);
-      reply = canned = scenarioReply(out.scenario, { no: cur.id + 1, n: cps.length, goal: stepCue(p, cur.id, kn), format: stepFormat(p, cur.id, kn) }, lastBot(all));
+      const st = { no: cur.id + 1, n: cps.length, goal: stepCue(p, cur.id, kn), format: stepFormat(p, cur.id, kn), tries: misses(all, cur.id + 1, cps.length) + 1 };
+      const ai = out.verdict === "đủ" || out.scenario === "hoi_lai" || out.scenario === "xin_dap_an" || out.scenario === "lac_de" ? "" : out.reply.trim();
+      const gv = [p.data, p.statement, [...prior, clean].join("\n"), cps.filter((c) => mask0 >> c.id & 1).map((c) => c.must)];
+      // Lý do câu AI bị loại (rỗng = dùng được): ghi nhật ký để biết vì sao rơi về câu mẫu.
+      // leaks() bỏ qua số nhỏ (7, 14...) nên thêm rào riêng: câu AI không được nêu số kết quả của CHÍNH bước này khi học sinh chưa nêu.
+      const said = new Set(numsIn(JSON.stringify(gv)));
+      const leakNow = cur.must.some((n) => !said.has(n) && hasNum(ai, n));
+      const why2 = !ai ? "" : ai.length < 8 || ai.length > 220 ? "độ dài" : ai.includes("?") ? "có câu hỏi" : PRAISE.test(ai) ? "khen" : leakNow || leaks(ai, p.solution, gv, p.solution_steps) || leaksCalc(ai, p.solution, gv, p.solution_steps) ? "lộ kết quả" : "";
+      if (why2) await log({ actor: "system", action: "step_line_rejected", teacherId, anonId: s.anon_id, linkId: s.link_id, meta: { reason: why2, scenario: out.scenario } });
+      reply = ai && !why2 ? withAiLine(out.scenario, ai, st) : scenarioReply(out.scenario, st, lastBot(all));
+      near = out.verdict !== "đủ" && st.tries <= NEAR_MAX_TRIES && (out.scenario === "dung_huong_thieu" || out.scenario === "sai_so" || out.scenario === "thieu_dau_bang");
+      vetted = true;
     }
   }
   // Nhảy cóc: bước hiện tại chưa xong mà tin đã có kết quả của bước sau. Không ghi nhận, bắt làm đúng thứ tự.
@@ -175,7 +191,7 @@ export async function stepTurn(cfg: LlmCfg, s: Session, p: Problem, text: string
   await saveStudent;
 
   // Thang gợi ý: hết mức gợi ý mà kẹt đủ lượt thì hiện lời giải bước hiện tại, ghi cờ revealed (chấm điểm chỉ tính phần tự làm).
-  const lad = off ? { stall: s.stall ?? 0, reveal: false } : ladder("steps", s.hint_level, s.stall ?? 0, mask !== mask0);
+  const lad = off ? { stall: s.stall ?? 0, reveal: false } : ladder("steps", s.hint_level, s.stall ?? 0, mask !== mask0, near);
   let revealed = s.revealed ?? 0, revLine = "";
   if (lad.reveal && cur) { mask |= 1 << cur.id; revealed |= 1 << cur.id; revLine = revealLine(cur, cps.length); }
   const done = countDone(mask);
@@ -184,17 +200,17 @@ export async function stepTurn(cfg: LlmCfg, s: Session, p: Problem, text: string
   const capped = !finished && !off && prior.length + 1 >= MAX_TURNS;
   const given = [p.data, p.statement, [...prior, clean].join("\n"), cps.filter((c) => mask >> c.id & 1).map((c) => c.must)];
   if (off) reply = cry ? SOS_REPLY : offReply(p, cps, mask0, all);
-  else if (reply && !canned && (leaks(reply, p.solution, given, p.solution_steps) || leaksCalc(reply, p.solution, given, p.solution_steps))) {
+  else if (reply && !canned && !vetted && (leaks(reply, p.solution, given, p.solution_steps) || leaksCalc(reply, p.solution, given, p.solution_steps))) {
     blocked = true;
     reply = progressed ? "" : pick(STEP_LEAK, lastBot(all)); // đã qua bước thì bỏ lời AI (câu "chưa đúng" cứng sẽ mâu thuẫn với "Đúng rồi")
     await log({ actor: "system", action: "answer_leak_blocked", teacherId, anonId: s.anon_id, linkId: s.link_id });
-  } else if (reply && !canned && !progressed && PRAISE.test(reply)) reply = pick(STEP_LEAK, lastBot(all)); // server không ghi nhận bước mà AI khen: bỏ lời khen (model hay bỏ qua [Máy kiểm: KHÔNG khớp])
+  } else if (reply && !canned && !vetted && !progressed && PRAISE.test(reply)) reply = pick(STEP_LEAK, lastBot(all)); // server không ghi nhận bước mà AI khen: bỏ lời khen (model hay bỏ qua [Máy kiểm: KHÔNG khớp])
   if (finished) reply = revealed ? `${revLine ? revLine + " " : ""}${closingHelp()}` : closing();
   else if (revLine) reply = `${revLine} ${nextLine(p, cps, mask)}`.trim();
   else if (progressed) {
     reply = `${reply || "Đúng rồi!"} ${nextLine(p, cps, mask)}`;
   } else if (capped) reply = cappedLine(done, cps.length);
-  else if (cur && !off && !canned && !reply.includes("?")) { // canned đã kèm sẵn "Việc cần làm ở bước k/n"
+  else if (cur && !off && !canned && !vetted && !reply.includes("?")) { // canned đã kèm sẵn "Việc cần làm ở bước k/n"
     // Chưa qua bước mà lời AI không có câu hỏi dẫn tiếp (ví dụ khen mà server chưa ghi nhận): nhắc lại việc của bước hiện tại để học sinh không bị cụt.
     // Lần sai đầu chỉ mời thử lại (khung phía trên đã nêu việc cần làm); sai liên tiếp từ lần 2 mới nhắc đủ.
     const g = stepCue(p, cur.id, known(cps, mask));
@@ -305,8 +321,11 @@ export async function stepHint(cfg: LlmCfg, s: Session, p: Problem, teacherId: s
   const cps = checkpoints(p);
   const mask = s.progress ?? 0;
   const cur = cps.find((c) => !(mask >> c.id & 1));
-  const level = Math.min(3, s.hint_level + 1);
-  const own = p.step_hints.length === p.solution_steps.length ? p.step_hints[cur?.id ?? 0]?.[level - 1] : undefined;
+  // Sang bước mới (không phải bước đầu) lời "Đúng rồi!" đã kèm sẵn gợi ý mức 1 (stepLead): lần bấm đầu cho mức 2, khỏi lặp lại câu vừa hiện.
+  const lead = cur && cur.id > 0 ? stepLead(p, cur.id, known(cps, mask)) : "";
+  const hints = p.step_hints.length === p.solution_steps.length ? p.step_hints[cur?.id ?? 0] : undefined;
+  const level = s.hint_level === 0 && lead && hints?.[0] === lead ? 2 : Math.min(3, s.hint_level + 1);
+  const own = hints?.[level - 1];
   const text = own || p.hints.find((h) => h.level === level)?.text || "";
   const given = [p.data, p.statement, cps.filter((c) => mask >> c.id & 1).map((c) => c.must)];
   const reply = text && !leaks(text, p.solution, given, p.solution_steps) ? text : "Bạn đọc lại đề, xem đã biết những gì và cần tìm gì, rồi chọn phép tính cho bước này nhé.";

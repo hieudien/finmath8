@@ -43,12 +43,15 @@ export function checkpoints(p: Problem): Cp[] {
 }
 
 // Dạng chữ/biểu thức w có trong tin không (không dính vào số dài hơn: "x=2" không khớp "x=25").
+// Chữ số đứng ngay trước w là hệ số hoặc phần của số lớn hơn: "y=1" không khớp "2y=1" hay "3y=1", "2" không khớp "12".
 export function hasWord(text: string, w: string) {
   const t = canon(text);
   for (let i = t.indexOf(w); i >= 0; i = t.indexOf(w, i + 1)) {
     const nx = t[i + w.length] ?? "", nn = t[i + w.length + 1] ?? "";
     const longer = /\d/.test(nx) || (/[.,]/.test(nx) && /\d/.test(nn)); // x=2 không khớp x=25 hay x=2.5; "x=2." cuối câu thì khớp
-    if (!longer && !(/^\d/.test(w) && /\d/.test(t[i - 1] ?? ""))) return true;
+    // w bắt đầu bằng số/chữ cái mà ngay trước là chữ số (hệ số); w là "ẩn=số" mà ngay trước là toán tử (x-y=1 là -y=1, x+y=1 là một tổng, không phải y=1)
+    const glued = (/^[\da-z]/i.test(w) && /\d/.test(t[i - 1] ?? "")) || (/^[a-z]=/i.test(w) && /[-+*/^)]/.test(t[i - 1] ?? ""));
+    if (!longer && !glued) return true;
   }
   return false;
 }
@@ -59,11 +62,28 @@ export const met = (c: Cp, text: string) =>
 
 // Kiểu "từng bước": đúng thứ tự. Mốc chỉ được ghi nhận khi mọi mốc trước đã xong; một tin gộp nhiều mốc liên tiếp thì ghi nhận hết.
 // Nhảy cóc (viết kết quả bước sau khi bước hiện tại chưa xong) không ghi nhận gì.
+// Các số làm mốc c khớp trong tin (null nếu không khớp). Mốc khớp bằng dạng chữ thì lấy số trong dạng chữ đó.
+const evidence = (c: Cp, text: string): string[] | null => {
+  if (c.must.length > 0 && c.must.every((n) => hasNum(text, n))) return c.must;
+  const alt = c.alt?.find((s) => s.every((n) => hasNum(text, n)));
+  if (alt) return alt;
+  const w = c.words?.find((x) => hasWord(text, x));
+  return w === undefined ? null : numsIn(w);
+};
+
+// Mốc đầu tiên khớp luôn được ghi nhận. Các mốc liền sau trong CÙNG một tin chỉ được gộp khi có số mới so với các mốc đã ghi nhận trong tin đó:
+// tin "x=10 hoặc x=-12" khớp luôn mốc chọn nghiệm và mốc kết luận chỉ nhờ cùng số 10, không phải bằng chứng cho hai bước sau.
 export function markByNumbers(text: string, cps: Cp[], mask: number) {
+  const seen = new Set<string>();
+  let first = true;
   for (const c of cps) {
     if (mask >> c.id & 1) continue;
-    if (!met(c, text)) break;
+    const e = evidence(c, text);
+    if (!e) break;
+    if (!first && e.length > 0 && e.every((n) => seen.has(n))) break;
     mask |= 1 << c.id;
+    e.forEach((n) => seen.add(n));
+    first = false;
   }
   return mask;
 }
@@ -139,8 +159,6 @@ export function verify(c: Cp, evidence: string, said: string) {
 // Server kiểm cứng, không để AI phán: cùng một tin luôn cho cùng một kết quả.
 export const needsEq = (c: Cp) => /[=＝]/.test(stripStep(c.label));
 export const hasEq = (t: string) => /[=＝]/.test(t);
-// Tin trông như đang làm bài (có số, phép tính hoặc công thức). Tin toàn lời nói (xin đáp án, mơ hồ, lạc đề) thì không nhắc "thêm dấu =" vì không liên quan.
-export const looksLikeWork = (t: string) => /\d|[+×÷*^]|\\[a-z]+|\$/i.test(t);
 export const shapeOk = (c: Cp, said: string) => !needsEq(c) || (hasEq(said) && /\d/.test(said));
 
 // Thanh 5 bước Polya hiển thị: tính từ tiến độ thật, không do AI quyết định.
