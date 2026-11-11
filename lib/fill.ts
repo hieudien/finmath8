@@ -12,6 +12,7 @@ import { walk } from "@/lib/latex-fix";
 import { FORMAT_RULE, FORMAT_JSON } from "@/lib/format-rule";
 import { stripStep } from "@/lib/chat/progress";
 import { solveOnce } from "@/lib/solve";
+import { swallow } from "@/lib/errors";
 import type { Problem } from "@/lib/schema/problem";
 
 export const SOLUTION_SYSTEM = `Giải bài Toán rồi trả đáp án chuẩn. Tự giải thật cẩn thận, đừng bịa số. Mỗi đáp án một phần tử {"name","value"}: số thì value là chuỗi số, ví dụ x = 3 là {"name":"x","value":"3"}; hệ hai ẩn x = 4, y = -3 là hai phần tử x và y; nhiều nghiệm đặt tên x1, x2; vô nghiệm hoặc đáp án chữ là {"name":"ket_luan","value":"vô nghiệm"}. Đáp án dạng điều kiện (tìm tham số, có nghiệm hay vô nghiệm) viết NGẮN GỌN một cụm, ví dụ {"name":"ket_luan","value":"m khác -4"}, không viết cả câu giải thích. Chỉ trả JSON {"answers":[{"name":string,"value":string}]}.`;
@@ -20,10 +21,10 @@ export const SOLUTION_SYSTEM = `Giải bài Toán rồi trả đáp án chuẩn.
 export const referenceNote = (steps: string[]) => (steps.length ? `Lời giải tham khảo đã kiểm tra (viết gọn lại thành 3–8 bước, GIỮ ĐÚNG các kết quả):\n${steps.join("\n")}` : "");
 
 // Viết lời giải từng bước khớp đáp án đã có. Trả mảng bước, hoặc chuỗi lỗi để báo giáo viên.
-export async function makeSteps(cfg: LlmCfg, p: Problem, note = ""): Promise<string[] | string> {
+export async function makeSteps(cfg: LlmCfg, p: Problem, note = "", deadlineMs?: number): Promise<string[] | string> {
   const out = await askJson(cfg, 'Viết lời giải từng bước (3–8 bước) cho bài Toán. Mỗi bước 1–2 câu đủ chủ vị, kết thúc bằng dấu chấm, liệt kê nhiều ý trong một bước thì ngăn bằng dấu chấm phẩy, nêu rõ phép tính và kết quả trung gian CỤ THỂ (mỗi bước phải là một phép tính hay kết luận học sinh tự làm được, không viết bước chỉ chép lại dữ kiện đề), bước cuối là kết luận. Đề nhiều ý a), b): lời giải đi lần lượt từng ý. BẮT BUỘC: bước đầu tiên của ý a) mở đầu bằng "a) ", bước đầu tiên của ý b) mở đầu bằng "b) " (tương tự c), d)). Bước cuối của MỖI ý là một câu kết luận nêu rõ kết quả bằng công thức, ví dụ "Vậy $m = -6$ thì hệ có nghiệm duy nhất thỏa mãn đề.", không viết kết luận chung chung kiểu "kết luận giá trị của m thỏa mãn". Mỗi bước là một phần tử riêng của mảng "steps": tuyệt đối không gộp nhiều bước vào một chuỗi và không dùng ký tự xuống dòng trong chuỗi. Mỗi bước là MỘT phần tử riêng của mảng, không ghi "Bước N" đầu câu (giao diện tự đánh số). Lời giải PHẢI ra đúng đáp án đã cho trong "solution". Chỉ trả JSON {"steps": [string]}. Trong JSON, mỗi dấu \\ của LaTeX phải viết gấp đôi (\\\\frac, \\\\times, \\\\begin), nếu không sẽ thành ký tự điều khiển.' + FORMAT_RULE + FORMAT_JSON + gradeRule(p.grade), [{ role: "user", text: `${p.statement}
 Dữ liệu: ${JSON.stringify(p.data)}
-Đáp án: ${JSON.stringify(p.solution)}${note ? `\n${note}` : ""}` }], z.object({ steps: z.array(z.string().min(3)).min(2).max(8) }), { think: "low", use: "solution_steps" });
+Đáp án: ${JSON.stringify(p.solution)}${note ? `\n${note}` : ""}` }], z.object({ steps: z.array(z.string().min(3)).min(2).max(8) }), { think: "low", use: "solution_steps", deadlineMs });
   // Mọi số lớn trong đáp án phải xuất hiện trong lời giải, nếu không thì không dùng (AI giải lệch đáp án).
   const steps = repairProblem({ ...p, solution_steps: out.steps }).solution_steps.map(stripStep); // tách phần tử nhiều dòng, sửa \ bị nuốt
   const missing = missingAnswers(p.solution, steps);
@@ -36,7 +37,7 @@ export async function fillMissing(cfg: LlmCfg, p: Problem): Promise<Problem | st
   let reference = "";
   if (!Object.keys(q.solution).length) {
     // Bước giải riêng (lib/solve.ts): đo trên 10 đề đúng 30/30 so với 12/30 của lời gọi chỉ trả đáp án bên dưới. Lỗi hoặc lệch lời giải đang có thì rơi về cách cũ.
-    const sv = await solveOnce(cfg, q).catch(() => null);
+    const sv = await solveOnce(cfg, q).catch(swallow("giải đề (điền đáp án)", { teacherId: cfg.teacherId, actor: "teacher" }));
     if (sv && !(q.solution_steps.length && missingAnswers(sv.answers, q.solution_steps).length)) {
       q = { ...q, solution: sv.answers as Problem["solution"] };
       reference = referenceNote(sv.steps); // dòng giải chi tiết chỉ làm tham khảo; số bước hiển thị cho học sinh do makeSteps viết gọn lại
@@ -99,7 +100,7 @@ async function voteAnswer(cfg: LlmCfg, p: Problem, first: Record<string, unknown
   if (!nums(first).length) return first;
   // Lượt giải độc lập dùng bước giải riêng (lib/solve.ts); lượt sau đổi nhiệt độ để không lặp đúng lỗi của lượt trước.
   let n = 0;
-  const solve = () => solveOnce(cfg, p, { temperature: n++ ? 0.5 : 0 }).then((r) => r?.answers ?? null, () => null);
+  const solve = () => solveOnce(cfg, p, { temperature: n++ ? 0.5 : 0 }).then((r) => r?.answers ?? null, swallow("giải đề (bỏ phiếu đáp án)", { teacherId: cfg.teacherId, actor: "teacher" }));
   const second = await solve(); // trùng `first` thì đủ phiếu; lệch mới giải lượt thứ ba (tiết kiệm lượt suy nghĩ)
   const votes = [first, second, ...(second && sameAnswer(first, second) ? [] : [await solve()])].filter((v): v is Record<string, unknown> => !!v);
   const win = votes.find((v, i) => votes.some((w, j) => j !== i && sameAnswer(v, w)));

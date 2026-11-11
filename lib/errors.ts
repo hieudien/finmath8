@@ -1,7 +1,9 @@
 import { admin } from "@/lib/supabase/admin";
 
 export type Who = "teacher" | "student";
-type Ctx = { teacherId?: string | null; linkId?: string | null; anonId?: string | null; actor?: Who | "system"; kind?: string; meta?: Record<string, unknown> };
+export type Ctx = { teacherId?: string | null; linkId?: string | null; anonId?: string | null; actor?: Who | "system"; kind?: string; meta?: Record<string, unknown> };
+// Dấu vết của một request: handler gán action, teacherId, linkId khi biết; đồng hồ canh và nhánh lỗi đọc lại để ghi nhật ký.
+export type Trace = Ctx & { action?: string };
 
 // Nhóm lỗi dùng chung cho câu thân thiện và cột error_logs.kind. Nhãn hiển thị ở lib/log-labels.ts (ERR_KIND).
 const RE = {
@@ -48,16 +50,41 @@ export function friendly(e: unknown, who: Who = "teacher"): Friendly {
 export async function reportError(e: unknown, where: string, ctx: Ctx = {}) {
   const ref = Array.from(globalThis.crypto.getRandomValues(new Uint8Array(3)), (byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase();
   console.error(`[${ref}] ${where}`, e);
+  const message = String((e as Error)?.message ?? e).slice(0, 1000);
   try {
     const { error } = await admin().from("error_logs").insert({
-      ref, kind: ctx.kind ?? kindOf(e), where_: where.slice(0, 200), message: String((e as Error)?.message ?? e).slice(0, 500), stack: (e as Error)?.stack?.slice(0, 2000) ?? null,
+      ref, kind: ctx.kind ?? kindOf(e), where_: where.slice(0, 200), message, stack: (e as Error)?.stack?.slice(0, 2000) ?? null,
       actor: ctx.actor ?? "system", teacher_id: ctx.teacherId ?? null, link_id: ctx.linkId ?? null, anon_id: ctx.anonId ?? null, meta: ctx.meta ?? {},
     } as never);
-    if (error) console.error("error_logs insert failed", error.message);
-  } catch {
-    /* ghi log hỏng cũng không được làm hỏng phản hồi */
+    if (error) console.error(`[${ref}] LOGFAIL ${where}: ${message}`, error.message); // ghi DB hỏng: dòng này còn lại trong log của hosting để tra theo mã
+  } catch (x) {
+    console.error(`[${ref}] LOGFAIL ${where}: ${message}`, (x as Error)?.message); // ghi log hỏng cũng không được làm hỏng phản hồi
   }
   return ref;
+}
+
+// Dùng thay cho .catch(() => null): kết quả vẫn là null (luồng chạy như cũ) nhưng lỗi được ghi, meta.swallowed = true.
+// Không chờ ghi DB (request thường đã sát hạn 60s). Tối đa 30 dòng mỗi phút mỗi tiến trình: hết quota AI khi chạy hàng loạt không làm phình bảng.
+let swallowed = 0, swallowedAt = 0;
+export function swallow(where: string, ctx: Ctx = {}) {
+  return async (e: unknown): Promise<null> => {
+    if (Date.now() - swallowedAt > 60_000) { swallowedAt = Date.now(); swallowed = 0; }
+    if (swallowed++ < 30) void reportError(e, where, { actor: "system", ...ctx, meta: { ...ctx.meta, swallowed: true } });
+    else console.error(`[SWALLOW-CAP] ${where}`, (e as Error)?.message ?? e);
+    return null;
+  };
+}
+
+// Đồng hồ canh: request chạy quá ms mà chưa xong (sắp bị hosting cắt, khi đó không còn chỗ nào để ghi) thì ghi ngay một dòng.
+// ctx là đối tượng sửa được (Trace): nơi gọi bổ sung teacherId/linkId khi biết, đồng hồ đọc giá trị lúc nổ.
+export function watchdog(where: string, ctx: Trace = {}, opts: { ms?: number } = {}) {
+  const ms = opts.ms ?? 55_000;
+  const t0 = Date.now();
+  const timer = setTimeout(async () => {
+    await reportError(new Error(`Yêu cầu chưa xong sau ${Math.round((Date.now() - t0) / 1000)}s, có thể sắp bị cắt`), where, { ...ctx, kind: "watchdog", meta: { ...ctx.meta, action: ctx.action, ms: Date.now() - t0 } });
+  }, ms);
+  timer.unref?.();
+  return () => clearTimeout(timer);
 }
 
 // Tạo Response lỗi thân thiện. Lỗi lạ thì kèm mã lỗi + cách liên hệ admin.

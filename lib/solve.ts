@@ -1,4 +1,5 @@
 import { askText, type LlmCfg } from "@/lib/llm";
+import { swallow } from "@/lib/errors";
 import { gradeRule } from "@/lib/grade";
 import { FORMAT_RULE } from "@/lib/format-rule";
 import { parseAnswers } from "@/lib/read-image";
@@ -100,6 +101,7 @@ export type Mode = "once" | "verify" | "vote";
 // vote: hai lần giải độc lập chạy song song; trùng thì nhận, lệch thì giải lần ba và lấy đa số. flagged = chưa tin được, cần giáo viên xem.
 export async function solveReliable(cfg: LlmCfg, p: P, mode: Mode, o: { deadlineMs?: number } = {}): Promise<Reliable> {
   const base = { deadlineMs: o.deadlineMs };
+  const sw = swallow("giải đề (bỏ phiếu)", { teacherId: cfg.teacherId, actor: "teacher" });
   if (mode === "once") {
     const a = await solveOnce(cfg, p, base);
     return { solved: a, flagged: !a, calls: 1, why: a ? "" : "model không trả đáp án" };
@@ -115,12 +117,12 @@ export async function solveReliable(cfg: LlmCfg, p: P, mode: Mode, o: { deadline
     return { solved: a, flagged: true, calls, why: `thay số không đạt: ${v.note}` };
   }
   const [a, b] = await Promise.all([
-    solveOnce(cfg, p, base).catch(() => null),
-    solveOnce(cfg, p, { ...base, temperature: 0.4, hint: "chọn cách giải khác nếu có (phương pháp thế hoặc cộng đại số)" }).catch(() => null),
+    solveOnce(cfg, p, base).catch(sw),
+    solveOnce(cfg, p, { ...base, temperature: 0.4, hint: "chọn cách giải khác nếu có (phương pháp thế hoặc cộng đại số)" }).catch(sw),
   ]);
   let calls = 2;
   if (a && b && sameAnswers(a.answers, b.answers)) return { solved: a, flagged: false, calls, why: "" };
-  const c = await solveOnce(cfg, p, { ...base, temperature: 0.7 }).catch(() => null); calls++;
+  const c = await solveOnce(cfg, p, { ...base, temperature: 0.7 }).catch(sw); calls++;
   const pool = [a, b, c].filter((s): s is Solved => !!s);
   const win = pool.find((s, i) => pool.some((t, j) => j !== i && sameAnswers(s.answers, t.answers)));
   return win ? { solved: win, flagged: false, calls, why: "" } : { solved: pool[0] ?? null, flagged: true, calls, why: "ba lần giải không có hai lần trùng nhau" };

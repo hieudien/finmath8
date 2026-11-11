@@ -7,7 +7,7 @@ import { llmCfg } from "@/lib/teacher";
 import { lockIfAnswered, parseProblems, problemSchema, type Problem } from "@/lib/schema/problem";
 import { SEED } from "@/lib/seed";
 import { log } from "@/lib/log";
-import { reportError } from "@/lib/errors";
+import { reportError, swallow } from "@/lib/errors";
 import { missingAnswers } from "@/lib/answer-check";
 import { finishProblem, makeSteps, referenceNote, standardizeProblem } from "@/lib/fill";
 import { repairProblem, tidyLine, tidyStatement } from "@/lib/repair";
@@ -66,11 +66,12 @@ const body = z.discriminatedUnion("action", [
 
 export const maxDuration = 60; // hàng loạt nhiều đề gọi AI theo nhóm
 
-export const POST = api(async (req) => {
+export const POST = api(async (req, tr) => {
   const u = await requireUser();
   const p = body.safeParse(await req.json().catch(() => null));
   if (!p.success) return bad(p.error.issues[0]?.message ?? "Dữ liệu không hợp lệ.");
   const b = p.data;
+  tr.action = b.action;
 
   if (b.action === "import_json") {
     let raw: unknown;
@@ -279,14 +280,16 @@ export const POST = api(async (req) => {
   if (b.action === "normalize") {
     const cfg = await llmCfg(u.id);
     if (!cfg) return bad("Chưa có API key. Vào Cài đặt để nhập.");
-    const raw = await askJson(cfg, NORMALIZE_SYSTEM + gradeRule(b.grade), [{ role: "user", text: b.text }], problemSchema, { think: true, use: "normalize" });
+    // Ba lần gọi AI nối tiếp phải xong trong 50s (hosting cắt ở 60s): mỗi bước nhận phần thời gian còn lại, quá hạn thì ném AI_TIMEOUT có cấu trúc thay vì bị cắt.
+    const end = Date.now() + 50_000, left = (reserve = 0) => Math.max(3_000, end - Date.now() - reserve);
+    const raw = await askJson(cfg, NORMALIZE_SYSTEM + gradeRule(b.grade), [{ role: "user", text: b.text }], problemSchema, { think: true, use: "normalize", deadlineMs: 25_000 });
     const out = walk({ ...raw, grade: b.grade }) as Problem;
     // Đáp án và lời giải do bước giải riêng viết (model chỉ giải, làm trước đáp án sau, tự thay số kiểm); phần còn lại của đề giữ như AI vừa tạo. Hỏng thì giữ bản của AI.
-    const sv = await solveOnce(cfg, { statement: out.statement, grade: b.grade }).catch(() => null);
+    const sv = await solveOnce(cfg, { statement: out.statement, grade: b.grade }, { deadlineMs: left(12_000) }).catch(swallow("giải đề (normalize)", { teacherId: u.id, actor: "teacher" }));
     if (sv) {
       out.solution = sv.answers as Problem["solution"];
       // Lời giải chi tiết của bước giải riêng chỉ làm tham khảo: các bước hiển thị do makeSteps viết gọn (3–8 bước). Lỗi thì để trống, "complete" sẽ viết lại.
-      const s = await makeSteps(cfg, out, referenceNote(sv.steps)).catch(() => null);
+      const s = await makeSteps(cfg, out, referenceNote(sv.steps), left()).catch(swallow("viết các bước (normalize)", { teacherId: u.id, actor: "teacher" }));
       out.solution_steps = Array.isArray(s) ? s : [];
     } // sửa ký tự điều khiển do JSON nuốt dấu \ ngay khi nhận từ AI, trước khi trả cho trình duyệt
     // Lời giải lệch đáp án thì bỏ lời giải; "complete" viết lại. Kiểm chéo và chỉ dẫn do "complete" làm để mỗi request nằm trong 60s.

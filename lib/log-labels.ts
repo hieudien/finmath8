@@ -66,6 +66,8 @@ export const ERR_KIND: Record<string, { label: string; hint: string }> = {
   config: { label: "Chưa cấu hình xong", hint: "Chatbot chưa có API key nên học sinh không làm bài được." },
   render: { label: "Lỗi hiển thị trang", hint: "Báo admin kèm mã lỗi." },
   client: { label: "Lỗi trên trình duyệt", hint: "Báo admin kèm mã lỗi." },
+  watchdog: { label: "Yêu cầu chạy quá lâu", hint: "Yêu cầu chưa xong sau 55 giây nên có thể đã bị cắt. Thử lại; nếu lặp lại, chia nhỏ việc hoặc đổi model." },
+  process: { label: "Lỗi tiến trình máy chủ", hint: "Báo admin kèm mã lỗi." },
   other: { label: "Lỗi khác", hint: "Báo admin kèm mã lỗi." },
 };
 export const WARN = Object.keys(LOG).filter((k) => LOG[k].warn);

@@ -10,7 +10,7 @@ import { finish, type Session, type Tm } from "@/lib/chat/engine";
 import { stepAsk, stepHint, stepsOpening, stepTurn } from "@/lib/chat/steps";
 import { parseProblems, type Problem } from "@/lib/schema/problem";
 import { log } from "@/lib/log";
-import { failResponse, reportError } from "@/lib/errors";
+import { failResponse, reportError, swallow, watchdog, type Trace } from "@/lib/errors";
 import { clientIp, limited } from "@/lib/ratelimit";
 import { studentKey } from "@/lib/stats";
 
@@ -33,23 +33,28 @@ const err = (error: string, status = 400) => Response.json({ error }, { status }
 
 // Bị chặn giới hạn (429): ghi nhật ký cho giáo viên thấy lớp nào chạm trần. Mỗi học sinh mỗi luật chỉ ghi 1 lần mỗi 10 phút, tránh spam làm phình bảng.
 async function denied(rule: string, slug: string, anon: string, message: string, link?: { id: string; teacher_id: string } | null) {
-  link ??= await getLink(slug).catch(() => null);
+  link ??= await getLink(slug).catch(swallow("tìm liên kết khi từ chối", { actor: "student" }));
   if (link && !limited(`rl:${anon}:${rule}`, 1, 600_000)) await log({ actor: "student", action: "rate_limited", teacherId: link.teacher_id, anonId: anon, linkId: link.id, meta: { rule } });
   return err(message, 429);
 }
 
 export async function POST(req: Request) {
+  const tr: Trace = { actor: "student" }, t0 = Date.now();
+  const stop = watchdog("/api/chat", tr); // quá 55s chưa xong thì ghi trước khi hosting cắt
   try {
-    return await handle(req);
+    return await handle(req, tr);
   } catch (e) {
-    return failResponse(e, "student", "/api/chat");
+    return failResponse(e, "student", "/api/chat", { teacherId: tr.teacherId, linkId: tr.linkId, meta: { action: tr.action, ms: Date.now() - t0 } });
+  } finally {
+    stop();
   }
 }
 
-async function handle(req: Request) {
+async function handle(req: Request, tr: Trace) {
   const p = body.safeParse(await req.json().catch(() => null));
   if (!p.success) return err("Yêu cầu không hợp lệ.");
   const b = p.data;
+  tr.action = b.action;
 
   const store = await cookies();
   let anon = store.get("fm_anon")?.value;
@@ -71,6 +76,7 @@ async function handle(req: Request) {
     if (link && closed && !limited(`lc:${anon}:${link.id}`, 1, 600_000)) await log({ actor: "student", action: "link_closed", teacherId: link.teacher_id, anonId: anon, linkId: link.id, meta: { reason: closed } });
     return err("Liên kết này đã đóng. Hỏi giáo viên của em.", 404);
   }
+  tr.teacherId = link.teacher_id; tr.linkId = link.id;
   const problems = link.problems;
 
   if (b.action === "start") {

@@ -16,8 +16,8 @@ export async function POST(req: Request) {
   const link = slug ? await getLink(slug).catch(() => null) : null;
   const u = link ? null : await currentUser().catch(() => null);
   const anon = (await cookies()).get("fm_anon")?.value;
-  await reportError(Object.assign(new Error(message), { stack }), `trình duyệt ${path}`, {
+  const ref = await reportError(Object.assign(new Error(message), { stack }), `trình duyệt ${path}`, {
     kind: "client", actor: link ? "student" : "teacher", teacherId: link?.teacher_id ?? u?.id, linkId: link?.id, anonId: anon && /^[0-9a-f-]{36}$/.test(anon) ? anon : undefined,
   });
-  return Response.json({ ok: true });
+  return Response.json({ ok: true, ref });
 }

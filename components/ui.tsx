@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
+import { reportClient } from "@/components/ClientErrors";
 import { useEffect, useId, useState, useSyncExternalStore, useTransition, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 
 const BTN = "inline-flex min-h-11 items-center justify-center gap-2 rounded-sm px-4 text-base font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
@@ -251,17 +252,31 @@ const CONTACT = process.env.NEXT_PUBLIC_ADMIN_CONTACT ? `Hãy liên hệ quản 
 // Mọi lỗi (mất mạng, máy chủ trả sai, hết phiên đăng nhập) đều thành câu dễ hiểu có hướng xử lý.
 export async function post<T = unknown>(url: string, body: unknown, timeoutMs = 60000): Promise<{ ok: boolean; data: T & { error?: string } }> {
   const fail = (error: string) => ({ ok: false, data: { error } as T & { error?: string } });
+  const t0 = Date.now(), act = (body as { action?: unknown } | null)?.action;
+  // Lỗi chỉ xảy ra phía trình duyệt (hết giờ, mất mạng, phản hồi hỏng) thì server không biết: báo về nhật ký, chỉ kèm đường dẫn, action, loại lỗi (không kèm nội dung gửi đi).
+  // Chờ mã lỗi tối đa 3 giây để hiện cho người dùng gửi admin.
+  const note = async (what: string) => {
+    const ref = await Promise.race([reportClient(`post ${url}${typeof act === "string" ? ` [${act}]` : ""}: ${what} sau ${Math.round((Date.now() - t0) / 1000)}s`), new Promise<undefined>((res) => setTimeout(res, 3000))]);
+    return ref ? ` Mã lỗi: ${ref}.` : "";
+  };
   let r: Response;
   try {
     r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
   } catch (e) {
-    if ((e as Error)?.name === "TimeoutError") return fail("Máy chủ phản hồi quá lâu. Thử lại sau ít phút. Nếu vẫn chậm, hãy liên hệ quản trị viên.");
-    return fail("Không kết nối được máy chủ. Kiểm tra mạng Internet rồi thử lại.");
+    if ((e as Error)?.name === "TimeoutError") return fail(`Máy chủ phản hồi quá lâu. Thử lại sau ít phút. Nếu vẫn chậm, hãy liên hệ quản trị viên.${await note("hết giờ chờ")}`);
+    return fail(`Không kết nối được máy chủ. Kiểm tra mạng Internet rồi thử lại.${await note("mất kết nối")}`);
   }
   const data = await r.json().catch(() => null);
-  if (r.ok) return { ok: true, data: data ?? ({} as T & { error?: string }) };
-  if (data?.error) return { ok: false, data };
+  if (r.ok) {
+    if (data === null) void reportClient(`post ${url}${typeof act === "string" ? ` [${act}]` : ""}: HTTP ${r.status} nhưng phản hồi không phải JSON`);
+    return { ok: true, data: data ?? ({} as T & { error?: string }) };
+  }
+  if (data?.error) {
+    // Có mã lỗi: server đã ghi. Lỗi 4xx là lỗi nhập liệu thường. Còn lại (5xx không mã) thì ghi thêm từ đây.
+    if (r.status >= 500 && !data.ref) void reportClient(`post ${url}${typeof act === "string" ? ` [${act}]` : ""}: HTTP ${r.status} không có mã lỗi: ${String(data.error).slice(0, 120)}`);
+    return { ok: false, data };
+  }
   if (r.status === 401) return fail("Phiên đăng nhập đã hết. Hãy tải lại trang và đăng nhập lại.");
   if (r.status === 429) return fail("Bạn thao tác nhanh quá. Chờ một chút rồi thử lại.");
-  return fail(`Máy chủ đang gặp sự cố (mã ${r.status}). Thử lại sau ít phút. ${CONTACT}`);
+  return fail(`Máy chủ đang gặp sự cố (mã ${r.status}). Thử lại sau ít phút. ${CONTACT}${await note(`HTTP ${r.status}`)}`);
 }

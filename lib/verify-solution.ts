@@ -4,6 +4,7 @@ import { canon, nums, texts } from "@/lib/answer-check";
 import { smartModel } from "@/lib/models";
 import { gradeRule } from "@/lib/grade";
 import { solveOnce } from "@/lib/solve";
+import { swallow } from "@/lib/errors";
 import type { Problem } from "@/lib/schema/problem";
 
 const SOLVE = `Giải bài Toán rồi trả đáp án. Tự giải thật cẩn thận từng bước, đừng bịa số. Mỗi đáp án một phần tử {"name","value"}: số thì value là chuỗi số thuần (không dấu ngăn nghìn, dấu thập phân là dấu chấm), ví dụ "275000", "0.5"; đáp án chữ hoặc biểu thức thì value là chữ ngắn gọn ("B", "vô nghiệm", "x=2"). Gồm cả đáp số cuối và các kết quả trung gian chính. Chỉ trả JSON {"answers":[{"name":string,"value":string}]}.`;
@@ -70,7 +71,7 @@ export async function crossCheck(cfg: LlmCfg, p: Problem): Promise<string> {
   const smart = { ...cfg, model: smartModel(cfg.provider) };
   // Lượt giải độc lập dùng bước giải riêng (lib/solve.ts, đo đúng 30/30 so với 12/30 của lời gọi cũ), nhiệt độ cao hơn và đổi cách giải để không lặp đúng lỗi
   // của lượt tạo đáp án. Hỏng thì dùng lời gọi cũ bên dưới.
-  const sv = await solveOnce(smart, p, { temperature: 0.4, hint: "chọn cách giải khác nếu có" }).catch(() => null);
+  const sv = await solveOnce(smart, p, { temperature: 0.4, hint: "chọn cách giải khác nếu có" }).catch(swallow("giải đề (kiểm chéo)", { teacherId: cfg.teacherId, actor: "teacher" }));
   const r = sv
     ? { answers: Object.entries(sv.answers).map(([name, value]) => ({ name, value: String(value) })) }
     : await askJson(smart, SOLVE + gradeRule(p.grade), [{ role: "user", text: `${p.statement}\nDữ liệu: ${JSON.stringify(p.data)}` }],

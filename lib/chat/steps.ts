@@ -13,7 +13,7 @@ import { trapReply } from "@/lib/chat/traps";
 import { scrub } from "@/lib/pii";
 import { gradeRule } from "@/lib/grade";
 import { log } from "@/lib/log";
-import { reportError } from "@/lib/errors";
+import { reportError, swallow } from "@/lib/errors";
 import type { Problem } from "@/lib/schema/problem";
 
 // Kiểu "từng bước": học sinh nộp một bước mỗi lần. Mốc có số đáp án do server tự xác minh (không gọi AI); mốc không có số
@@ -158,7 +158,7 @@ export async function stepTurn(cfg: LlmCfg, s: Session, p: Problem, text: string
     const t0 = Date.now();
     const goal = stepCue(p, cur.id, known(cps, mask0));
     const out = await askJson(cfg, stepSystem(p, cps), [{ role: "user", text: `[Bước cần làm: S${cur.id + 1}${goal ? ": " + goal : ""}]${cur.must.length ? "\n" + machineCheck(p, clean) : ""}${recent(all)}\nBước học sinh viết: ${clean}` }], stepSchema, { maxTokens: 300, think: "low", deadlineMs: 40_000, attemptMs: 8_000, use: "step", temperature: 0, seed: seedOf(p.id, String(cur.id), clean, String(lastBot(all) ?? "")) })
-      .catch(async (e) => { await saveStudent.catch(() => {}); throw e; });
+      .catch(async (e) => { await saveStudent.catch(swallow("lưu tin học sinh sau lỗi AI", { teacherId, linkId: s.link_id, anonId: s.anon_id, actor: "student" })); throw e; });
     if (tm) tm.ai = (tm.ai ?? 0) + Date.now() - t0;
     // Mốc không có số: AI phán đúng thì phải trích nguyên văn bằng chứng từ bước học sinh viết, server kiểm trích dẫn có thật (như kiểu chat).
     if (!cur.must.length && out.verdict === "đủ" && shapeOk(cur, clean) && verify(cur, out.evidence, clean)) mask |= 1 << cur.id;
@@ -247,7 +247,7 @@ export async function stepAsk(cfg: LlmCfg, s: Session, p: Problem, text: string,
     const t0 = Date.now();
     const goal = cur ? stepCue(p, cur.id, known(cps, mask)) : "";
     const out = await askJson(cfg, askSystem(p, cps), [{ role: "user", text: `[Bước đang làm: S${(cur?.id ?? 0) + 1}${goal ? ": " + goal : ""}]${recent(all)}\nCâu hỏi của học sinh: ${clean}` }], askSchema, { maxTokens: 300, think: "low", deadlineMs: 40_000, attemptMs: 8_000, use: "ask", temperature: 0, seed: seedOf(p.id, String(cur?.id ?? 0), clean, String(lastBot(all) ?? "")) })
-      .catch(async (e) => { await saveStudent.catch(() => {}); throw e; });
+      .catch(async (e) => { await saveStudent.catch(swallow("lưu tin học sinh sau lỗi AI", { teacherId, linkId: s.link_id, anonId: s.anon_id, actor: "student" })); throw e; });
     if (tm) tm.ai = (tm.ai ?? 0) + Date.now() - t0;
     const given = [p.data, p.statement, [...prior, clean].join("\n"), cps.filter((c) => mask >> c.id & 1).map((c) => c.must)];
     if (NOT_JUDGE.test(out.reply)) reply = pick(ASK_NOT_JUDGE, lastBot(all));
