@@ -12,6 +12,7 @@ import { missingInfo, needsWork, readiness } from "../lib/ready";
 import { ladder, revealLine, scoreCap, STALL_LIMIT } from "../lib/chat/assist";
 import { ASK_METHOD, ASK_NEXT, keepOrAsk, earlyClose, checkpoints, countDone, hasEq, hasNum, markByNumbers, needsEq, offStreak, OFF_REPLIES, shapeOk, sim, stepOf, tighten, verdict, verify } from "../lib/chat/progress";
 import { SEED } from "../lib/seed";
+import { tidyLine, tidyStatement } from "../lib/repair";
 import { hardSteps, studentKey, weakSteps } from "../lib/stats";
 import { leaksCalc } from "../lib/chat/prompt";
 import { cannedStuck, looksLikeStep, misses, NOT_JUDGE, offReply, PRAISE } from "../lib/chat/steps";
@@ -151,6 +152,28 @@ describe("read_image", () => {
     expect(re.test("data:image/png;base64,iVBORw0=")).toBe(true);
     expect(re.test("data:image/svg+xml;base64,AAAA")).toBe(false);
     expect(re.test("data:text/html;base64,AAAA")).toBe(false);
+  });
+});
+
+describe("trinh bay chu", () => {
+  it("tach y a), b) thanh dong rieng, khong dung cong thuc", () => {
+    const s = tidyStatement("Cho $f(x) = 2x$. a) Tính $f(1)$.   b) Tìm $x$ để $f(x) = 6$.");
+    expect(s).toBe("Cho $f(x) = 2x$.\na) Tính $f(1)$.\nb) Tìm $x$ để $f(x) = 6$.");
+    expect(tidyStatement("Câu 1: giải $a) b)$. Câu 2: tính")).toBe("Câu 1: giải $a) b)$.\nCâu 2: tính");
+  });
+  it("a) b) lien nhau khong dau cau, he phuong trinh o dong rieng, cong thuc nhieu dong", () => {
+    const BS = "\\";
+    const sys = `$${BS}begin{cases} 2x + y = 3 ${BS}${BS}\n x - y = 1 ${BS}end{cases}$`;
+    const s = tidyStatement(`Cho hệ phương trình ${sys} a) Giải hệ khi $m = 1$ b) Tìm $m$ để hệ có nghiệm duy nhất.`);
+    expect(s).toBe(`Cho hệ phương trình\n$${BS}begin{cases} 2x + y = 3 ${BS}${BS} x - y = 1 ${BS}end{cases}$\na) Giải hệ khi $m = 1$\nb) Tìm $m$ để hệ có nghiệm duy nhất.`);
+    expect(tidyStatement("Giải ở câu a) rồi tính $x$.")).toBe("Giải ở câu a) rồi tính $x$."); // chỉ một ý a): không ngắt
+    expect(tidyStatement("Làm câu a) trước. a) Tính $x$ b) Tính $y$")).toBe("Làm câu a) trước.\na) Tính $x$\nb) Tính $y$");
+    expect(tidyStatement(`Giải ${sys}.`)).toBe(`Giải\n$${BS}begin{cases} 2x + y = 3 ${BS}${BS} x - y = 1 ${BS}end{cases}$.`); // dấu câu đi theo công thức
+  });
+  it("buoc loi giai ket thuc bang dau cham", () => {
+    expect(tidyLine("  Chuyển vế  ta được $2x = 8$")).toBe("Chuyển vế ta được $2x = 8$.");
+    expect(tidyLine("Kết luận: $x = 4$.")).toBe("Kết luận: $x = 4$.");
+    expect(tidyLine("Tìm $x$?")).toBe("Tìm $x$?");
   });
 });
 

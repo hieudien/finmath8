@@ -8,6 +8,7 @@ import type { Problem } from "@/lib/schema/problem";
 
 const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
 const J = (v: unknown) => JSON.stringify(v, null, 2);
+const answered = (s: string) => s.trim() !== "" && s.trim() !== "{}"; // ô Đáp án đã có nội dung
 
 export default function ProblemEditor({ initial, newCode, rowId }: { initial?: Problem; newCode?: string; rowId?: string }) {
   const router = useRouter();
@@ -30,28 +31,47 @@ export default function ProblemEditor({ initial, newCode, rowId }: { initial?: P
   const [busy, setBusy] = useState("");
   const [reading, setReading] = useState(false);
 
-  async function generate() {
+  // Điền các ô theo đề AI vừa làm (chưa lưu). AI có thể giải sai: giáo viên phải tự kiểm tra và tick xác nhận đáp án.
+  function fill(g: Problem) {
+    setBuilt(g);
+    setSkills(g.skills.join(", ")); setData(J(g.data)); setSolution(J(g.solution)); setSteps(g.solution_steps.join("\n"));
+    setErrors(g.common_errors.join("\n")); setHints([1, 2, 3].map((l) => g.hints.find((h) => h.level === l)?.text ?? ""));
+    setExtension(g.extension); setObjectives(g.learning_objectives);
+    if (!title.trim()) setTitle(g.title);
+    if (!topic.trim()) setTopic(g.topic);
+    setOk(false);
+  }
+
+  // Một nút AI: có đáp án thì giữ đáp án (không cần lớp), AI viết lại lời giải, gợi ý...; chưa có thì AI giải rồi chuẩn hóa (cần lớp).
+  // o: nội dung vừa nhận từ ảnh, chưa kịp vào state.
+  async function run(o: { statement?: string; solution?: string } = {}) {
+    const st = (o.statement ?? statement).trim();
+    if (answered(o.solution ?? solution)) {
+      const d = draft(o);
+      if (!d) return;
+      setBusy("AI đang viết lại lời giải theo đáp án đã có...");
+      // Chưa chọn lớp: gửi lớp 12 (không giới hạn kiến thức) chỉ để gọi AI; ô Lớp không đổi và Lưu đề vẫn bắt chọn lớp.
+      const { ok: good, data: r } = await post<{ problem: Problem }>("/api/problems", { action: "standardize_draft", problem: { ...d, grade: Number(grade) || 12 } });
+      setBusy("");
+      if (!good) return toast("danger", r.error ?? "AI chưa chuẩn hóa được. Thử lại.");
+      fill(r.problem);
+      return toast("success", "AI đã viết lại theo đáp án đã có (đáp án giữ nguyên). Kiểm tra, tick xác nhận rồi bấm Lưu đề.");
+    }
     setBusy("AI đang giải đề...");
-    const text = `Tiêu đề: ${title}\nLớp: ${grade}\nChủ đề: ${topic}\nĐề bài: ${statement}`;
+    const text = `Tiêu đề: ${title}\nLớp: ${grade}\nChủ đề: ${topic}\nĐề bài: ${st}`;
     const { ok: good, data: d } = await post<{ problem: Problem }>("/api/problems", { action: "normalize", text, grade: Number(grade) });
     if (!good) { setBusy(""); return toast("danger", d.error ?? "AI chưa tạo được. Thử lại."); }
     setBusy("AI đang kiểm tra đáp án và viết chỉ dẫn...");
     const { ok: done, data: c } = await post<{ problem: Problem }>("/api/problems", { action: "complete", problem: { ...d.problem, grade: Number(grade) } });
     setBusy("");
     if (!done) return toast("danger", c.error ?? "AI chưa làm đề này đạt chuẩn. Thử lại.");
-    const g = c.problem;
-    setBuilt(g);
-    setSkills(g.skills.join(", ")); setData(J(g.data)); setSolution(J(g.solution)); setSteps(g.solution_steps.join("\n"));
-    setErrors(g.common_errors.join("\n")); setHints([1, 2, 3].map((l) => g.hints.find((h) => h.level === l)?.text ?? ""));
-    setExtension(g.extension); setObjectives(g.learning_objectives);
-    if (!title) setTitle(g.title);
-    if (!topic) setTopic(g.topic);
-    setOk(false); // AI có thể giải sai: giáo viên phải tự kiểm tra và tick xác nhận đáp án
-    toast("success", "AI đã điền xong. Hãy tự kiểm tra đáp án, tick xác nhận rồi bấm Lưu đề.");
+    fill(c.problem);
+    toast("success", "AI đã giải và điền xong. Hãy tự kiểm tra đáp án, tick xác nhận rồi bấm Lưu đề.");
   }
 
   // Thu ảnh về cạnh dài 1600px, JPEG: nhẹ hơn, đỡ tốn token.
   async function readImage(file: File) {
+    let next: (() => Promise<unknown>) | undefined;
     setReading(true);
     try {
       const bmp = await createImageBitmap(file);
@@ -60,43 +80,38 @@ export default function ProblemEditor({ initial, newCode, rowId }: { initial?: P
       c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
       const g = c.getContext("2d")!;
       g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
-      const { ok: good, data: d } = await post<{ statement: string }>("/api/problems", { action: "read_image", image: c.toDataURL("image/jpeg", 0.85) });
+      const { ok: good, data: d } = await post<{ statement: string; solution: Record<string, unknown>; solution_steps: string[] }>("/api/problems", { action: "read_image", image: c.toDataURL("image/jpeg", 0.85) });
       if (!good) return toast("danger", d.error ?? "AI chưa đọc được ảnh. Thử lại.");
-      setStatement((s) => (s.trim() ? s.trim() + "\n" : "") + d.statement);
+      const st = (statement.trim() ? statement.trim() + "\n" : "") + d.statement;
+      setStatement(st);
+      // Đáp án trong ảnh chỉ điền khi ô Đáp án còn trống, không ghi đè cái giáo viên đã nhập.
+      const hasAns = Object.keys(d.solution ?? {}).length > 0;
+      const sol = hasAns && !answered(solution) ? J(d.solution) : solution;
+      if (sol !== solution) { setSolution(sol); setOk(false); }
+      if (!answered(sol) && !grade) { // AI phải tự giải mà chưa có lớp: để lời giải trong ảnh cho giáo viên xem, hộp lý do bên dưới chỉ cách làm tiếp
+        if (d.solution_steps.length && !steps.trim()) setSteps(d.solution_steps.join("\n"));
+        return toast("success", "Đã đọc đề từ ảnh. Ảnh chưa có đáp án nên AI phải tự giải: chọn Lớp rồi bấm nút AI.");
+      }
+      next = () => run({ statement: st, solution: sol });
     } catch { toast("danger", "Không mở được ảnh này."); }
     finally { setReading(false); }
+    await next?.(); // AI giải và chuẩn hóa luôn (có đáp án trong ảnh thì giữ đáp án đó)
   }
 
   // Đề đang soạn theo nội dung các ô; null (đã báo lỗi) khi dữ kiện hoặc đáp án sai JSON.
-  function draft() {
+  // o: nội dung vừa nhận từ ảnh, chưa kịp vào state.
+  function draft(o: { statement?: string; solution?: string } = {}) {
     let d: unknown, s: unknown;
     try { d = JSON.parse(data || "{}"); } catch { toast("danger", "Dữ kiện sai cú pháp JSON."); return null; }
-    try { s = JSON.parse(solution); } catch { toast("danger", 'Đáp án sai cú pháp JSON, ví dụ {"x": 3}.'); return null; }
+    try { s = JSON.parse(o.solution ?? solution); } catch { toast("danger", 'Đáp án sai cú pháp JSON, ví dụ {"x": 3}.'); return null; }
     return {
-      ...(built ?? p ?? {}), id, title: title.trim(), grade: Number(grade), topic: topic.trim(), skills: skills.split(",").map((x) => x.trim()).filter(Boolean),
-      statement: statement.trim(), learning_objectives: objectives, data: d, solution: s, solution_steps: lines(steps), common_errors: lines(errors),
+      ...(built ?? p ?? {}), id, title: title.trim() || "Đề từ ảnh", grade: Number(grade), topic: topic.trim(), skills: skills.split(",").map((x) => x.trim()).filter(Boolean),
+      statement: (o.statement ?? statement).trim(), learning_objectives: objectives, data: d, solution: s, solution_steps: lines(steps), common_errors: lines(errors),
       hints: hints.map((text, i) => ({ level: i + 1, text: text.trim() })), extension: extension.trim(), reviewed: true,
       check_note: "", // giáo viên đã duyệt: bỏ cảnh báo kiểm chéo (bấm Kiểm tra đáp án để chạy lại)
       // Sửa lời giải thì kết quả chuẩn và lỗi gắn theo số bước cũ không còn đúng: bỏ để AI tạo lại cùng chỉ dẫn.
       ...(lines(steps).join("\n") !== (built ?? p)?.solution_steps.join("\n") && { step_checks: [], error_traps: [] }),
     };
-  }
-
-  // Giữ đáp án giáo viên đã nhập, AI viết lại lời giải, gợi ý, sai lầm thường gặp... theo đề bài và đáp án đó (chưa lưu).
-  async function standardizeMine() {
-    const d = draft();
-    if (!d) return;
-    setBusy("AI đang chuẩn hóa theo đáp án đã nhập...");
-    const { ok: good, data: r } = await post<{ problem: Problem }>("/api/problems", { action: "standardize_draft", problem: d });
-    setBusy("");
-    if (!good) return toast("danger", r.error ?? "AI chưa chuẩn hóa được. Thử lại.");
-    const g = r.problem;
-    setBuilt(g);
-    setSkills(g.skills.join(", ")); setData(J(g.data)); setSteps(g.solution_steps.join("\n"));
-    setErrors(g.common_errors.join("\n")); setHints([1, 2, 3].map((l) => g.hints.find((h) => h.level === l)?.text ?? ""));
-    setExtension(g.extension); setObjectives(g.learning_objectives);
-    setOk(false);
-    toast("success", "AI đã viết lại theo đáp án của bạn (đáp án giữ nguyên). Kiểm tra, tick xác nhận rồi bấm Lưu đề.");
   }
 
   async function save() {
@@ -115,13 +130,29 @@ export default function ProblemEditor({ initial, newCode, rowId }: { initial?: P
     router.push("/dashboard/problems"); router.refresh();
   }
 
-  const canGen = statement.trim().length >= 10 && !!grade;
+  // Lý do từng nút chưa bấm được, hiện ngay dưới nút để giáo viên biết phải làm gì.
+  const aiWhy = [
+    statement.trim().length < 10 && `Đề bài mới có ${statement.trim().length}/10 ký tự tối thiểu: nhập đề bài hoặc dán ảnh đề vào ô Đề bài.`,
+    !answered(solution) && !grade && "Ô Đáp án đang trống nên AI phải tự giải, và việc này cần biết lớp: chọn Lớp ở trên. Hoặc tự nhập đáp án vào ô Đáp án, khi đó không cần chọn lớp.",
+  ].filter(Boolean) as string[];
+  const saveWhy = [
+    !id.trim() && "Chưa có mã đề.",
+    !grade && "Chưa chọn Lớp.",
+    !title.trim() && "Chưa có tiêu đề.",
+    !statement.trim() && "Chưa có đề bài.",
+    !steps.trim() && "Chưa có lời giải từng bước (bấm nút AI hoặc tự nhập).",
+    hints.some((h) => !h.trim()) && `Thiếu gợi ý mức ${hints.map((h, i) => (h.trim() ? 0 : i + 1)).filter(Boolean).join(", ")}.`,
+    !ok && "Chưa tick ô xác nhận đáp án ở ngay phía trên nút Lưu đề.",
+  ].filter(Boolean) as string[];
+  const Why = ({ title: t, items }: { title: string; items: string[] }) => items.length > 0 && (
+    <Alert tone="warning"><span className="font-medium">{t}</span><ul className="mt-1 list-disc pl-5">{items.map((x) => <li key={x}>{x}</li>)}</ul></Alert>
+  );
   return (
     <div className="flex max-w-3xl flex-col gap-4">
       {reading && <div role="status" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"><div className="rounded-sm bg-surface px-6 py-4 text-lg font-medium text-text">AI đang đọc ảnh, đợi vài giây...</div></div>}
       <Link href="/dashboard/problems" className="inline-flex min-h-11 items-center text-sm text-primary underline">Về danh sách đề</Link>
       <h1 className="flex flex-wrap items-center gap-2">{p ? `Sửa đề ${id}` : "Tạo đề mới"} {p && <Badge tone={p.answer_locked ? "success" : "warn"}>{p.answer_locked ? "Đáp án đã khóa" : "Chưa xác nhận đáp án"}</Badge>}</h1>
-      {!(p?.answer_locked) && <Alert tone="warning">AI có thể giải sai. Hãy tự giải đề, sửa ô Đáp án nếu cần, bấm &quot;Chuẩn hóa theo đáp án đã nhập&quot; để AI viết lại lời giải theo đáp án đúng, rồi tick xác nhận để khóa đáp án khi lưu.</Alert>}
+      {!(p?.answer_locked) && <Alert tone="warning">AI có thể giải sai. Hãy tự giải đề, sửa ô Đáp án nếu cần, bấm &quot;AI giải và chuẩn hóa đề&quot; để AI viết lại lời giải theo đáp án đúng, rồi tick xác nhận để khóa đáp án khi lưu.</Alert>}
       {p && rowId && <Field label="Mã đề" value={id} onChange={(e) => setId(e.target.value.toUpperCase())} maxLength={20} hint="Đổi mã thì liên kết và thống kê cũ của đề này cũng đổi theo." />}
       <Field label="Tiêu đề" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} />
       <div className="grid gap-4 sm:grid-cols-2">
@@ -129,13 +160,14 @@ export default function ProblemEditor({ initial, newCode, rowId }: { initial?: P
         <Field label="Chủ đề" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Ví dụ: Giải phương trình bậc nhất" />
       </div>
       <div onPaste={(e) => { const f = [...e.clipboardData.files].find((x) => x.type.startsWith("image/")); if (f) { e.preventDefault(); readImage(f); } }}>
-        <MathTextArea label="Đề bài (học sinh sẽ thấy)" rows={5} value={statement} onChange={setStatement} hint="Bấm Công thức để soạn công thức, hoặc gõ trong $...$. Sửa đề bài xong thì bấm lại nút AI để cập nhật lời giải. Dán ảnh đề (Ctrl+V) vào ô này để AI đọc." />
+        <MathTextArea label="Đề bài (học sinh sẽ thấy)" rows={5} value={statement} onChange={setStatement} hint="Bấm Công thức để soạn công thức, hoặc gõ trong $...$. Sửa đề bài xong thì bấm lại nút AI để cập nhật lời giải. Dán ảnh đề (Ctrl+V) vào ô này: AI tách đề bài vào ô này, đáp án và cách giải (nếu ảnh có) vào các ô bên dưới." />
       </div>
       <label className="inline-flex min-h-11 w-fit cursor-pointer items-center text-sm text-primary underline">Hoặc chọn ảnh đề từ máy&nbsp;<AiBadge /><input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) readImage(f); }} /></label>
       <div className="flex flex-wrap gap-2">
-        <AiButton variant="secondary" onClick={generate} disabled={!canGen} pending={busy || undefined}>AI giải lại cả đáp án, lời giải, gợi ý (ghi đè đáp án)</AiButton>
-        <AiButton variant="secondary" onClick={standardizeMine} disabled={!canGen || !solution.trim() || solution.trim() === "{}"} pending={busy || undefined}>Chuẩn hóa theo đáp án đã nhập (giữ đáp án)</AiButton>
+        <AiButton variant="secondary" onClick={() => run()} disabled={aiWhy.length > 0} pending={busy || undefined}>AI giải và chuẩn hóa đề</AiButton>
       </div>
+      <p className="-mt-2 text-sm text-text-muted">Ô Đáp án đã có thì AI giữ đáp án và viết lại lời giải, gợi ý. Ô Đáp án trống thì AI tự giải. Muốn AI giải lại từ đầu: xóa ô Đáp án (về {"{}"}) rồi bấm nút.</p>
+      <Why title="Chưa bấm được nút AI vì:" items={aiWhy} />
 
       <Field label="Kỹ năng (cách nhau dấu phẩy)" value={skills} onChange={(e) => setSkills(e.target.value)} hint="Dùng để thống kê học sinh yếu kỹ năng nào." />
       <TextArea label="Đáp án (JSON)" rows={3} value={solution} onChange={(e) => { setSolution(e.target.value); setOk(false); }} className="font-mono text-sm" hint='Ví dụ {"x": 3}. Chatbot không bao giờ nói ra các số trong đáp án.' />
@@ -151,7 +183,8 @@ export default function ProblemEditor({ initial, newCode, rowId }: { initial?: P
       </details>
 
       <label className="flex min-h-11 items-start gap-2"><input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} className="mt-1 size-5" /><span>Tôi đã tự kiểm tra và xác nhận đáp án, lời giải là đúng (đáp án sẽ được khóa khi lưu).</span></label>
-      <div><Button onClick={save} disabled={!ok || !grade || !id.trim() || !title.trim() || !statement.trim() || hints.some((h) => !h.trim()) || !steps.trim()} pending={busy || undefined}>Lưu đề</Button></div>
+      <Why title="Chưa bấm được Lưu đề vì:" items={saveWhy} />
+      <div><Button onClick={save} disabled={saveWhy.length > 0} pending={busy || undefined}>Lưu đề</Button></div>
     </div>
   );
 }

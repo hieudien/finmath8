@@ -48,7 +48,8 @@ export default function ErrorLog() {
           <LinkButton variant="secondary" href="/api/export?kind=errors">Tải CSV</LinkButton>
         </form>
         {!rows && !err && <p className="text-sm text-text-muted">Đang tải…</p>}
-        {rows && (rows.length === 0 ? <Empty text="Không có lỗi nào khớp. Đó là tin tốt." /> : group(rows).map((g) => (
+        {rows?.length === 0 && <Empty text="Không có lỗi nào khớp. Đó là tin tốt." />}
+        {!!rows?.length && <div className="flex max-h-96 flex-col gap-4 overflow-y-auto pr-1">{group(rows).map((g) => (
           <section key={g.key} className="flex flex-col gap-1">
             <h3 className="text-sm font-bold capitalize text-text-muted">{g.title}</h3>
             <ul className="divide-y divide-border rounded-lg border border-border">
@@ -75,7 +76,7 @@ export default function ErrorLog() {
               })}
             </ul>
           </section>
-        )))}
+        ))}</div>}
       </div>
     </details>
   );

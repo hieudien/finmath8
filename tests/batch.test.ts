@@ -14,7 +14,7 @@ const cfg = { provider: "gemini", model: "m", key: "k" } as never;
 const base = (over: Partial<Problem> = {}): Problem => problemSchema.parse({
   id: "T1", title: "Tiền", statement: "An có 300000 đồng, giảm 15%.", data: { budget: 300000 }, solution: { cost: 255000 },
   solution_steps: ["Tiền giảm là 300000 x 0,15 = 45000.", "Phải trả 300000 - 45000 = 255000."],
-  hints: [1, 2, 3].map((level) => ({ level, text: "g" })), reviewed: false, ...over,
+  hints: [1, 2, 3].map((level) => ({ level, text: "Gợi ý." })), reviewed: false, ...over,
 });
 const guides = { goals: ["Tính tiền giảm", "Tính số tiền phải trả"], hints: [["a", "b", "c"], ["a", "b", "c"]], checks: [{ result: "45000", accepts: [] }, { result: "255000", accepts: [] }], traps: [] };
 

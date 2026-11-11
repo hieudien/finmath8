@@ -15,7 +15,7 @@ const SOLUTION_SYSTEM = `Giải bài Toán rồi trả đáp án chuẩn. Tự g
 
 // Viết lời giải từng bước khớp đáp án đã có. Trả mảng bước, hoặc chuỗi lỗi để báo giáo viên.
 export async function makeSteps(cfg: LlmCfg, p: Problem, note = ""): Promise<string[] | string> {
-  const out = await askJson(cfg, 'Viết lời giải từng bước (3–8 bước) cho bài Toán. Mỗi bước 1–2 câu, nêu rõ phép tính và kết quả trung gian CỤ THỂ (mỗi bước phải là một phép tính hay kết luận học sinh tự làm được, không viết bước chỉ chép lại dữ kiện đề), bước cuối là kết luận. Mỗi bước là MỘT phần tử riêng của mảng, không ghi "Bước N" đầu câu (giao diện tự đánh số). Lời giải PHẢI ra đúng đáp án đã cho trong "solution". Chỉ trả JSON {"steps": [string]}. Trong JSON, mỗi dấu \\ của LaTeX phải viết gấp đôi (\\\\frac, \\\\times, \\\\begin), nếu không sẽ thành ký tự điều khiển.' + gradeRule(p.grade), [{ role: "user", text: `${p.statement}
+  const out = await askJson(cfg, 'Viết lời giải từng bước (3–8 bước) cho bài Toán. Mỗi bước 1–2 câu đủ chủ vị, kết thúc bằng dấu chấm, liệt kê nhiều ý trong một bước thì ngăn bằng dấu chấm phẩy, nêu rõ phép tính và kết quả trung gian CỤ THỂ (mỗi bước phải là một phép tính hay kết luận học sinh tự làm được, không viết bước chỉ chép lại dữ kiện đề), bước cuối là kết luận. Mỗi bước là MỘT phần tử riêng của mảng, không ghi "Bước N" đầu câu (giao diện tự đánh số). Lời giải PHẢI ra đúng đáp án đã cho trong "solution". Chỉ trả JSON {"steps": [string]}. Trong JSON, mỗi dấu \\ của LaTeX phải viết gấp đôi (\\\\frac, \\\\times, \\\\begin), nếu không sẽ thành ký tự điều khiển.' + gradeRule(p.grade), [{ role: "user", text: `${p.statement}
 Dữ liệu: ${JSON.stringify(p.data)}
 Đáp án: ${JSON.stringify(p.solution)}${note ? `\n${note}` : ""}` }], z.object({ steps: z.array(z.string().min(3)).min(2).max(8) }), { think: "low", use: "solution_steps" });
   // Mọi số lớn trong đáp án phải xuất hiện trong lời giải, nếu không thì không dùng (AI giải lệch đáp án).
@@ -54,6 +54,7 @@ const deriveSystem = (keep: boolean) => `Đọc đề Toán, rút dữ kiện, $
 ${keep ? "" : `"answers": mỗi đáp án một phần tử {"name","value"}: số thì value là chuỗi số; nhiều nghiệm đặt tên x1, x2; điều kiện hoặc đáp án chữ là {"name":"ket_luan","value":"..."} viết NGẮN GỌN một cụm (ví dụ "m khác -4"), không viết cả câu giải thích.`}
 "skills": 2–5 kỹ năng hoặc kiến thức chính cần dùng, mỗi mục một cụm ngắn. "learning_objectives": 2–4 mục tiêu học tập. "common_errors": 2–4 sai lầm học sinh hay mắc với chính đề này.
 "hints": đúng 3 mức. Mức 1 chỉ hỏi định hướng; mức 2 gợi ý cách giải; mức 3 nêu bước tính đầu tiên, KHÔNG nêu kết quả cuối. "extension": một câu hỏi mở rộng.
+TRÌNH BÀY: gợi ý, sai lầm thường gặp, câu mở rộng mỗi mục là câu đủ chủ vị, ngắn gọn, kết thúc bằng dấu chấm (hoặc dấu hỏi với câu hỏi).
 QUAN TRỌNG: mọi chữ tiếng Việt trong skills, learning_objectives, common_errors, hints, extension và value của đáp án chữ phải có dấu đầy đủ, KHÔNG viết không dấu.
 Chỉ trả JSON {"data":[...],${keep ? "" : `"answers":[...],`}"skills":[...],"learning_objectives":[...],"common_errors":[...],"hints":[string,string,string],"extension":string}. Trong JSON, mỗi dấu \\ của LaTeX phải viết gấp đôi (\\\\frac, \\\\times, \\\\begin), nếu không sẽ thành ký tự điều khiển.`;
 const pairs = z.array(z.object({ name: z.string().min(1), value: z.string().min(1) }));

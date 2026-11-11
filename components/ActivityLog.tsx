@@ -57,7 +57,8 @@ export default function ActivityLog() {
           <LinkButton variant="secondary" href="/api/export?kind=logs">Tải CSV</LinkButton>
         </div>
         {!rows && !err && <p className="text-sm text-text-muted">Đang tải…</p>}
-        {rows && (rows.length === 0 ? <Empty text="Chưa có hoạt động nào khớp." /> : group(rows).map((g) => (
+        {rows?.length === 0 && <Empty text="Chưa có hoạt động nào khớp." />}
+        {!!rows?.length && <div className="flex max-h-96 flex-col gap-4 overflow-y-auto pr-1">{group(rows).map((g) => (
           <section key={g.key} className="flex flex-col gap-1">
             <h3 className="text-sm font-bold capitalize text-text-muted">{g.title}</h3>
             <ul className="divide-y divide-border rounded-lg border border-border">
@@ -83,7 +84,7 @@ export default function ActivityLog() {
               })}
             </ul>
           </section>
-        )))}
+        ))}</div>}
       </div>
     </details>
   );

@@ -10,13 +10,13 @@ import { log } from "@/lib/log";
 import { reportError } from "@/lib/errors";
 import { missingAnswers } from "@/lib/answer-check";
 import { finishProblem, standardizeProblem } from "@/lib/fill";
-import { repairProblem } from "@/lib/repair";
+import { repairProblem, tidyLine, tidyStatement } from "@/lib/repair";
 import { CHUNK, PAR, BUDGET_MS, freeCode, pool } from "@/lib/batch";
 import { cannotLock, needsWork } from "@/lib/ready";
 import { gradeRule } from "@/lib/grade";
 import { checkSteps, crossCheck } from "@/lib/verify-solution";
 const NORMALIZE_SYSTEM = `Bạn chuẩn hóa một đề Toán từ văn bản thô sang JSON. Đề có thể thuộc bất kỳ chủ đề và lớp nào (giải phương trình, hình học, tỉ lệ, tình huống thực tế...). Chỉ trả JSON một đối tượng đúng mẫu:
-{"id":"BTxx","title":string,"grade":số lớp (đúng lớp được giao ở cuối),"topic":string,"skills":[2–5 kỹ năng/kiến thức chính cần dùng, mỗi mục một cụm ngắn],"statement":string (nguyên văn đề bài cho học sinh),"learning_objectives":[string],"data":{số liệu đề cho, nếu có; tỉ lệ dạng thập phân 0.x},"solution":{đáp án chuẩn. Số thì dạng số, ví dụ {"x":3}; nhiều nghiệm {"x1":2,"x2":-3}; vô nghiệm hoặc đáp án chữ {"ket_luan":"vô nghiệm"}},"solution_steps":[lời giải từng bước, mỗi bước 1–2 câu có phép tính, bước cuối là kết luận],"common_errors":[sai lầm học sinh hay mắc với đề này],"hints":[{"level":1,"text":..},{"level":2,"text":..},{"level":3,"text":..}],"extension":string,"rubric":{"identify":3,"plan":3,"calculate":3,"explain":3}}
+{"id":"BTxx","title":string,"grade":số lớp (đúng lớp được giao ở cuối),"topic":string,"skills":[2–5 kỹ năng/kiến thức chính cần dùng, mỗi mục một cụm ngắn],"statement":string (nguyên văn đề bài cho học sinh; đề nhiều ý thì mỗi ý một dòng a), b), c) cách nhau bằng ký tự xuống dòng),"learning_objectives":[string],"data":{số liệu đề cho, nếu có; tỉ lệ dạng thập phân 0.x},"solution":{đáp án chuẩn. Số thì dạng số, ví dụ {"x":3}; nhiều nghiệm {"x1":2,"x2":-3}; vô nghiệm hoặc đáp án chữ {"ket_luan":"vô nghiệm"}},"solution_steps":[lời giải từng bước, mỗi bước 1–2 câu đủ chủ vị có phép tính, kết thúc bằng dấu chấm, liệt kê nhiều ý trong một bước thì ngăn bằng dấu chấm phẩy, bước cuối là kết luận],"common_errors":[sai lầm học sinh hay mắc với đề này],"hints":[{"level":1,"text":..},{"level":2,"text":..},{"level":3,"text":..}],"extension":string,"rubric":{"identify":3,"plan":3,"calculate":3,"explain":3}}
 Quy tắc: công thức, phương trình có ký hiệu toán đặt trong $...$ theo LaTeX (ví dụ $x^2$, $2x + 3 = 11$), KHÔNG dùng \( \) hay \[ \]. Tự giải đề, tính đáp án thật cẩn thận, đừng bịa số không có trong đề. Gợi ý mức 1 chỉ hỏi định hướng; mức 2 gợi ý cách giải; mức 3 nêu bước tính đầu tiên, KHÔNG nêu kết quả cuối. Nếu văn bản có nhiều đề, chỉ chuẩn hóa đề đầu. Nếu thiếu id, dùng "BT99".`;
 
 async function save(teacherId: string, list: Problem[]) {
@@ -252,12 +252,16 @@ export const POST = api(async (req) => {
     if (!cfg) return bad("Chưa có API key. Vào Cài đặt để nhập.");
     const [head, b64] = b.image.split(",");
     const mime = head.slice(5, head.indexOf(";"));
-    const out = await askJson(cfg, 'Chép lại NGUYÊN VĂN mọi chữ và công thức trong ảnh (đây là ảnh chụp đề Toán), không giải, bỏ qua hình vẽ. Công thức đặt trong $...$ theo LaTeX; hệ phương trình dùng cases, mỗi phương trình một hàng, các hàng cách nhau bằng 2 dấu ¦¦. QUAN TRỌNG: trong công thức, thay MỌI dấu gạch chéo ngược của LaTeX bằng ký tự ¦ (ví dụ ¦begin{cases}, ¦frac{1}{2}, ¦Delta), KHÔNG dùng dấu gạch chéo ngược. Chỉ trả JSON {"statement": string}.', [{ role: "user", text: "Đọc đề trong ảnh.", image: { mime, b64 } }], z.object({ statement: z.string() }), { deadlineMs: 50_000, attemptMs: 20_000, use: "read_image" });
+    const out = await askJson(cfg, 'Đây là ảnh chụp một đề Toán. Đọc và PHÂN LOẠI nội dung trong ảnh, chép NGUYÊN VĂN, không tự giải, bỏ qua hình vẽ. Chỉ trả JSON {"statement": string, "answers": [{"name": string, "value": string}], "solution_steps": [string]}:\n- statement: CHỈ đề bài (giả thiết, câu hỏi). KHÔNG chứa đáp án, lời giải, "Giải", "ĐS", "Đáp số", "Hướng dẫn".\n- answers: đáp án cuối nếu ảnh có ghi đáp số hoặc có kết luận cuối lời giải (chép lại, KHÔNG tự tính). Mỗi đáp án một phần tử: x = 3 là {"name":"x","value":"3"}; nhiều nghiệm đặt tên x1, x2; đáp án chữ hoặc vô nghiệm là {"name":"ket_luan","value":"vô nghiệm"} viết ngắn gọn. Ảnh không có đáp án thì [].\n- solution_steps: các bước cách giải nếu ảnh có ghi, mỗi bước một mục, bỏ chữ "Bước N:". Ảnh không có cách giải thì [].\nẢnh nhiều đề thì chỉ lấy đề đầu. Trình bày rõ ràng: đề nhiều ý thì xuống dòng giữa các ý, mỗi ý bắt đầu bằng a), b), c) (hoặc 1), 2)), dòng đầu là phần dẫn chung; hệ phương trình nằm trên dòng riêng. TUYỆT ĐỐI KHÔNG xuống dòng bên trong một cặp $...$ (cả hệ cases phải nằm trên một dòng, các hàng cách nhau bằng ¦¦); chép đúng dấu chấm phẩy của đề. MỌI biểu thức toán (kể cả đơn giản như $2x + 3 = 11$, $x^2$, $\\frac{1}{2}$) đều đặt trong $...$ theo LaTeX; hệ phương trình dùng cases, mỗi phương trình một hàng, các hàng cách nhau bằng 2 dấu ¦¦. QUAN TRỌNG: trong công thức, thay MỌI dấu gạch chéo ngược của LaTeX bằng ký tự ¦ (ví dụ ¦begin{cases}, ¦frac{1}{2}, ¦Delta), KHÔNG dùng dấu gạch chéo ngược.', [{ role: "user", text: "Đọc đề trong ảnh.", image: { mime, b64 } }], z.object({ statement: z.string(), answers: z.array(z.object({ name: z.string().min(1), value: z.string().min(1) })).default([]), solution_steps: z.array(z.string()).default([]) }), { deadlineMs: 50_000, attemptMs: 20_000, use: "read_image" });
     // Model hay viết sai dấu \ trong JSON (\begin thành ký tự điều khiển, \\ thành \), nên prompt bảo dùng ¦ thay \ rồi đổi lại ở đây.
-    out.statement = out.statement.replaceAll("¦", "\\");
+    const fix = (s: string) => s.replaceAll("¦", "\\");
+    // Dạng mảng {name,value}: khung JSON của Gemini bỏ additionalProperties nên đối tượng tự do hay bị trả rỗng.
+    const solution = Object.fromEntries(out.answers.map((a) => [a.name, /^-?\d+(\.\d+)?$/.test(a.value.trim()) ? Number(a.value) : fix(a.value)]));
+    out.statement = tidyStatement(fix(out.statement));
+    out.solution_steps = out.solution_steps.map((s) => tidyLine(fix(s))).filter((s) => s.trim());
     if (!out.statement.trim()) { await reportError(new Error(`Đọc đề từ ảnh trả rỗng (${mime}, ${b64.length} ký tự)`), "đọc đề từ ảnh", { teacherId: u.id, actor: "teacher", kind: "format" }); return bad("Không thấy đề bài trong ảnh. Thử ảnh rõ hơn."); }
-    await log({ actor: "teacher", action: "problem_image_read", teacherId: u.id, meta: { chars: out.statement.length } });
-    return Response.json({ ok: true, statement: out.statement.trim() });
+    await log({ actor: "teacher", action: "problem_image_read", teacherId: u.id, meta: { chars: out.statement.length, answer: !!Object.keys(solution).length, steps: out.solution_steps.length } });
+    return Response.json({ ok: true, statement: out.statement.trim(), solution, solution_steps: out.solution_steps });
   }
 
   if (b.action === "normalize") {
