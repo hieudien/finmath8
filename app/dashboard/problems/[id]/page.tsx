@@ -4,7 +4,8 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { hasGuides } from "@/lib/chat/goals";
 import { problemSchema } from "@/lib/schema/problem";
 import { lintProblem } from "@/lib/lint";
-import { entries, problemToText } from "@/lib/problem-text";
+import { entries, fmtValue, labelOf, problemToText } from "@/lib/problem-text";
+import { groupAnswers } from "@/lib/answers";
 import { ExplainButton, ViewTools } from "@/components/ProblemViewTools";
 import { Alert, Badge } from "@/components/ui";
 import { AnswerBox } from "@/components/AnswerBox";
@@ -19,11 +20,19 @@ function Rows({ items }: { items: { key: string; label: string; value: string }[
       {items.map((e) => (
         <div key={e.key} className="flex flex-col gap-1 px-4 py-2 sm:flex-row sm:justify-between sm:gap-4">
           <dt className="text-text-muted">{e.label}</dt>
-          <dd className="tnum break-anywhere font-medium sm:text-right">{e.value}</dd>
+          <dd className="tnum break-anywhere font-medium sm:text-right">{e.value.includes("$") ? <MathText text={e.value} /> : e.value}</dd>
         </div>
       ))}
     </dl>
   );
+}
+
+// Đáp án theo ý: khóa a_x, b_m hiện thành "Ý a) x", "Ý b) m"; dòng ket_luan chỉ nhắc lại các số đã có thì ẩn (xem lib/answers.ts).
+function AnswerRows({ solution }: { solution: Record<string, unknown> }) {
+  const items = groupAnswers(solution).flatMap((g) => g.part === ""
+    ? entries(Object.fromEntries(g.items.map((i) => [i.key, i.value])))
+    : g.items.map((i) => ({ key: `${g.part}_${i.key}`, label: `Ý ${g.part}) ${labelOf(i.key)}`, value: fmtValue(i.key, i.value) })));
+  return <Rows items={items} />;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -108,7 +117,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       </Section>
 
       <Section title="Kết quả">
-        <Rows items={entries(p.solution)} />
+        <AnswerRows solution={p.solution} />
         {Object.keys(p.solution).length > 0 && <ExplainButton id={id} action="verify" label="Kiểm tra đáp án bằng AI" busyLabel="AI đang giải lại để so..." />}
       </Section>
 

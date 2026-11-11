@@ -9,11 +9,14 @@ import { SEED } from "@/lib/seed";
 import { log } from "@/lib/log";
 import { reportError } from "@/lib/errors";
 import { missingAnswers } from "@/lib/answer-check";
-import { finishProblem, standardizeProblem } from "@/lib/fill";
+import { finishProblem, makeSteps, referenceNote, standardizeProblem } from "@/lib/fill";
 import { repairProblem, tidyLine, tidyStatement } from "@/lib/repair";
 import { CHUNK, PAR, BUDGET_MS, freeCode, pool } from "@/lib/batch";
 import { cannotLock, needsWork } from "@/lib/ready";
 import { gradeRule } from "@/lib/grade";
+import { readExamImage, type ImageResult } from "@/lib/read-image";
+import { solveOnce } from "@/lib/solve";
+import { walk } from "@/lib/latex-fix";
 import { checkSteps, crossCheck } from "@/lib/verify-solution";
 const NORMALIZE_SYSTEM = `Bạn chuẩn hóa một đề Toán từ văn bản thô sang JSON. Đề có thể thuộc bất kỳ chủ đề và lớp nào (giải phương trình, hình học, tỉ lệ, tình huống thực tế...). Chỉ trả JSON một đối tượng đúng mẫu:
 {"id":"BTxx","title":string,"grade":số lớp (đúng lớp được giao ở cuối),"topic":string,"skills":[2–5 kỹ năng/kiến thức chính cần dùng, mỗi mục một cụm ngắn],"statement":string (nguyên văn đề bài cho học sinh; đề nhiều ý thì mỗi ý một dòng a), b), c) cách nhau bằng ký tự xuống dòng),"learning_objectives":[string],"data":{số liệu đề cho, nếu có; tỉ lệ dạng thập phân 0.x},"solution":{đáp án chuẩn. Số thì dạng số, ví dụ {"x":3}; nhiều nghiệm {"x1":2,"x2":-3}; vô nghiệm hoặc đáp án chữ {"ket_luan":"vô nghiệm"}},"solution_steps":[lời giải từng bước, mỗi bước 1–2 câu đủ chủ vị có phép tính, kết thúc bằng dấu chấm, liệt kê nhiều ý trong một bước thì ngăn bằng dấu chấm phẩy, bước cuối là kết luận],"common_errors":[sai lầm học sinh hay mắc với đề này],"hints":[{"level":1,"text":..},{"level":2,"text":..},{"level":3,"text":..}],"extension":string,"rubric":{"identify":3,"plan":3,"calculate":3,"explain":3}}
@@ -233,7 +236,8 @@ export const POST = api(async (req) => {
     const pp = problemSchema.safeParse(b.problem);
     if (!pp.success) return bad("Đề chưa đủ để AI hoàn thiện.");
     const done = await finishProblem(cfg, pp.data);
-    return typeof done === "string" ? bad(done) : Response.json({ ok: true, problem: done });
+    if (typeof done === "string") { await reportError(new Error(done), `hoàn thiện đề ${pp.data.id}: không đạt chuẩn`, { teacherId: u.id, actor: "teacher", kind: "format", meta: { code: pp.data.id } }); return bad(done); } // ghi để tra được từ nhật ký lỗi
+    return Response.json({ ok: true, problem: done });
   }
 
   // Đề đang soạn ở trình sửa: giữ nguyên đáp án giáo viên đã nhập, AI viết lại phần còn lại theo đề bài và đáp án đó. Trả về, giáo viên bấm Lưu mới ghi.
@@ -244,7 +248,8 @@ export const POST = api(async (req) => {
     if (!pp.success) return bad("Đề chưa đủ để AI chuẩn hóa: " + (pp.error.issues[0]?.message ?? "sai định dạng") + ".");
     if (!Object.keys(pp.data.solution).length) return bad("Chưa có đáp án để giữ. Nhập đáp án hoặc bấm nút AI giải lại cả đáp án.");
     const r = await standardizeProblem(cfg, { ...pp.data, answer_locked: true }).catch(async (e) => { await reportError(e, "chuẩn hóa đề đang soạn", { teacherId: u.id, actor: "teacher" }); return "AI chưa trả lời được. Bấm chạy lại."; });
-    return typeof r === "string" ? bad(r) : Response.json({ ok: true, problem: { ...r, answer_locked: false } }); // khóa chỉ đặt khi giáo viên tick xác nhận và lưu
+    if (typeof r === "string") { if (!/^AI chưa trả lời được/.test(r)) await reportError(new Error(r), `chuẩn hóa đề đang soạn ${pp.data.id}: không đạt chuẩn`, { teacherId: u.id, actor: "teacher", kind: "format", meta: { code: pp.data.id } }); return bad(r); }
+    return Response.json({ ok: true, problem: { ...r, answer_locked: false } }); // khóa chỉ đặt khi giáo viên tick xác nhận và lưu
   }
 
   if (b.action === "read_image") {
@@ -252,23 +257,38 @@ export const POST = api(async (req) => {
     if (!cfg) return bad("Chưa có API key. Vào Cài đặt để nhập.");
     const [head, b64] = b.image.split(",");
     const mime = head.slice(5, head.indexOf(";"));
-    const out = await askJson(cfg, 'Đây là ảnh chụp một đề Toán. Đọc và PHÂN LOẠI nội dung trong ảnh, chép NGUYÊN VĂN, không tự giải, bỏ qua hình vẽ. Chỉ trả JSON {"statement": string, "answers": [{"name": string, "value": string}], "solution_steps": [string]}:\n- statement: CHỈ đề bài (giả thiết, câu hỏi). KHÔNG chứa đáp án, lời giải, "Giải", "ĐS", "Đáp số", "Hướng dẫn".\n- answers: đáp án cuối nếu ảnh có ghi đáp số hoặc có kết luận cuối lời giải (chép lại, KHÔNG tự tính). Mỗi đáp án một phần tử: x = 3 là {"name":"x","value":"3"}; nhiều nghiệm đặt tên x1, x2; đáp án chữ hoặc vô nghiệm là {"name":"ket_luan","value":"vô nghiệm"} viết ngắn gọn. Ảnh không có đáp án thì [].\n- solution_steps: các bước cách giải nếu ảnh có ghi, mỗi bước một mục, bỏ chữ "Bước N:". Ảnh không có cách giải thì [].\nẢnh nhiều đề thì chỉ lấy đề đầu. Trình bày rõ ràng: đề nhiều ý thì xuống dòng giữa các ý, mỗi ý bắt đầu bằng a), b), c) (hoặc 1), 2)), dòng đầu là phần dẫn chung; hệ phương trình nằm trên dòng riêng. TUYỆT ĐỐI KHÔNG xuống dòng bên trong một cặp $...$ (cả hệ cases phải nằm trên một dòng, các hàng cách nhau bằng ¦¦); chép đúng dấu chấm phẩy của đề. MỌI biểu thức toán (kể cả đơn giản như $2x + 3 = 11$, $x^2$, $\\frac{1}{2}$) đều đặt trong $...$ theo LaTeX; hệ phương trình dùng cases, mỗi phương trình một hàng, các hàng cách nhau bằng 2 dấu ¦¦. QUAN TRỌNG: trong công thức, thay MỌI dấu gạch chéo ngược của LaTeX bằng ký tự ¦ (ví dụ ¦begin{cases}, ¦frac{1}{2}, ¦Delta), KHÔNG dùng dấu gạch chéo ngược.', [{ role: "user", text: "Đọc đề trong ảnh.", image: { mime, b64 } }], z.object({ statement: z.string(), answers: z.array(z.object({ name: z.string().min(1), value: z.string().min(1) })).default([]), solution_steps: z.array(z.string()).default([]) }), { deadlineMs: 50_000, attemptMs: 20_000, use: "read_image" });
+    const legacy = async (deadlineMs: number): Promise<ImageResult> => {
+    const out = await askJson(cfg, 'Đây là ảnh chụp một đề Toán. Đọc và PHÂN LOẠI nội dung trong ảnh, chép NGUYÊN VĂN, không tự giải, bỏ qua hình vẽ. Chỉ trả JSON {"statement": string, "answers": [{"name": string, "value": string}], "solution_steps": [string]}:\n- statement: CHỈ đề bài (giả thiết, câu hỏi). KHÔNG chứa đáp án, lời giải, "Giải", "ĐS", "Đáp số", "Hướng dẫn".\n- answers: đáp án cuối nếu ảnh có ghi đáp số hoặc có kết luận cuối lời giải (chép lại, KHÔNG tự tính). Mỗi đáp án một phần tử: x = 3 là {"name":"x","value":"3"}; nhiều nghiệm đặt tên x1, x2; đáp án chữ hoặc vô nghiệm là {"name":"ket_luan","value":"vô nghiệm"} viết ngắn gọn. Ảnh không có đáp án thì [].\n- solution_steps: các bước cách giải nếu ảnh có ghi, mỗi bước một mục, bỏ chữ "Bước N:". Ảnh không có cách giải thì [].\nẢnh nhiều đề thì chỉ lấy đề đầu. Trình bày rõ ràng: đề nhiều ý thì xuống dòng giữa các ý, mỗi ý bắt đầu bằng a), b), c) (hoặc 1), 2)), dòng đầu là phần dẫn chung; hệ phương trình nằm trên dòng riêng. TUYỆT ĐỐI KHÔNG xuống dòng bên trong một cặp $...$ (cả hệ cases phải nằm trên một dòng, các hàng cách nhau bằng ¦¦); chép đúng dấu chấm phẩy của đề. Chỗ xuống dòng là xuống dòng thật; TUYỆT ĐỐI không dùng dấu gạch chéo ngược hay ký tự ¦ để ngắt dòng ở NGOÀI công thức. MỌI biểu thức toán (kể cả đơn giản như $2x + 3 = 11$, $x^2$, $\\frac{1}{2}$) đều đặt trong $...$ theo LaTeX; hệ phương trình dùng cases, mỗi phương trình một hàng, các hàng cách nhau bằng 2 dấu ¦¦. QUAN TRỌNG: trong công thức, thay MỌI dấu gạch chéo ngược của LaTeX bằng ký tự ¦ (ví dụ ¦begin{cases}, ¦frac{1}{2}, ¦Delta), KHÔNG dùng dấu gạch chéo ngược.', [{ role: "user", text: "Đọc đề trong ảnh.", image: { mime, b64 } }], z.object({ statement: z.string(), answers: z.array(z.object({ name: z.string().min(1), value: z.string().min(1) })).default([]), solution_steps: z.array(z.string()).default([]) }), { deadlineMs, attemptMs: 20_000, use: "read_image" });
     // Model hay viết sai dấu \ trong JSON (\begin thành ký tự điều khiển, \\ thành \), nên prompt bảo dùng ¦ thay \ rồi đổi lại ở đây.
     const fix = (s: string) => s.replaceAll("¦", "\\");
     // Dạng mảng {name,value}: khung JSON của Gemini bỏ additionalProperties nên đối tượng tự do hay bị trả rỗng.
     const solution = Object.fromEntries(out.answers.map((a) => [a.name, /^-?\d+(\.\d+)?$/.test(a.value.trim()) ? Number(a.value) : fix(a.value)]));
-    out.statement = tidyStatement(fix(out.statement));
-    out.solution_steps = out.solution_steps.map((s) => tidyLine(fix(s))).filter((s) => s.trim());
+    // Chữ ngoài $...$: ¦ đứng trước chữ cái là dấu \ của lệnh LaTeX quên bọc $, còn lại là dấu ngắt dòng lạc nên bỏ.
+    const fixText = (s: string) => s.replace(/\$\$[\s\S]+?\$\$|\$[^$]+?\$/g, (x) => fix(x)).replace(/¦(?=[A-Za-z])/g, "\\").replaceAll("¦", "");
+    out.statement = tidyStatement(fixText(out.statement));
+    out.solution_steps = out.solution_steps.map((s) => tidyLine(fixText(s))).filter((s) => s.trim());
+    return { statement: out.statement, solution, solution_steps: out.solution_steps };
+    };
+    // Cách mới: model trả văn bản có thẻ, tự kiểm và đọc lại khi lỗi; không tách được thẻ thì rơi về cách cũ (legacy, JSON) ở trên.
+    const out = await readExamImage(cfg, { mime, b64 }, legacy);
     if (!out.statement.trim()) { await reportError(new Error(`Đọc đề từ ảnh trả rỗng (${mime}, ${b64.length} ký tự)`), "đọc đề từ ảnh", { teacherId: u.id, actor: "teacher", kind: "format" }); return bad("Không thấy đề bài trong ảnh. Thử ảnh rõ hơn."); }
-    await log({ actor: "teacher", action: "problem_image_read", teacherId: u.id, meta: { chars: out.statement.length, answer: !!Object.keys(solution).length, steps: out.solution_steps.length } });
-    return Response.json({ ok: true, statement: out.statement.trim(), solution, solution_steps: out.solution_steps });
+    await log({ actor: "teacher", action: "problem_image_read", teacherId: u.id, meta: { chars: out.statement.length, answer: !!Object.keys(out.solution).length, steps: out.solution_steps.length, attempts: out.attempts, warnings: out.warnings.length } });
+    return Response.json({ ok: true, statement: out.statement.trim(), solution: out.solution, solution_steps: out.solution_steps, warnings: out.warnings });
   }
 
   if (b.action === "normalize") {
     const cfg = await llmCfg(u.id);
     if (!cfg) return bad("Chưa có API key. Vào Cài đặt để nhập.");
-    const out = await askJson(cfg, NORMALIZE_SYSTEM + gradeRule(b.grade), [{ role: "user", text: b.text }], problemSchema, { think: true, use: "normalize" });
-    out.grade = b.grade;
+    const raw = await askJson(cfg, NORMALIZE_SYSTEM + gradeRule(b.grade), [{ role: "user", text: b.text }], problemSchema, { think: true, use: "normalize" });
+    const out = walk({ ...raw, grade: b.grade }) as Problem;
+    // Đáp án và lời giải do bước giải riêng viết (model chỉ giải, làm trước đáp án sau, tự thay số kiểm); phần còn lại của đề giữ như AI vừa tạo. Hỏng thì giữ bản của AI.
+    const sv = await solveOnce(cfg, { statement: out.statement, grade: b.grade }).catch(() => null);
+    if (sv) {
+      out.solution = sv.answers as Problem["solution"];
+      // Lời giải chi tiết của bước giải riêng chỉ làm tham khảo: các bước hiển thị do makeSteps viết gọn (3–8 bước). Lỗi thì để trống, "complete" sẽ viết lại.
+      const s = await makeSteps(cfg, out, referenceNote(sv.steps)).catch(() => null);
+      out.solution_steps = Array.isArray(s) ? s : [];
+    } // sửa ký tự điều khiển do JSON nuốt dấu \ ngay khi nhận từ AI, trước khi trả cho trình duyệt
     // Lời giải lệch đáp án thì bỏ lời giải; "complete" viết lại. Kiểm chéo và chỉ dẫn do "complete" làm để mỗi request nằm trong 60s.
     if (out.solution_steps.length && missingAnswers(out.solution, out.solution_steps).length) out.solution_steps = [];
     out.reviewed = false; // chưa kiểm chéo: "complete" mới đặt true

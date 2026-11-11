@@ -10,6 +10,7 @@ import ConfirmAnswers, { type AnswerRow } from "@/components/ConfirmAnswers";
 import { problemSchema } from "@/lib/schema/problem";
 import { substituteState } from "@/lib/verify-solution";
 import { cannotLock } from "@/lib/ready";
+import { answersInline } from "@/lib/answers";
 
 type Row = { provider: Provider; gemini_key_enc: string | null; openai_key_enc: string | null };
 
@@ -26,7 +27,7 @@ export default async function Page() {
   const answers: AnswerRow[] = ((pr ?? []) as { id: string; code: string; content: unknown }[]).map((r) => {
     const parsed = problemSchema.safeParse(r.content);
     const p = parsed.success ? parsed.data : null;
-    return { id: r.id, code: r.code, title: p?.title ?? "(đề sai định dạng)", answer: p && Object.keys(p.solution).length ? JSON.stringify(p.solution) : "", locked: !!p?.answer_locked, check: p ? substituteState(p).state : "skip", blocked: cannotLock(r.content) === "Đã khóa." ? "" : cannotLock(r.content) };
+    return { id: r.id, code: r.code, title: p?.title ?? "(đề sai định dạng)", answer: p && Object.keys(p.solution).length ? answersInline(p.solution) : "", locked: !!p?.answer_locked, check: p ? substituteState(p).state : "skip", blocked: cannotLock(r.content) === "Đã khóa." ? "" : cannotLock(r.content) };
   });
   return (
     <div className="flex flex-col gap-6">

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AiBadge, AiButton, Alert, Badge, Button, Field, GradeSelect, TextArea, post, toast } from "@/components/ui";
 import MathTextArea from "@/components/MathTextArea";
 import type { Problem } from "@/lib/schema/problem";
+import { answersToLines, linesToAnswers } from "@/lib/answers";
 
 const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
 const J = (v: unknown) => JSON.stringify(v, null, 2);
@@ -20,7 +21,7 @@ export default function ProblemEditor({ initial, newCode, rowId }: { initial?: P
   const [statement, setStatement] = useState(p?.statement ?? "");
   const [skills, setSkills] = useState((p?.skills ?? []).join(", "));
   const [data, setData] = useState(J(p?.data ?? {}));
-  const [solution, setSolution] = useState(J(p?.solution ?? {}));
+  const [solution, setSolution] = useState(answersToLines(p?.solution ?? {})); // mỗi dòng "tên = giá trị"; lưu vẫn là đối tượng
   const [steps, setSteps] = useState((p?.solution_steps ?? []).join("\n"));
   const [errors, setErrors] = useState((p?.common_errors ?? []).join("\n"));
   const [hints, setHints] = useState([1, 2, 3].map((l) => p?.hints.find((h) => h.level === l)?.text ?? ""));
@@ -34,7 +35,7 @@ export default function ProblemEditor({ initial, newCode, rowId }: { initial?: P
   // Điền các ô theo đề AI vừa làm (chưa lưu). AI có thể giải sai: giáo viên phải tự kiểm tra và tick xác nhận đáp án.
   function fill(g: Problem) {
     setBuilt(g);
-    setSkills(g.skills.join(", ")); setData(J(g.data)); setSolution(J(g.solution)); setSteps(g.solution_steps.join("\n"));
+    setSkills(g.skills.join(", ")); setData(J(g.data)); setSolution(answersToLines(g.solution)); setSteps(g.solution_steps.join("\n"));
     setErrors(g.common_errors.join("\n")); setHints([1, 2, 3].map((l) => g.hints.find((h) => h.level === l)?.text ?? ""));
     setExtension(g.extension); setObjectives(g.learning_objectives);
     if (!title.trim()) setTitle(g.title);
@@ -80,13 +81,15 @@ export default function ProblemEditor({ initial, newCode, rowId }: { initial?: P
       c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
       const g = c.getContext("2d")!;
       g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
-      const { ok: good, data: d } = await post<{ statement: string; solution: Record<string, unknown>; solution_steps: string[] }>("/api/problems", { action: "read_image", image: c.toDataURL("image/jpeg", 0.85) });
+      const { ok: good, data: d } = await post<{ statement: string; solution: Record<string, unknown>; solution_steps: string[]; warnings?: string[] }>("/api/problems", { action: "read_image", image: c.toDataURL("image/jpeg", 0.85) });
       if (!good) return toast("danger", d.error ?? "AI chưa đọc được ảnh. Thử lại.");
+      // Kiểm tự động thấy chỗ có thể sai (công thức vỡ, hệ thiếu dấu ngăn hàng...): nhắc đối chiếu với ảnh gốc.
+      if (d.warnings?.length) toast("warning", `Đã đọc ảnh nhưng có chỗ có thể sai: ${d.warnings.slice(0, 2).join(" ")} Hãy đối chiếu đề với ảnh gốc.`);
       const st = (statement.trim() ? statement.trim() + "\n" : "") + d.statement;
       setStatement(st);
       // Đáp án trong ảnh chỉ điền khi ô Đáp án còn trống, không ghi đè cái giáo viên đã nhập.
       const hasAns = Object.keys(d.solution ?? {}).length > 0;
-      const sol = hasAns && !answered(solution) ? J(d.solution) : solution;
+      const sol = hasAns && !answered(solution) ? answersToLines(d.solution) : solution;
       if (sol !== solution) { setSolution(sol); setOk(false); }
       if (!answered(sol) && !grade) { // AI phải tự giải mà chưa có lớp: để lời giải trong ảnh cho giáo viên xem, hộp lý do bên dưới chỉ cách làm tiếp
         if (d.solution_steps.length && !steps.trim()) setSteps(d.solution_steps.join("\n"));
@@ -101,9 +104,11 @@ export default function ProblemEditor({ initial, newCode, rowId }: { initial?: P
   // Đề đang soạn theo nội dung các ô; null (đã báo lỗi) khi dữ kiện hoặc đáp án sai JSON.
   // o: nội dung vừa nhận từ ảnh, chưa kịp vào state.
   function draft(o: { statement?: string; solution?: string } = {}) {
-    let d: unknown, s: unknown;
+    let d: unknown;
     try { d = JSON.parse(data || "{}"); } catch { toast("danger", "Dữ kiện sai cú pháp JSON."); return null; }
-    try { s = JSON.parse(o.solution ?? solution); } catch { toast("danger", 'Đáp án sai cú pháp JSON, ví dụ {"x": 3}.'); return null; }
+    const ans = linesToAnswers(o.solution ?? solution);
+    if (!ans.ok) { toast("danger", `Đáp án: ${ans.error}`); return null; }
+    const s = ans.value;
     return {
       ...(built ?? p ?? {}), id, title: title.trim() || "Đề từ ảnh", grade: Number(grade), topic: topic.trim(), skills: skills.split(",").map((x) => x.trim()).filter(Boolean),
       statement: (o.statement ?? statement).trim(), learning_objectives: objectives, data: d, solution: s, solution_steps: lines(steps), common_errors: lines(errors),
@@ -166,11 +171,11 @@ export default function ProblemEditor({ initial, newCode, rowId }: { initial?: P
       <div className="flex flex-wrap gap-2">
         <AiButton variant="secondary" onClick={() => run()} disabled={aiWhy.length > 0} pending={busy || undefined}>AI giải và chuẩn hóa đề</AiButton>
       </div>
-      <p className="-mt-2 text-sm text-text-muted">Ô Đáp án đã có thì AI giữ đáp án và viết lại lời giải, gợi ý. Ô Đáp án trống thì AI tự giải. Muốn AI giải lại từ đầu: xóa ô Đáp án (về {"{}"}) rồi bấm nút.</p>
+      <p className="-mt-2 text-sm text-text-muted">Ô Đáp án đã có thì AI giữ đáp án và viết lại lời giải, gợi ý. Ô Đáp án trống thì AI tự giải. Muốn AI giải lại từ đầu: xóa hết ô Đáp án (để trống) rồi bấm nút.</p>
       <Why title="Chưa bấm được nút AI vì:" items={aiWhy} />
 
       <Field label="Kỹ năng (cách nhau dấu phẩy)" value={skills} onChange={(e) => setSkills(e.target.value)} hint="Dùng để thống kê học sinh yếu kỹ năng nào." />
-      <TextArea label="Đáp án (JSON)" rows={3} value={solution} onChange={(e) => { setSolution(e.target.value); setOk(false); }} className="font-mono text-sm" hint='Ví dụ {"x": 3}. Chatbot không bao giờ nói ra các số trong đáp án.' />
+      <TextArea label="Đáp án (mỗi dòng một đáp án: tên = giá trị)" rows={4} value={solution} onChange={(e) => { setSolution(e.target.value); setOk(false); }} className="font-mono text-sm" hint="Ví dụ x = 3. Đề nhiều ý thì thêm tiền tố ý: a_x = 2, b_m = -6. Phân số như 14/3 được đổi thành số thập phân. Chatbot không bao giờ nói ra các số trong đáp án." />
       <MathTextArea label="Lời giải từng bước (mỗi dòng một bước)" rows={6} value={steps} onChange={setSteps} />
       {hints.map((h, i) => <MathTextArea key={i} label={`Gợi ý mức ${i + 1}`} rows={2} value={h} onChange={(v) => setHints((a) => a.map((x, j) => (j === i ? v : x)))} />)}
       <MathTextArea label="Sai lầm thường gặp (mỗi dòng một ý)" rows={3} value={errors} onChange={setErrors} />

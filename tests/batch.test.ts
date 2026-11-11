@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { freeCode, pool, splitProblems } from "../lib/batch";
 import { problemSchema, type Problem } from "../lib/schema/problem";
 
-vi.mock("../lib/llm", () => ({ askJson: vi.fn() }));
+vi.mock("../lib/llm", () => ({ askJson: vi.fn(), askText: vi.fn() }));
 vi.mock("../lib/verify-solution", () => ({ crossCheck: vi.fn(), checkSteps: vi.fn(async () => ""), substituteState: vi.fn(() => ({ state: "skip", msg: "" })) }));
 vi.mock("../lib/step-guides", async (orig) => ({ ...(await orig<typeof import("../lib/step-guides")>()), makeStepGuides: vi.fn() }));
 import { finishProblem, standardizeProblem, unaccented } from "../lib/fill";
@@ -16,6 +16,8 @@ const base = (over: Partial<Problem> = {}): Problem => problemSchema.parse({
   solution_steps: ["Tiền giảm là 300000 x 0,15 = 45000.", "Phải trả 300000 - 45000 = 255000."],
   hints: [1, 2, 3].map((level) => ({ level, text: "Gợi ý." })), reviewed: false, ...over,
 });
+// Lượt giải độc lập của bỏ phiếu đi qua lib/solve.ts (askText, văn bản có thẻ).
+const tag = (v: string) => `<loi_giai>\nBước 1.\n</loi_giai>\n<dap_an>\ncost = ${v}\n</dap_an>`;
 const guides = { goals: ["Tính tiền giảm", "Tính số tiền phải trả"], hints: [["a", "b", "c"], ["a", "b", "c"]], checks: [{ result: "45000", accepts: [] }, { result: "255000", accepts: [] }], traps: [] };
 
 describe("splitProblems", () => {
@@ -107,12 +109,12 @@ describe("repairProblem + standardizeProblem", () => {
     expect(NL).toBe("\n");
   });
   it("standardizeProblem: lấy statement làm gốc, thay data, đáp án, lời giải cũ (đề lệch như TC05)", async () => {
-    const { askJson } = await import("../lib/llm");
+    const { askJson, askText } = await import("../lib/llm");
     vi.mocked(crossCheck).mockResolvedValue("");
     vi.mocked(makeStepGuides).mockReset().mockResolvedValue(guides);
+    vi.mocked(askText).mockReset().mockResolvedValueOnce(tag("255000")); // phiếu 2 trùng phiếu 1: đủ, không giải lượt thứ ba
     vi.mocked(askJson).mockReset()
       .mockResolvedValueOnce({ data: [{ name: "budget", value: "300000" }, { name: "rate", value: "0.15" }], answers: [{ name: "cost", value: "255000" }], skills: ["Tính phần trăm"], learning_objectives: ["Tính giá sau giảm"], common_errors: ["Quên trừ tiền giảm"], hints: ["h1", "h2", "h3"], extension: "Giảm 20% thì sao?" })
-      .mockResolvedValueOnce({ answers: [{ name: "cost", value: "255000" }] }) // phiếu 2 trùng phiếu 1: đủ, không giải lượt thứ ba
       .mockResolvedValueOnce({ steps: ["Tiền giảm là 300000 x 0,15 = 45000.", "Phải trả 300000 - 45000 = 255000."] });
     const stale = base({ common_errors: ["Dùng lãi đơn"], extension: "Gửi 3 năm?", skills: ["Lãi kép"], learning_objectives: ["Phân biệt lãi"], data: { principal: 50000000 }, solution: { simple_total: 56000000 }, solution_steps: ["Lãi đơn 56.000.000."], check_note: "lệch", reviewed: true });
     const r = await standardizeProblem(cfg, stale) as Problem;
@@ -120,18 +122,21 @@ describe("repairProblem + standardizeProblem", () => {
     expect(r.solution_steps.join(" ")).not.toContain("56.000.000");
     expect(r).toMatchObject({ common_errors: ["Quên trừ tiền giảm"], extension: "Giảm 20% thì sao?", skills: ["Tính phần trăm"], learning_objectives: ["Tính giá sau giảm"] });
     expect(r.hints.map((h) => h.text)).toEqual(["h1", "h2", "h3"]);
-    expect(askJson).toHaveBeenCalledTimes(3); // tạo lại + 1 phiếu + lời giải (trước đây 4)
+    expect(askJson).toHaveBeenCalledTimes(2); // tạo lại + lời giải
+    expect(askText).toHaveBeenCalledTimes(1); // 1 phiếu giải độc lập
   });
   const derive = (v: string) => ({ data: [], answers: [{ name: "cost", value: v }], skills: ["a"], learning_objectives: ["b"], common_errors: ["c"], hints: ["h1", "h2", "h3"], extension: "e" });
   it("standardizeProblem: AI giải 3 lần khác nhau thì báo chưa có đáp án đáng tin, không ghi đè", async () => {
-    const { askJson } = await import("../lib/llm");
-    vi.mocked(askJson).mockReset().mockResolvedValueOnce(derive("1")).mockResolvedValueOnce({ answers: [{ name: "cost", value: "2" }] }).mockResolvedValueOnce({ answers: [{ name: "cost", value: "3" }] });
+    const { askJson, askText } = await import("../lib/llm");
+    vi.mocked(askJson).mockReset().mockResolvedValueOnce(derive("1"));
+    vi.mocked(askText).mockReset().mockResolvedValueOnce(tag("2")).mockResolvedValueOnce(tag("3"));
     const r = await standardizeProblem(cfg, base({ solution: {}, reviewed: false }));
     expect(r).toContain("Chưa có đáp án đáng tin");
   });
   it("standardizeProblem: đáp án chưa khóa dù đã duyệt vẫn phải bỏ phiếu (không tin đáp án AI cũ)", async () => {
-    const { askJson } = await import("../lib/llm");
-    vi.mocked(askJson).mockReset().mockResolvedValueOnce(derive("1")).mockResolvedValueOnce({ answers: [{ name: "cost", value: "2" }] }).mockResolvedValueOnce({ answers: [{ name: "cost", value: "3" }] });
+    const { askJson, askText } = await import("../lib/llm");
+    vi.mocked(askJson).mockReset().mockResolvedValueOnce(derive("1"));
+    vi.mocked(askText).mockReset().mockResolvedValueOnce(tag("2")).mockResolvedValueOnce(tag("3"));
     expect(await standardizeProblem(cfg, base({ reviewed: true, check_note: "", answer_locked: false }))).toContain("Chưa có đáp án đáng tin");
   });
   it("standardizeProblem: đáp án giáo viên đã khóa được giữ nguyên, không bỏ phiếu", async () => {

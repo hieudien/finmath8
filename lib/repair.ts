@@ -1,21 +1,11 @@
 import { withGuides } from "@/lib/step-guides";
 import { stripStep } from "@/lib/chat/progress";
+import { walk } from "@/lib/latex-fix";
 import type { Problem } from "@/lib/schema/problem";
 
-// JSON viết \times \frac \begin \right \neq với MỘT dấu gạch chéo thì bị nuốt thành tab, form feed, backspace, CR, xuống dòng.
-// Sửa không cần AI: trả ký tự điều khiển về lệnh LaTeX, nối lại bước bị cắt vụn. Đề lành thì trả đúng đối tượng cũ.
-const BS = String.fromCharCode(92);
+// Sửa ký tự điều khiển do JSON nuốt dấu gạch chéo ngược nằm ở lib/latex-fix.ts (dùng chung với chỉ dẫn từng bước).
 const code = String.fromCharCode;
 const NL = code(10);
-const nlLatex = new RegExp(`${NL}(?=(eq|e |ot|eg|abla|mid|subset))`, "g"); // \neq, \ne, \not, \neg, \nabla, \nmid, \nsubset
-const nlEnd = new RegExp(`${NL}(?=end\\{)`, "g"); // \end{cases}: dấu \ bị nuốt cùng chữ e
-const fixStr = (s: string) => {
-  const t = s.replace(/\t(?=[A-Za-z])/g, BS + "t").split(code(12)).join(BS + "f").split(code(8)).join(BS + "b").replace(/\r(?=[A-Za-z])/g, BS + "r").split(code(11)).join(BS + "v")
-    .replace(nlLatex, BS + "n").replace(nlEnd, BS);
-  // Xuống dòng trong cases: "\\" bị mất một dấu thành "\ ".
-  return t.includes("cases}") && !t.includes(BS + BS) ? t.split(BS + " ").join(BS + BS + " ") : t;
-};
-const walk = (v: unknown): unknown => typeof v === "string" ? fixStr(v) : Array.isArray(v) ? v.map(walk) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)])) : v;
 const isStep = (s: string) => /^Bước \d/.test(s);
 
 // Một phần tử chứa nhiều "Bước N:" (AI hoặc giáo viên gộp cả lời giải vào một chuỗi) thì tách ra từng bước.
@@ -30,10 +20,14 @@ const NUL = code(0);
 // own: công thức hệ phương trình (\begin{cases}) đứng riêng một dòng.
 function onText(s: string, f: (t: string) => string, own = false): string {
   const m: string[] = [];
-  const masked = s.replace(MATH, (x) => {
+  const masked = s.replace(MATH, (x, off: number) => {
     m.push(x.startsWith("$$") ? x : x.replace(/\s*\n\s*/g, " "));
     const ph = `${NUL}${m.length - 1}${NUL}`;
-    return own && x.includes("begin{cases}") ? `${NL}${ph}${NL}` : ph;
+    if (!(own && x.includes("begin{cases}"))) return ph;
+    // Sau hệ còn chữ cùng dòng ("(I) (m là tham số)") mà không phải nhãn ý a), 1): giữ hệ cùng dòng như đề gốc (KaTeX inline tự căn giữa dọc).
+    const next = s.slice(off + x.length).match(/^[ \t]*(\S+)/)?.[1];
+    const inline = !!next && !/^(?:[a-e]|\d{1,2})\)/.test(next) && !/^[.,;:]+$/.test(next);
+    return inline ? ph : `${NL}${ph}${NL}`;
   });
   return f(masked).replace(new RegExp(`${NUL}(\\d+)${NUL}`, "g"), (_, i) => m[Number(i)]);
 }
@@ -50,15 +44,41 @@ function breakItems(t: string): string {
   return t;
 }
 
+// Công thức LaTeX còn trần (model quên $...$): bọc lại để giao diện dựng đúng thay vì hiện \frac, \left thô.
+// Chỉ bọc đoạn có lệnh \xxx; chữ thường (từ có dấu hoặc từ từ 2 chữ cái trở lên) làm đứt đoạn. Chạy trên chữ đã che công thức $...$.
+const SOH = code(1);
+const SEP = code(2);
+const bareOk = (w: string) => {
+  const c = w.replace(/[.,;:]+$/, "");
+  return !!c && /^[\x21-\x7E]+$/.test(c) && !c.includes("$") && !/[A-Za-z]{2}/.test(c.replace(/\\[A-Za-z]+/g, ""));
+};
+function wrapBare(t: string): string {
+  const stash: string[] = [];
+  const s = t.replace(/\\begin\{cases\}[\s\S]*?\\end\{cases\}/g, (m) => { stash.push(`$${m.replace(/\s*\n\s*/g, " ")}$`); return `${SOH}${stash.length - 1}${SOH}`; })
+    // Ngoài công thức không có dấu \ hợp lệ nào ngoài lệnh LaTeX (\frac...): "\a)" đổi thành "a)", "\ " hay "\" cuối dòng (dấu ngắt dòng lạc) bị bỏ.
+    .replace(/¦/g, "").replace(/\\(?=(?:[a-e]|\d{1,2})\)(?:\s|$))/g, "").replace(/\\(?![A-Za-z])/g, "");
+  const p = s.split(/([ \t]+|\n)/); // chẵn: từ, lẻ: khoảng trắng
+  let out = "";
+  for (let i = 0; i < p.length; ) {
+    if (i % 2 || !bareOk(p[i])) { out += p[i]; i++; continue; }
+    let e = i;
+    while (e + 2 < p.length && p[e + 1] !== NL && bareOk(p[e + 2])) e += 2;
+    const run = p.slice(i, e + 1).join("");
+    const [, body, punct] = run.match(/^([\s\S]*?)([.,;:]*)$/)!;
+    out += /\\[A-Za-z]/.test(body) ? `$${body}$${punct}` : run;
+    i = e + 1;
+  }
+  return out.replace(new RegExp(`${SOH}(\\d+)${SOH}`, "g"), (_, i) => stash[Number(i)]);
+}
 // Đề bài: mỗi ý a), b), 1), 2) hoặc "Câu N" một dòng, hệ phương trình một dòng riêng, gọn khoảng trắng và dòng trống.
-export const tidyStatement = (s: string) => onText(s.replace(/\r\n?/g, NL), (t) => breakItems(t)
+export const tidyStatement = (s: string) => onText(s.replace(/\r\n?/g, NL), (t) => breakItems(wrapBare(t))
   .replace(/([.:;?!])[ \t]+((?:[a-e]|\d{1,2})\))(?=\s)/g, `$1${NL}$2`)
   .replace(/[ \t]+(?=Câu \d+\s*[.:])/g, NL)
   .split(NL).map((l) => l.replace(/[ \t]+/g, " ").trim()).join(NL).replace(/\n{3,}/g, NL + NL).trim(), true);
 
 // Một câu (bước lời giải, gợi ý, sai lầm...): gọn khoảng trắng; câu trơn kết thúc bằng chữ, số hoặc công thức thì thêm dấu chấm.
-export const tidyLine = (s: string) => onText(s, (t) => t.split(NL).map((l) => l.replace(/[ \t]+/g, " ").trim()).join(NL).trim())
-  .replace(/([\p{L}\d)]|[^$]\$)$/u, "$1.");
+export const tidyLine = (s: string) => onText(s, (t) => wrapBare(t).split(NL).map((l) => l.replace(/[ \t]+/g, " ").trim()).join(NL).trim())
+  .replace(/([\p{L}\d)]|[^$.?!,;:]\$)$/u, "$1."); // công thức cuối dòng đã kết thúc bằng dấu câu ("...(2; 1).$") thì không thêm dấu chấm nữa
 
 const tidyAll = (p: Problem): Problem => {
   const q = { ...p, statement: tidyStatement(p.statement), solution_steps: p.solution_steps.map(tidyLine), common_errors: p.common_errors.map(tidyLine), extension: tidyLine(p.extension), hints: p.hints.map((h) => ({ ...h, text: tidyLine(h.text) })) };
@@ -74,7 +94,9 @@ function repairSteps(p: Problem): Problem {
   // Phần lớn bước mở đầu bằng "Bước N": phần tử nào không mở đầu thế là mảnh vỡ của bước trước, nối lại qua dấu xuống dòng gốc.
   if (steps.filter(isStep).length >= steps.length / 2) steps = steps.reduce<string[]>((o, s, i) => { if (i > 0 && !isStep(s)) o[o.length - 1] += NL + s; else o.push(s); return o; }, []);
   steps = steps.flatMap(split);
-  const q = walk({ ...p, solution_steps: steps }) as Problem;
+  const q0 = walk({ ...p, solution_steps: steps }) as Problem;
+  // Một phần tử chứa nhiều dòng (model gộp cả lời giải vào một chuỗi): mỗi dòng ngoài $...$ là một bước. Sau walk nên "\neq" đã được trả về đúng.
+  const q = { ...q0, solution_steps: q0.solution_steps.flatMap((s) => onText(s, (t) => t.replace(/[ \t]*\n\s*/g, SEP)).split(SEP).filter((x) => x.trim())) };
   // Lưu chữ sạch, không "Bước N:": giao diện và bot tự đánh số. Chỉ đổi số bước hoặc chữ thật mới làm chỉ dẫn cũ lệch; bỏ tiền tố thì giữ chỉ dẫn.
   const clean = { ...q, solution_steps: q.solution_steps.map(stripStep) };
   if (JSON.stringify(clean) === JSON.stringify(p)) return p;

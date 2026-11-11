@@ -3,6 +3,7 @@ import { askJson, type LlmCfg } from "@/lib/llm";
 import { canon, nums, texts } from "@/lib/answer-check";
 import { smartModel } from "@/lib/models";
 import { gradeRule } from "@/lib/grade";
+import { solveOnce } from "@/lib/solve";
 import type { Problem } from "@/lib/schema/problem";
 
 const SOLVE = `Giải bài Toán rồi trả đáp án. Tự giải thật cẩn thận từng bước, đừng bịa số. Mỗi đáp án một phần tử {"name","value"}: số thì value là chuỗi số thuần (không dấu ngăn nghìn, dấu thập phân là dấu chấm), ví dụ "275000", "0.5"; đáp án chữ hoặc biểu thức thì value là chữ ngắn gọn ("B", "vô nghiệm", "x=2"). Gồm cả đáp số cuối và các kết quả trung gian chính. Chỉ trả JSON {"answers":[{"name":string,"value":string}]}.`;
@@ -22,6 +23,8 @@ export type Sub = { state: "pass" | "fail" | "skip"; msg: string };
 export const substituteCheck = (p: Problem): string => substituteState(p).msg;
 export function substituteState(p: Problem): Sub {
   const SKIP: Sub = { state: "skip", msg: "" };
+  // Đề nhiều ý: đáp án gộp kết quả các ý khác nhau (ví dụ x, y của ý a khi m = 1 và m của ý b), không thể thế đồng thời vào hệ gốc.
+  if (/(^|\s)b\)\s/.test(p.statement)) return SKIP;
   const vars: Record<string, number> = {};
   for (const [k, v] of Object.entries(p.solution)) if (typeof v === "number" && /^[a-z]$/.test(k)) vars[k] = v;
   if (!Object.keys(vars).length) return SKIP;
@@ -65,8 +68,13 @@ export async function crossCheck(cfg: LlmCfg, p: Problem): Promise<string> {
   const sub = substituteCheck(p);
   if (sub) return `Kiểm chéo đáp án: ${sub}`;
   const smart = { ...cfg, model: smartModel(cfg.provider) };
-  const r = await askJson(smart, SOLVE + gradeRule(p.grade), [{ role: "user", text: `${p.statement}\nDữ liệu: ${JSON.stringify(p.data)}` }],
-    z.object({ answers: z.array(z.object({ name: z.string(), value: z.string() })).min(1) }), { think: true, use: "cross_check", temperature: 0 });
+  // Lượt giải độc lập dùng bước giải riêng (lib/solve.ts, đo đúng 30/30 so với 12/30 của lời gọi cũ), nhiệt độ cao hơn và đổi cách giải để không lặp đúng lỗi
+  // của lượt tạo đáp án. Hỏng thì dùng lời gọi cũ bên dưới.
+  const sv = await solveOnce(smart, p, { temperature: 0.4, hint: "chọn cách giải khác nếu có" }).catch(() => null);
+  const r = sv
+    ? { answers: Object.entries(sv.answers).map(([name, value]) => ({ name, value: String(value) })) }
+    : await askJson(smart, SOLVE + gradeRule(p.grade), [{ role: "user", text: `${p.statement}\nDữ liệu: ${JSON.stringify(p.data)}` }],
+      z.object({ answers: z.array(z.object({ name: z.string(), value: z.string() })).min(1) }), { think: true, use: "cross_check", temperature: 0 });
   const gotN = r.answers.flatMap((a) => nums(a.value));
   const gotT = r.answers.map((a) => canon(a.value));
   const lack = missingNums(nums(p.solution), gotN);

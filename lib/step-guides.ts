@@ -5,6 +5,7 @@ import { numsIn, stripStep } from "@/lib/chat/progress";
 import { canon } from "@/lib/answer-check";
 import { gradeRule } from "@/lib/grade";
 import { reportError } from "@/lib/errors";
+import { walk } from "@/lib/latex-fix";
 import type { Problem } from "@/lib/schema/problem";
 
 const SYSTEM = `Viết CHỈ DẪN cho từng bước của lời giải một bài Toán, cho học sinh đang làm bước đó. Mỗi bước gồm:
@@ -52,7 +53,9 @@ export async function makeStepGuides(cfg: LlmCfg, p: Problem, steps = p.solution
 ${p.statement}\nDữ liệu: ${JSON.stringify(p.data)}\nCác bước lời giải (số kèm "KHÔNG được nhắc" là kết quả mới của chính bước đó, tuyệt đối không xuất hiện trong goal, hints, why của bước đó):\n${steps.map((s, i) => { const ban = newNumbers(steps, i, p); return `${i + 1}. ${s}${ban.length ? `\n   KHÔNG được nhắc: ${ban.join(", ")}` : ""}`; }).join("\n")}${errs}`;
   let note = ""; // lý do lượt trước hỏng: báo cho AI để lượt sau không lặp lại
   for (let t = 0; t < 3; t++) {
-    const x = await askJson(cfg, SYSTEM + gradeRule(p.grade), [{ role: "user", text: text + note }], out, { maxTokens: 6000, use: "step_guides" }).catch(async (e) => { await reportError(e, `tạo chỉ dẫn từng bước, đề ${p.id}`, { teacherId: cfg.teacherId, actor: "teacher" }); return null; });
+    const raw = await askJson(cfg, SYSTEM + gradeRule(p.grade), [{ role: "user", text: text + note }], out, { maxTokens: 6000, use: "step_guides" }).catch(async (e) => { await reportError(e, `tạo chỉ dẫn từng bước, đề ${p.id}`, { teacherId: cfg.teacherId, actor: "teacher" }); return null; });
+    // AI hay viết \times, \frac chỉ với một dấu gạch chéo ngược trong JSON: trả ký tự điều khiển về lệnh LaTeX trước khi kiểm và lưu.
+    const x = raw && (walk(raw) as typeof raw);
     if (x && x.steps.length !== steps.length) await reportError(new Error(`AI trả sai số bước: ${x.steps.length}/${steps.length}, đề ${p.id}`), "tạo chỉ dẫn từng bước", { teacherId: cfg.teacherId, actor: "teacher", kind: "format" });
     if (x?.steps.length !== steps.length) { note = x ? `\nLần trước bạn trả ${x.steps.length} phần tử, SAI: phải đúng ${steps.length} phần tử.` : "\nLần trước JSON không hợp lệ. Trả lại đúng định dạng."; continue; }
     const given = [p.data, p.statement];

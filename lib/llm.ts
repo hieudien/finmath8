@@ -17,16 +17,16 @@ export type LlmCfg = {
   use?: string; // nhãn "dùng làm gì" của lượt gọi, ghi vào nhật ký để thống kê token
 };
 export type Usage = { provider: Provider; model: string; input: number; cached: number; output: number; thoughts: number; use?: string; ms?: number };
-type Turn = { role: "user" | "model"; text: string; image?: { mime: string; b64: string } };
+export type Turn = { role: "user" | "model"; text: string; image?: { mime: string; b64: string } };
 
 // Structured output của Gemini: ép đúng khung JSON, khỏi mô tả định dạng trong prompt và khỏi gọi lại khi JSON sai.
 const DROP = new Set(["$schema", "default", "minimum", "maximum", "additionalProperties"]);
 const clean = (n: unknown): unknown => Array.isArray(n) ? n.map(clean) : n && typeof n === "object" ? Object.fromEntries(Object.entries(n).filter(([k]) => !DROP.has(k)).map(([k, v]) => [k, clean(v)])) : n;
 const jsonSchema = (schema: z.ZodType) => { try { return clean(z.toJSONSchema(schema, { io: "input" })); } catch { return undefined; } };
 
-async function callGemini(cfg: LlmCfg, system: string, turns: Turn[], schema?: z.ZodType) {
+async function callGemini(cfg: LlmCfg, system: string, turns: Turn[], schema?: z.ZodType, text = false) {
   const ai = new GoogleGenAI({ apiKey: cfg.key });
-  const base = { systemInstruction: system, responseMimeType: "application/json", responseJsonSchema: schema && jsonSchema(schema), temperature: cfg.temperature, seed: cfg.seed, maxOutputTokens: cfg.maxTokens, abortSignal: cfg.signal };
+  const base = { systemInstruction: system, responseMimeType: text ? "text/plain" : "application/json", responseJsonSchema: text ? undefined : schema && jsonSchema(schema), temperature: cfg.temperature, seed: cfg.seed, maxOutputTokens: cfg.maxTokens, abortSignal: cfg.signal };
   const run = (extra: object) => ai.models.generateContent({ model: cfg.model, contents: turns.map((t) => ({ role: t.role, parts: [{ text: t.text }, ...(t.image ? [{ inlineData: { mimeType: t.image.mime, data: t.image.b64 } }] : [])] })), config: { ...base, ...extra } });
   // Tắt suy nghĩ để trả lời nhanh; model không hỗ trợ mức này (báo lỗi liên quan "thinking") thì gọi lại như thường.
   let res;
@@ -104,6 +104,44 @@ export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string,
     }
   }
   throw last;
+}
+
+// Như askJson nhưng trả văn bản thuần (không ép JSON): dùng khi nội dung có nhiều dấu \ của LaTeX mà JSON hay làm hỏng.
+// Cùng cơ chế hết hạn chót, đổi model khi hết quota hoặc quá tải; không tự kiểm tra định dạng, nơi gọi tự tách.
+export async function askText(cfg0: LlmCfg, system: string, turns: Turn[], opts: { think?: boolean | "low"; maxTokens?: number; deadlineMs?: number; attemptMs?: number; use?: string; temperature?: number; seed?: number } = {}): Promise<string> {
+  const cfg = { ...cfg0, ...opts };
+  const deadline = Date.now() + (opts.deadlineMs ?? Infinity);
+  const all = [cfg.model, ...PROVIDERS[cfg.provider].models.filter((id) => id !== cfg.model)].slice(0, 4);
+  const alive = all.filter((m) => (dead.get(deadKey(cfg, m)) ?? 0) < Date.now());
+  const chain = alive.length ? alive : [cfg.model];
+  let last: unknown;
+  for (let i = 0; i < chain.length; i++) {
+    const left = deadline - Date.now();
+    if (left <= 0) throw last ?? new Error("AI_TIMEOUT: quá thời gian chờ AI");
+    const cap = i + 1 < chain.length ? Math.min(left, opts.attemptMs ?? Infinity) : left;
+    const ac = new AbortController();
+    try {
+      const run = askOneText({ ...cfg, model: chain[i], signal: ac.signal }, system, turns);
+      if (cap === Infinity) return await run;
+      let timer: ReturnType<typeof setTimeout>;
+      const timeout = new Promise<never>((_, rej) => { timer = setTimeout(() => { rej(new Error(cap < left ? "AI_SLOW: model trả lời quá chậm" : "AI_TIMEOUT: quá thời gian chờ AI")); ac.abort(); }, cap); });
+      return await Promise.race([run, timeout]).finally(() => clearTimeout(timer));
+    } catch (e) {
+      if (/AI_TIMEOUT/.test(String(e))) throw last && isQuota(last) ? last : e;
+      const quota = isQuota(e);
+      if (!quota && !isOverload(e)) throw e;
+      last = e;
+      dead.set(deadKey(cfg, chain[i]), Date.now() + (isLongQuota(e) ? 3_600_000 : quota || /AI_SLOW/.test(String(e)) ? 20_000 : 60_000));
+      if (i + 1 < chain.length) cfg.onFallback?.(chain[i], chain[i + 1], String(e).slice(0, 120));
+    }
+  }
+  throw last;
+}
+
+async function askOneText(cfg: LlmCfg, system: string, turns: Turn[]): Promise<string> {
+  const t0 = Date.now();
+  const c = { ...cfg, onUsage: cfg.onUsage && ((u: Usage) => cfg.onUsage!({ ...u, ms: Date.now() - t0 })) };
+  return withRetry(() => (c.provider === "openai" ? callOpenAI(c, system, turns, false) : callGemini(c, system, turns, undefined, true)));
 }
 
 async function askOne<T extends z.ZodType>(cfg: LlmCfg, system: string, turns: Turn[], schema: T): Promise<z.infer<T>> {

@@ -11,8 +11,15 @@ export function lintProblem(p: Problem): string[] {
   const out: string[] = [];
   if (!p.step_checks.length && textVals(p.solution).length) out.push("Đáp án có phần chữ hoặc biểu thức: chưa có kết quả chuẩn từng bước để chấm và chặn lộ. Bấm tạo lại chỉ dẫn từng bước.");
   // JSON viết \times \frac \begin \neq với MỘT dấu gạch chéo thì thành tab, form feed, backspace, xuống dòng: công thức mất chữ, lời giải bị cắt vụn.
-  const allText = [p.statement ?? "", ...p.solution_steps, ...p.hints.map((h) => h.text), ...p.step_hints.flat()];
-  if (allText.some((t) => /[\t\f\b\v\r]/.test(t))) out.push("Có ký tự điều khiển (tab, xuống dòng lạ) trong đề, lời giải hoặc gợi ý: thường do JSON viết \\times, \\frac, \\begin, \\neq chỉ với một dấu \\. Viết lại thành \\\\times, \\\\frac...");
+  // Nêu rõ chỗ nào hỏng để giáo viên biết sửa ở ô nào.
+  const CTRL = /[\t\f\b\v\r\x07]/;
+  const where = [
+    CTRL.test(p.statement ?? "") ? "đề bài" : "",
+    ...p.solution_steps.map((t, i) => (CTRL.test(t) ? `lời giải bước ${i + 1}` : "")),
+    ...p.hints.map((h, i) => (CTRL.test(h.text) ? `gợi ý mức ${i + 1}` : "")),
+    ...p.step_hints.flatMap((hs, i) => (hs.some((t) => CTRL.test(t)) ? [`chỉ dẫn bước ${i + 1}`] : [])),
+  ].filter(Boolean);
+  if (where.length) out.push(`Có ký tự điều khiển (tab, xuống dòng lạ) trong ${where.slice(0, 4).join(", ")}${where.length > 4 ? "..." : ""}: thường do JSON viết \\times, \\frac, \\begin, \\neq chỉ với một dấu \\. Viết lại thành \\\\times, \\\\frac...`);
   const loose = p.solution_steps.map((s, i) => (i > 0 && !/^Bước \d/.test(s) ? i + 1 : 0)).filter(Boolean);
   if (loose.length && p.solution_steps.filter((s) => /^Bước \d/.test(s)).length >= p.solution_steps.length / 2) out.push(`Bước ${list(loose.map((n) => n - 1))} không mở đầu bằng "Bước N": có thể một bước bị cắt thành nhiều mảnh (thường do dấu \\n trong công thức).`);
   if (p.solution_steps.length === 1) out.push("Lời giải chỉ có 1 bước nên bot không chia được từng bước. Bấm tạo lại lời giải.");

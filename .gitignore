@@ -47,3 +47,5 @@ dev.err
 # eval output
 /evals/out-*.json
 /evals/progress.log
+
+/evals/out/

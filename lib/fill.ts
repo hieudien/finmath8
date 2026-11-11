@@ -8,18 +8,24 @@ import { aboveGrade, gradeRule } from "@/lib/grade";
 import { checkSteps, crossCheck, substituteState } from "@/lib/verify-solution";
 import { smartModel } from "@/lib/models";
 import { repairProblem } from "@/lib/repair";
+import { walk } from "@/lib/latex-fix";
+import { FORMAT_RULE, FORMAT_JSON } from "@/lib/format-rule";
 import { stripStep } from "@/lib/chat/progress";
+import { solveOnce } from "@/lib/solve";
 import type { Problem } from "@/lib/schema/problem";
 
-const SOLUTION_SYSTEM = `Giải bài Toán rồi trả đáp án chuẩn. Tự giải thật cẩn thận, đừng bịa số. Mỗi đáp án một phần tử {"name","value"}: số thì value là chuỗi số, ví dụ x = 3 là {"name":"x","value":"3"}; hệ hai ẩn x = 4, y = -3 là hai phần tử x và y; nhiều nghiệm đặt tên x1, x2; vô nghiệm hoặc đáp án chữ là {"name":"ket_luan","value":"vô nghiệm"}. Đáp án dạng điều kiện (tìm tham số, có nghiệm hay vô nghiệm) viết NGẮN GỌN một cụm, ví dụ {"name":"ket_luan","value":"m khác -4"}, không viết cả câu giải thích. Chỉ trả JSON {"answers":[{"name":string,"value":string}]}.`;
+export const SOLUTION_SYSTEM = `Giải bài Toán rồi trả đáp án chuẩn. Tự giải thật cẩn thận, đừng bịa số. Mỗi đáp án một phần tử {"name","value"}: số thì value là chuỗi số, ví dụ x = 3 là {"name":"x","value":"3"}; hệ hai ẩn x = 4, y = -3 là hai phần tử x và y; nhiều nghiệm đặt tên x1, x2; vô nghiệm hoặc đáp án chữ là {"name":"ket_luan","value":"vô nghiệm"}. Đáp án dạng điều kiện (tìm tham số, có nghiệm hay vô nghiệm) viết NGẮN GỌN một cụm, ví dụ {"name":"ket_luan","value":"m khác -4"}, không viết cả câu giải thích. Chỉ trả JSON {"answers":[{"name":string,"value":string}]}.`;
+
+// Lời giải chi tiết đã qua bước giải riêng, đưa cho makeSteps làm tham khảo để các bước viết gọn không đổi kết quả.
+export const referenceNote = (steps: string[]) => (steps.length ? `Lời giải tham khảo đã kiểm tra (viết gọn lại thành 3–8 bước, GIỮ ĐÚNG các kết quả):\n${steps.join("\n")}` : "");
 
 // Viết lời giải từng bước khớp đáp án đã có. Trả mảng bước, hoặc chuỗi lỗi để báo giáo viên.
 export async function makeSteps(cfg: LlmCfg, p: Problem, note = ""): Promise<string[] | string> {
-  const out = await askJson(cfg, 'Viết lời giải từng bước (3–8 bước) cho bài Toán. Mỗi bước 1–2 câu đủ chủ vị, kết thúc bằng dấu chấm, liệt kê nhiều ý trong một bước thì ngăn bằng dấu chấm phẩy, nêu rõ phép tính và kết quả trung gian CỤ THỂ (mỗi bước phải là một phép tính hay kết luận học sinh tự làm được, không viết bước chỉ chép lại dữ kiện đề), bước cuối là kết luận. Mỗi bước là MỘT phần tử riêng của mảng, không ghi "Bước N" đầu câu (giao diện tự đánh số). Lời giải PHẢI ra đúng đáp án đã cho trong "solution". Chỉ trả JSON {"steps": [string]}. Trong JSON, mỗi dấu \\ của LaTeX phải viết gấp đôi (\\\\frac, \\\\times, \\\\begin), nếu không sẽ thành ký tự điều khiển.' + gradeRule(p.grade), [{ role: "user", text: `${p.statement}
+  const out = await askJson(cfg, 'Viết lời giải từng bước (3–8 bước) cho bài Toán. Mỗi bước 1–2 câu đủ chủ vị, kết thúc bằng dấu chấm, liệt kê nhiều ý trong một bước thì ngăn bằng dấu chấm phẩy, nêu rõ phép tính và kết quả trung gian CỤ THỂ (mỗi bước phải là một phép tính hay kết luận học sinh tự làm được, không viết bước chỉ chép lại dữ kiện đề), bước cuối là kết luận. Đề nhiều ý a), b): lời giải đi lần lượt từng ý. BẮT BUỘC: bước đầu tiên của ý a) mở đầu bằng "a) ", bước đầu tiên của ý b) mở đầu bằng "b) " (tương tự c), d)). Bước cuối của MỖI ý là một câu kết luận nêu rõ kết quả bằng công thức, ví dụ "Vậy $m = -6$ thì hệ có nghiệm duy nhất thỏa mãn đề.", không viết kết luận chung chung kiểu "kết luận giá trị của m thỏa mãn". Mỗi bước là một phần tử riêng của mảng "steps": tuyệt đối không gộp nhiều bước vào một chuỗi và không dùng ký tự xuống dòng trong chuỗi. Mỗi bước là MỘT phần tử riêng của mảng, không ghi "Bước N" đầu câu (giao diện tự đánh số). Lời giải PHẢI ra đúng đáp án đã cho trong "solution". Chỉ trả JSON {"steps": [string]}. Trong JSON, mỗi dấu \\ của LaTeX phải viết gấp đôi (\\\\frac, \\\\times, \\\\begin), nếu không sẽ thành ký tự điều khiển.' + FORMAT_RULE + FORMAT_JSON + gradeRule(p.grade), [{ role: "user", text: `${p.statement}
 Dữ liệu: ${JSON.stringify(p.data)}
 Đáp án: ${JSON.stringify(p.solution)}${note ? `\n${note}` : ""}` }], z.object({ steps: z.array(z.string().min(3)).min(2).max(8) }), { think: "low", use: "solution_steps" });
   // Mọi số lớn trong đáp án phải xuất hiện trong lời giải, nếu không thì không dùng (AI giải lệch đáp án).
-  const steps = out.steps.map(stripStep);
+  const steps = repairProblem({ ...p, solution_steps: out.steps }).solution_steps.map(stripStep); // tách phần tử nhiều dòng, sửa \ bị nuốt
   const missing = missingAnswers(p.solution, steps);
   return missing.length ? `AI viết lời giải chưa khớp đáp án của đề (thiếu ${missing.join(", ")}). Bấm thử lại, hoặc kiểm tra lại đáp án trong đề.` : steps;
 }
@@ -27,6 +33,15 @@ Dữ liệu: ${JSON.stringify(p.data)}
 // Nạp phần còn thiếu theo thứ tự: đáp án, lời giải từng bước, chỉ dẫn từng bước. Phần đã có thì giữ nguyên.
 export async function fillMissing(cfg: LlmCfg, p: Problem): Promise<Problem | string> {
   let q = p;
+  let reference = "";
+  if (!Object.keys(q.solution).length) {
+    // Bước giải riêng (lib/solve.ts): đo trên 10 đề đúng 30/30 so với 12/30 của lời gọi chỉ trả đáp án bên dưới. Lỗi hoặc lệch lời giải đang có thì rơi về cách cũ.
+    const sv = await solveOnce(cfg, q).catch(() => null);
+    if (sv && !(q.solution_steps.length && missingAnswers(sv.answers, q.solution_steps).length)) {
+      q = { ...q, solution: sv.answers as Problem["solution"] };
+      reference = referenceNote(sv.steps); // dòng giải chi tiết chỉ làm tham khảo; số bước hiển thị cho học sinh do makeSteps viết gọn lại
+    }
+  }
   if (!Object.keys(q.solution).length) {
     const ref = q.solution_steps.length ? `\nLời giải tham khảo:\n${q.solution_steps.join("\n")}` : "";
     // Dạng mảng {name,value}: khung JSON của Gemini bỏ additionalProperties nên đối tượng tự do hay bị trả rỗng.
@@ -37,7 +52,7 @@ export async function fillMissing(cfg: LlmCfg, p: Problem): Promise<Problem | st
     q = { ...q, solution };
   }
   if (!q.solution_steps.length) {
-    const s = await makeSteps(cfg, q);
+    const s = await makeSteps(cfg, q, reference);
     if (typeof s === "string") return s;
     q = withGuides({ ...q, solution_steps: s }, null);
   }
@@ -82,8 +97,9 @@ const sameAnswer = (a: Record<string, unknown>, b: Record<string, unknown>) => {
 async function voteAnswer(cfg: LlmCfg, p: Problem, first: Record<string, unknown>): Promise<Record<string, unknown> | null> {
   const ok = (s: Record<string, unknown>) => substituteState({ ...p, solution: s }).state !== "fail";
   if (!nums(first).length) return first;
-  const solve = () => askJson({ ...cfg, model: smartModel(cfg.provider) }, SOLUTION_SYSTEM + gradeRule(p.grade), [{ role: "user", text: p.statement }], z.object({ answers: pairs.min(1) }), { think: true, use: "answer" })
-    .then((r) => toRecord(r.answers), () => null);
+  // Lượt giải độc lập dùng bước giải riêng (lib/solve.ts); lượt sau đổi nhiệt độ để không lặp đúng lỗi của lượt trước.
+  let n = 0;
+  const solve = () => solveOnce(cfg, p, { temperature: n++ ? 0.5 : 0 }).then((r) => r?.answers ?? null, () => null);
   const second = await solve(); // trùng `first` thì đủ phiếu; lệch mới giải lượt thứ ba (tiết kiệm lượt suy nghĩ)
   const votes = [first, second, ...(second && sameAnswer(first, second) ? [] : [await solve()])].filter((v): v is Record<string, unknown> => !!v);
   const win = votes.find((v, i) => votes.some((w, j) => j !== i && sameAnswer(v, w)));
@@ -97,8 +113,8 @@ async function rebuildFromStatement(cfg: LlmCfg, p: Problem, keep: boolean): Pro
   // keep: đáp án đã có nên không giải lại (bỏ mục answers, bớt suy nghĩ), đưa đáp án vào để gợi ý và sai lầm khớp với nó.
   const smart = { ...cfg, model: smartModel(cfg.provider) };
   const ask = () => keep
-    ? askJson(smart, deriveSystem(true) + gradeRule(p.grade), [{ role: "user", text: `${p.statement}\nĐáp án: ${JSON.stringify(p.solution)}` }], derived.omit({ answers: true }), { think: "low", use: "answer" })
-    : askJson(smart, deriveSystem(false) + gradeRule(p.grade), [{ role: "user", text: p.statement }], derived, { think: true, use: "answer" });
+    ? askJson(smart, deriveSystem(true) + FORMAT_RULE + FORMAT_JSON + gradeRule(p.grade), [{ role: "user", text: `${p.statement}\nĐáp án: ${JSON.stringify(p.solution)}` }], derived.omit({ answers: true }), { think: "low", use: "answer" })
+    : askJson(smart, deriveSystem(false) + FORMAT_RULE + FORMAT_JSON + gradeRule(p.grade), [{ role: "user", text: p.statement }], derived, { think: true, use: "answer" });
   let r = await ask();
   if (unaccented(r)) r = await ask(); // thử lại một lần
   if (unaccented(r)) return "AI trả phần gợi ý, sai lầm thường gặp không có dấu tiếng Việt. Bấm chạy lại.";
@@ -129,7 +145,8 @@ const stale = (q: Problem) => lintProblem(q).length > 0 || q.step_checks.length 
 // Làm một đề đạt chuẩn để dùng luôn: kiểm chéo đáp án khớp, đủ lời giải và chỉ dẫn từng bước, lint sạch, đã duyệt.
 // Không đạt thì trả chuỗi lỗi (không lưu đề dở). Kiểm chéo chỉ chạy với đề AI mới tạo hoặc đang có cảnh báo; đề giáo viên đã duyệt thì giữ nguyên đáp án.
 // trusted: đáp án đã đáng tin (giáo viên duyệt hoặc qua kiểm bằng code): bỏ kiểm chéo bằng AI nhưng vẫn rà lỗi tính trong lời giải.
-export async function finishProblem(cfg: LlmCfg, p: Problem, trusted = false): Promise<Problem | string> {
+export async function finishProblem(cfg: LlmCfg, p0: Problem, trusted = false): Promise<Problem | string> {
+  const p = walk(p0) as Problem; // đề từ bước AI giải (normalize) có thể còn ký tự điều khiển do JSON nuốt dấu gạch chéo ngược: sửa trước khi kiểm lint (chỉ sửa ký tự, không làm gọn chữ)
   if (!trusted && Object.keys(p.solution).length && (!p.reviewed || p.check_note)) {
     const note = await crossCheck(cfg, p);
     if (note) return note;

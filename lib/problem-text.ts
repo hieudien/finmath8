@@ -1,4 +1,5 @@
 import type { Problem } from "@/lib/schema/problem";
+import { groupAnswers } from "@/lib/answers";
 
 // Nhãn tiếng Việt cho các khóa thường gặp trong data/solution. Khóa lạ thì hiện nguyên tên.
 const LABEL: Record<string, [string, string?]> = {
@@ -46,7 +47,9 @@ export function problemToText(p: Problem): string {
   out.push("ĐỀ BÀI", p.statement ?? "(Đề chưa có phần nội dung bài)", "");
   if (Object.keys(p.data).length) out.push("DỮ KIỆN", ...entries(p.data).map(line), "");
   out.push("LỜI GIẢI", ...(p.solution_steps.length ? p.solution_steps.map((s, i) => `Bước ${i + 1}. ${s}`) : ["(Chưa có lời giải từng bước)"]), "");
-  out.push("KẾT QUẢ", ...entries(p.solution).map(line), "");
+  out.push("KẾT QUẢ", ...groupAnswers(p.solution).flatMap((g) => (g.part === ""
+    ? entries(Object.fromEntries(g.items.map((i) => [i.key, i.value]))).map(line)
+    : g.items.map((i) => line({ label: `Ý ${g.part}) ${labelOf(i.key)}`, value: fmtValue(i.key, i.value) })))), "");
   if (p.common_errors.length) out.push("SAI LẦM THƯỜNG GẶP", ...p.common_errors.map((e) => `- ${e}`), "");
   out.push("GỢI Ý CHO HỌC SINH", ...[...p.hints].sort((a, b) => a.level - b.level).map((h) => `Mức ${h.level}: ${h.text}`));
   if (p.extension) out.push("", "CÂU HỎI MỞ RỘNG", p.extension);
