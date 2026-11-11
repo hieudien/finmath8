@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { freeCode, pool, splitProblems } from "../lib/batch";
+import { freeCode, pool } from "../lib/batch";
 import { problemSchema, type Problem } from "../lib/schema/problem";
 
 vi.mock("../lib/llm", () => ({ askJson: vi.fn(), askText: vi.fn() }));
@@ -19,19 +19,6 @@ const base = (over: Partial<Problem> = {}): Problem => problemSchema.parse({
 // Lượt giải độc lập của bỏ phiếu đi qua lib/solve.ts (askText, văn bản có thẻ).
 const tag = (v: string) => `<loi_giai>\nBước 1.\n</loi_giai>\n<dap_an>\ncost = ${v}\n</dap_an>`;
 const guides = { goals: ["Tính tiền giảm", "Tính số tiền phải trả"], hints: [["a", "b", "c"], ["a", "b", "c"]], checks: [{ result: "45000", accepts: [] }, { result: "255000", accepts: [] }], traps: [] };
-
-describe("splitProblems", () => {
-  it("tách theo Bài/Câu/Đề, bỏ phần mở đầu", () => {
-    const t = "Đề kiểm tra\nBài 1. Giải phương trình 2x + 3 = 11 và nêu nghiệm.\nBài 2: Một cửa hàng giảm giá 15% cho áo giá 300000 đồng.\nCâu 3) Tính chu vi hình chữ nhật 4cm x 6cm.";
-    const r = splitProblems(t);
-    expect(r).toHaveLength(3);
-    expect(r[1]).toContain("cửa hàng");
-  });
-  it("không có đầu đề thì tách theo 2 dòng trống; một đề thì giữ nguyên", () => {
-    expect(splitProblems("Giải phương trình 2x + 3 = 11 cho biết x.\n\n\nTính 15% của 300000 đồng là bao nhiêu?")).toHaveLength(2);
-    expect(splitProblems("Giải phương trình 2x + 3 = 11.\n\nTìm x (một đề, có một dòng trống).")).toHaveLength(1);
-  });
-});
 
 describe("freeCode", () => {
   it("đánh số tiếp, không trùng", () => {

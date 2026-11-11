@@ -7,7 +7,7 @@ Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải q
 ## Cách hoạt động
 
 1. Giáo viên đăng ký, nhập API key của Google Gemini hoặc OpenAI trong Cài đặt (key được mã hóa AES-256-GCM, không trả về trình duyệt).
-2. Giáo viên tạo đề: soạn trực tiếp, dán văn bản, nạp JSON hoặc chụp ảnh đề. AI điền đáp án, lời giải, gợi ý và câu chào đầu tiên; giáo viên kiểm tra rồi lưu. Giáo viên bấm "Tạo chỉ dẫn từng bước" để AI viết việc cần làm và gợi ý cho từng bước.
+2. Giáo viên tạo đề: soạn trực tiếp, chụp ảnh đề hoặc tạo hàng loạt từ tệp Word (tab "Tạo đề hàng loạt"). AI điền đáp án, lời giải, gợi ý và câu chào đầu tiên; giáo viên kiểm tra rồi lưu. Giáo viên bấm "Tạo chỉ dẫn từng bước" để AI viết việc cần làm và gợi ý cho từng bước.
 3. Giáo viên chọn một hoặc nhiều đề (đề cần có lời giải từng bước, thiếu thì học sinh chưa làm được), tạo liên kết công khai và gửi cho học sinh.
 4. Học sinh mở liên kết, nhập họ tên và lớp (không nhớ, mở lại là nhập lại), chọn đề, làm bài theo kiểu đã chọn, tự đánh giá mức hiểu bài và mức hài lòng cuối bài.
 5. Hệ thống chấm theo 4 tiêu chí (nhận diện, lập kế hoạch, tính toán, giải thích). Giáo viên xem thống kê theo liên kết, hồ sơ từng học sinh và nội dung hội thoại.
@@ -16,7 +16,7 @@ Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải q
 
 **Giáo viên**
 - Trình tạo và sửa đề: tiêu đề, lớp, chủ đề, kỹ năng, đề bài, đáp án (JSON), lời giải từng bước, 3 mức gợi ý, sai lầm thường gặp, câu chào.
-- Đọc đề từ ảnh (chụp hoặc dán Ctrl+V) bằng AI; nạp JSON (kiểm tra bằng Zod, báo lỗi theo trường) hoặc dán văn bản để AI chuẩn hóa. Đề mẫu có sẵn trong `de-mau-10.json`.
+- Đọc đề từ ảnh (chụp hoặc dán Ctrl+V) bằng AI; tạo hàng loạt từ tệp Word (bản nháp, xác nhận mới lưu, có lịch sử các đợt). Đề mẫu có sẵn trong `de-mau-10.json`.
 - Soạn công thức bằng bàn phím toán MathLive, xem trước KaTeX ngay trong ô nhập.
 - Đề do AI tạo có cờ `reviewed = false`: phải mở đề, tick xác nhận đáp án đúng rồi lưu mới được đưa vào liên kết.
 - AI tạo lời giải từng bước và kiểm tra lời giải khớp đáp án.

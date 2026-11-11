@@ -4,7 +4,7 @@ import { check } from "@/lib/db";
 import { admin } from "@/lib/supabase/admin";
 import { askJson, type LlmCfg } from "@/lib/llm";
 import { leaks, leaksCalc } from "@/lib/chat/prompt";
-import { checkpoints, countDone, hasEq, markByNumbers, met, needsEq, numsIn, shapeOk, SOS_REPLY, stepOf, verify, type Cp } from "@/lib/chat/progress";
+import { checkpoints, countDone, hasEq, looksLikeWork, markByNumbers, met, needsEq, numsIn, shapeOk, SOS_REPLY, stepOf, verify, type Cp } from "@/lib/chat/progress";
 import { botMsg, finish, INJECT, MAX_TURNS, SOS, withReview, type Msg, type Session, type Tm } from "@/lib/chat/engine";
 import { stepCue, stepLead, stepsGreeting } from "@/lib/chat/goals";
 import { ladder, MAX_HINT, revealLine, stepText } from "@/lib/chat/assist";
@@ -147,7 +147,7 @@ export async function stepTurn(cfg: LlmCfg, s: Session, p: Problem, text: string
   const cur = cps.find((c) => !(mask0 >> c.id & 1)); // bước học sinh đang làm
   let reply = "", blocked = false;
   // Bước cần phương trình mà tin không có dấu "=": server trả câu cố định, không gọi AI (cùng input luôn cùng kết quả).
-  const noEq = !off && !!cur && mask === mask0 && !cur.must.length && needsEq(cur) && !hasEq(clean);
+  const noEq = !off && !!cur && mask === mask0 && !cur.must.length && needsEq(cur) && !hasEq(clean) && looksLikeWork(clean);
   const stuck = !off && cur && mask === mask0 ? cannedStuck(s, p, cps, mask0, clean, prior, lastBot(all)) : "";
   // Nộp đúng một kết quả sai đã biết của bước này (do AI viết sẵn lúc tạo chỉ dẫn): trả lời giải thích lỗi đó, không gọi AI.
   const why = !off && cur && mask === mask0 && !stuck ? trapReply(p, cur, clean, known(cps, mask0)) : "";

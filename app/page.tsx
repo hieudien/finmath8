@@ -4,7 +4,7 @@ import { LinkButton } from "@/components/ui";
 const NUMS = [["3", "mức gợi ý riêng cho từng bước"], ["4", "tiêu chí chấm: nhận diện, kế hoạch, tính toán, giải thích"], ["5", "bước giải quyết vấn đề theo Polya"]];
 
 const TEACHER = [
-  ["Tạo đề nhanh", "Soạn đề trực tiếp, dán văn bản, nạp JSON hoặc chụp ảnh đề để AI đọc. Công thức soạn bằng bàn phím toán, không cần biết LaTeX."],
+  ["Tạo đề nhanh", "Soạn đề trực tiếp, chụp ảnh đề để AI đọc, hoặc nạp cả tệp Word thành nhiều đề cùng lúc. Công thức soạn bằng bàn phím toán, không cần biết LaTeX."],
   ["AI làm phần nặng", "AI tạo đáp án, lời giải từng bước, gợi ý từng bước và câu chào. Đề do AI tạo phải được thầy cô duyệt mới đưa vào liên kết."],
   ["Làm bài từng bước", "Học sinh nộp một bước giải mỗi lần; kẹt thì có 3 mức gợi ý riêng cho từng bước, lấy từ đề."],
   ["Gửi một liên kết", "Chọn đề, tạo liên kết công khai, đặt nhãn nhóm và giới hạn số tin. Chạy bằng API key Gemini hoặc OpenAI của chính thầy cô."],

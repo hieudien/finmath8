@@ -45,7 +45,7 @@ it("số lớn trong đáp án đều xuất hiện trong lời giải", () => {
   }
 });
 
-import { fmtValue, labelOf, problemToText } from "../lib/problem-text";
+import { fmtValue, labelOf } from "../lib/problem-text";
 
 it("mọi khóa trong data và solution có nhãn tiếng Việt", () => {
   const thieu = new Set<string>();
@@ -61,7 +61,3 @@ it("định dạng số và phần trăm", () => {
   expect(fmtValue("best", "B")).toBe("B");
 });
 
-it("văn bản đề có đủ các phần", () => {
-  const t = problemToText((list as never[])[0]);
-  for (const h of ["ĐỀ BÀI", "DỮ KIỆN", "LỜI GIẢI", "KẾT QUẢ", "GỢI Ý CHO HỌC SINH", "Bước 1.", "Phải trả ở B: 270.000 đồng", "Lựa chọn tốt nhất: B"]) expect(t).toContain(h);
-});

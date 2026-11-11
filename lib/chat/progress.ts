@@ -139,6 +139,8 @@ export function verify(c: Cp, evidence: string, said: string) {
 // Server kiểm cứng, không để AI phán: cùng một tin luôn cho cùng một kết quả.
 export const needsEq = (c: Cp) => /[=＝]/.test(stripStep(c.label));
 export const hasEq = (t: string) => /[=＝]/.test(t);
+// Tin trông như đang làm bài (có số, phép tính hoặc công thức). Tin toàn lời nói (xin đáp án, mơ hồ, lạc đề) thì không nhắc "thêm dấu =" vì không liên quan.
+export const looksLikeWork = (t: string) => /\d|[+×÷*^]|\\[a-z]+|\$/i.test(t);
 export const shapeOk = (c: Cp, said: string) => !needsEq(c) || (hasEq(said) && /\d/.test(said));
 
 // Thanh 5 bước Polya hiển thị: tính từ tiến độ thật, không do AI quyết định.

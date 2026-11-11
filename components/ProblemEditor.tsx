@@ -6,13 +6,15 @@ import { AiBadge, AiButton, Alert, Badge, Button, Field, GradeSelect, TextArea, 
 import MathTextArea from "@/components/MathTextArea";
 import type { Problem } from "@/lib/schema/problem";
 import { answersToLines, linesToAnswers } from "@/lib/answers";
+import { useFlyout } from "@/components/Flyout";
 
 const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
 const J = (v: unknown) => JSON.stringify(v, null, 2);
 const answered = (s: string) => s.trim() !== "" && s.trim() !== "{}"; // ô Đáp án đã có nội dung
 
-export default function ProblemEditor({ initial, newCode, rowId }: { initial?: Problem; newCode?: string; rowId?: string }) {
+export default function ProblemEditor({ initial, newCode, rowId, inPanel = false }: { initial?: Problem; newCode?: string; rowId?: string; inPanel?: boolean }) {
   const router = useRouter();
+  const fly = useFlyout(); // có giá trị khi đang mở trong flyout
   const p = initial;
   const [id, setId] = useState(p?.id ?? newCode ?? "BT01");
   const [title, setTitle] = useState(p?.title ?? "");
@@ -28,13 +30,24 @@ export default function ProblemEditor({ initial, newCode, rowId }: { initial?: P
   const [extension, setExtension] = useState(p?.extension ?? "");
   const [built, setBuilt] = useState<Problem | null>(null); // đề AI vừa làm đạt chuẩn: giữ chỉ dẫn từng bước để lưu cùng
   const [objectives, setObjectives] = useState(p?.learning_objectives ?? []);
-  const [ok, setOk] = useState(false);
+  const [ok, setOk] = useState(!!p?.answer_locked); // đề đang khóa: giữ khóa khi lưu, trừ khi sửa đáp án (tự bỏ tick)
   const [busy, setBusy] = useState("");
   const [reading, setReading] = useState(false);
+  const [locked, setLocked] = useState(!!p?.answer_locked); // đáp án đang khóa: ô Đáp án chỉ đọc tới khi bấm Mở khóa
+  const [unlocking, setUnlocking] = useState(false);
+
+  async function unlock() {
+    setUnlocking(true);
+    const { ok: good, data: r } = await post<{ error?: string }>("/api/problems", { action: "unlock_answer", id: rowId });
+    setUnlocking(false);
+    if (!good) return toast("danger", r.error ?? "Không mở khóa được.");
+    setLocked(false); setOk(false);
+    toast("success", "Đã mở khóa đáp án. Sửa xong thì tick xác nhận và bấm Lưu đề để khóa lại.");
+  }
 
   // Điền các ô theo đề AI vừa làm (chưa lưu). AI có thể giải sai: giáo viên phải tự kiểm tra và tick xác nhận đáp án.
   function fill(g: Problem) {
-    setBuilt(g);
+    setBuilt(g); setLocked(false); fly?.markDirty(true); // AI điền lại thì đáp án chưa được xác nhận nữa
     setSkills(g.skills.join(", ")); setData(J(g.data)); setSolution(answersToLines(g.solution)); setSteps(g.solution_steps.join("\n"));
     setErrors(g.common_errors.join("\n")); setHints([1, 2, 3].map((l) => g.hints.find((h) => h.level === l)?.text ?? ""));
     setExtension(g.extension); setObjectives(g.learning_objectives);
@@ -132,6 +145,7 @@ export default function ProblemEditor({ initial, newCode, rowId }: { initial?: P
     }
     const { ok: good, data: r } = await post("/api/problems", { action: "save", problems: [problem] });
     if (!good) { setBusy(""); return toast("danger", r.error ?? "Không lưu được."); }
+    if (fly) { fly.close(); setTimeout(() => router.refresh(), 300); return; } // trong flyout: lùi về danh sách, đợi lùi xong mới làm mới để danh sách không hiện dữ liệu cũ
     router.push("/dashboard/problems"); router.refresh();
   }
 
@@ -153,11 +167,18 @@ export default function ProblemEditor({ initial, newCode, rowId }: { initial?: P
     <Alert tone="warning"><span className="font-medium">{t}</span><ul className="mt-1 list-disc pl-5">{items.map((x) => <li key={x}>{x}</li>)}</ul></Alert>
   );
   return (
-    <div className="flex max-w-3xl flex-col gap-4">
+    <div className="flex max-w-3xl flex-col gap-4" onInput={() => fly?.markDirty(true)}>
       {reading && <div role="status" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"><div className="rounded-sm bg-surface px-6 py-4 text-lg font-medium text-text">AI đang đọc ảnh, đợi vài giây...</div></div>}
-      <Link href="/dashboard/problems" className="inline-flex min-h-11 items-center text-sm text-primary underline">Về danh sách đề</Link>
-      <h1 className="flex flex-wrap items-center gap-2">{p ? `Sửa đề ${id}` : "Tạo đề mới"} {p && <Badge tone={p.answer_locked ? "success" : "warn"}>{p.answer_locked ? "Đáp án đã khóa" : "Chưa xác nhận đáp án"}</Badge>}</h1>
-      {!(p?.answer_locked) && <Alert tone="warning">AI có thể giải sai. Hãy tự giải đề, sửa ô Đáp án nếu cần, bấm &quot;AI giải và chuẩn hóa đề&quot; để AI viết lại lời giải theo đáp án đúng, rồi tick xác nhận để khóa đáp án khi lưu.</Alert>}
+      {!inPanel && <Link href="/dashboard/problems" className="inline-flex min-h-11 items-center text-sm text-primary underline">Về danh sách đề</Link>}
+      {/* Thanh cố định khi cuộn: tiêu đề, trạng thái khóa, nút AI. Trên điện thoại nằm dưới thanh menu (cao 61px). */}
+      <div className={`sticky z-10 -mx-4 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border bg-surface px-4 py-2 ${inPanel ? "-top-4" : "top-[61px] md:top-0"}`}>
+        <h1 className="flex flex-wrap items-center gap-2 text-xl">{p ? `Sửa đề ${id}` : "Tạo đề mới"} {p && <Badge tone={locked ? "success" : "warn"}>{locked ? "Đáp án đã khóa" : "Chưa xác nhận đáp án"}</Badge>}</h1>
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+          {p && rowId && locked && <Button variant="ghost" block={false} onClick={unlock} pending={unlocking ? "Đang mở khóa..." : undefined}>Mở khóa</Button>}
+          <AiButton variant="secondary" block={false} onClick={() => run()} disabled={aiWhy.length > 0} pending={busy || undefined}>AI giải và chuẩn hóa</AiButton>
+        </div>
+      </div>
+      {!locked && <Alert tone="warning">AI có thể giải sai. Hãy tự giải đề, sửa ô Đáp án nếu cần, bấm &quot;AI giải và chuẩn hóa&quot; để AI viết lại lời giải theo đáp án đúng, rồi tick xác nhận để khóa đáp án khi lưu.</Alert>}
       {p && rowId && <Field label="Mã đề" value={id} onChange={(e) => setId(e.target.value.toUpperCase())} maxLength={20} hint="Đổi mã thì liên kết và thống kê cũ của đề này cũng đổi theo." />}
       <Field label="Tiêu đề" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} />
       <div className="grid gap-4 sm:grid-cols-2">
@@ -168,14 +189,11 @@ export default function ProblemEditor({ initial, newCode, rowId }: { initial?: P
         <MathTextArea label="Đề bài (học sinh sẽ thấy)" rows={5} value={statement} onChange={setStatement} hint="Bấm Công thức để soạn công thức, hoặc gõ trong $...$. Sửa đề bài xong thì bấm lại nút AI để cập nhật lời giải. Dán ảnh đề (Ctrl+V) vào ô này: AI tách đề bài vào ô này, đáp án và cách giải (nếu ảnh có) vào các ô bên dưới." />
       </div>
       <label className="inline-flex min-h-11 w-fit cursor-pointer items-center text-sm text-primary underline">Hoặc chọn ảnh đề từ máy&nbsp;<AiBadge /><input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) readImage(f); }} /></label>
-      <div className="flex flex-wrap gap-2">
-        <AiButton variant="secondary" onClick={() => run()} disabled={aiWhy.length > 0} pending={busy || undefined}>AI giải và chuẩn hóa đề</AiButton>
-      </div>
-      <p className="-mt-2 text-sm text-text-muted">Ô Đáp án đã có thì AI giữ đáp án và viết lại lời giải, gợi ý. Ô Đáp án trống thì AI tự giải. Muốn AI giải lại từ đầu: xóa hết ô Đáp án (để trống) rồi bấm nút.</p>
+      <p className="text-sm text-text-muted">Ô Đáp án đã có thì AI giữ đáp án và viết lại lời giải, gợi ý. Ô Đáp án trống thì AI tự giải. Muốn AI giải lại từ đầu: xóa hết ô Đáp án (để trống) rồi bấm nút.</p>
       <Why title="Chưa bấm được nút AI vì:" items={aiWhy} />
 
       <Field label="Kỹ năng (cách nhau dấu phẩy)" value={skills} onChange={(e) => setSkills(e.target.value)} hint="Dùng để thống kê học sinh yếu kỹ năng nào." />
-      <TextArea label="Đáp án (mỗi dòng một đáp án: tên = giá trị)" rows={4} value={solution} onChange={(e) => { setSolution(e.target.value); setOk(false); }} className="font-mono text-sm" hint="Ví dụ x = 3. Đề nhiều ý thì thêm tiền tố ý: a_x = 2, b_m = -6. Phân số như 14/3 được đổi thành số thập phân. Chatbot không bao giờ nói ra các số trong đáp án." />
+      <TextArea label="Đáp án (mỗi dòng một đáp án: tên = giá trị)" rows={4} value={solution} readOnly={locked} onChange={(e) => { setSolution(e.target.value); setOk(false); }} className="font-mono text-sm" hint="Ví dụ x = 3. Đề nhiều ý thì thêm tiền tố ý: a_x = 2, b_m = -6. Phân số như 14/3 được đổi thành số thập phân. Chatbot không bao giờ nói ra các số trong đáp án." />
       <MathTextArea label="Lời giải từng bước (mỗi dòng một bước)" rows={6} value={steps} onChange={setSteps} />
       {hints.map((h, i) => <MathTextArea key={i} label={`Gợi ý mức ${i + 1}`} rows={2} value={h} onChange={(v) => setHints((a) => a.map((x, j) => (j === i ? v : x)))} />)}
       <MathTextArea label="Sai lầm thường gặp (mỗi dòng một ý)" rows={3} value={errors} onChange={setErrors} />

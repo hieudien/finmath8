@@ -18,6 +18,8 @@ import { readExamImage, type ImageResult } from "@/lib/read-image";
 import { solveOnce } from "@/lib/solve";
 import { walk } from "@/lib/latex-fix";
 import { checkSteps, crossCheck } from "@/lib/verify-solution";
+import { readExamItems } from "@/lib/read-multi";
+import { holdAnswer, releaseAnswer, summary, viewOf, type BatchItem, type BatchStatus } from "@/lib/import-batch";
 const NORMALIZE_SYSTEM = `Bạn chuẩn hóa một đề Toán từ văn bản thô sang JSON. Đề có thể thuộc bất kỳ chủ đề và lớp nào (giải phương trình, hình học, tỉ lệ, tình huống thực tế...). Chỉ trả JSON một đối tượng đúng mẫu:
 {"id":"BTxx","title":string,"grade":số lớp (đúng lớp được giao ở cuối),"topic":string,"skills":[2–5 kỹ năng/kiến thức chính cần dùng, mỗi mục một cụm ngắn],"statement":string (nguyên văn đề bài cho học sinh; đề nhiều ý thì mỗi ý một dòng a), b), c) cách nhau bằng ký tự xuống dòng),"learning_objectives":[string],"data":{số liệu đề cho, nếu có; tỉ lệ dạng thập phân 0.x},"solution":{đáp án chuẩn. Số thì dạng số, ví dụ {"x":3}; nhiều nghiệm {"x1":2,"x2":-3}; vô nghiệm hoặc đáp án chữ {"ket_luan":"vô nghiệm"}},"solution_steps":[lời giải từng bước, mỗi bước 1–2 câu đủ chủ vị có phép tính, kết thúc bằng dấu chấm, liệt kê nhiều ý trong một bước thì ngăn bằng dấu chấm phẩy, bước cuối là kết luận],"common_errors":[sai lầm học sinh hay mắc với đề này],"hints":[{"level":1,"text":..},{"level":2,"text":..},{"level":3,"text":..}],"extension":string,"rubric":{"identify":3,"plan":3,"calculate":3,"explain":3}}
 Quy tắc: công thức, phương trình có ký hiệu toán đặt trong $...$ theo LaTeX (ví dụ $x^2$, $2x + 3 = 11$), KHÔNG dùng \( \) hay \[ \]. Tự giải đề, tính đáp án thật cẩn thận, đừng bịa số không có trong đề. Gợi ý mức 1 chỉ hỏi định hướng; mức 2 gợi ý cách giải; mức 3 nêu bước tính đầu tiên, KHÔNG nêu kết quả cuối. Nếu văn bản có nhiều đề, chỉ chuẩn hóa đề đầu. Nếu thiếu id, dùng "BT99".`;
@@ -43,7 +45,6 @@ async function save(teacherId: string, list: Problem[]) {
 
 const grade = z.number({ error: "Chọn lớp cho đề." }).int().min(1, "Chọn lớp cho đề.").max(12, "Chọn lớp cho đề.");
 const body = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("import_json"), raw: z.string().min(2) }),
   z.object({ action: z.literal("normalize"), text: z.string().min(20, "Văn bản quá ngắn."), grade }),
   z.object({ action: z.literal("read_image"), image: z.string().max(6_000_000, "Ảnh quá lớn.").regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/, "Chỉ nhận ảnh png, jpeg, webp.") }),
   z.object({ action: z.literal("save"), problems: z.array(z.unknown()).min(1) }),
@@ -57,7 +58,14 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("todo_all") }),
   z.object({ action: z.literal("finish"), ids: z.array(z.string().uuid()).min(1).max(CHUNK) }),
   z.object({ action: z.literal("audit"), ids: z.array(z.string().uuid()).min(1).max(CHUNK) }),
-  z.object({ action: z.literal("normalize_batch"), texts: z.array(z.string().min(20).max(20_000)).min(1).max(CHUNK), grade }),
+  // Nạp hàng loạt từ tệp Word: đọc từng nguồn (ảnh/đoạn chữ) thành nhiều đề -> tạo đợt nháp -> AI làm theo hai pha (make, finish) -> xác nhận mới lưu vào problems.
+  z.object({ action: z.literal("read_items"), image: z.string().max(6_000_000, "Ảnh quá lớn.").regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/, "Chỉ nhận ảnh png, jpeg, webp.").optional(), text: z.string().min(20, "Đoạn chữ quá ngắn.").max(20_000).optional() }).refine((x) => !!x.image !== !!x.text, "Gửi một ảnh hoặc một đoạn chữ."),
+  z.object({ action: z.literal("batch_start"), file_name: z.string().max(200), grade, sources: z.number().int().min(0).max(500), read_errors: z.array(z.object({ name: z.string().max(100), reason: z.string().max(500) })).max(100),
+    items: z.array(z.object({ statement: z.string().trim().min(15, "Có đề quá ngắn.").max(6000), answers: z.record(z.string(), z.unknown()), steps: z.array(z.string().max(1000)).max(30) })).min(1, "Chưa có đề nào.").max(80, "Tối đa 80 đề mỗi đợt.") }),
+  z.object({ action: z.literal("batch_make"), id: z.string().uuid(), idx: z.array(z.number().int().min(0)).min(1).max(CHUNK) }),
+  z.object({ action: z.literal("batch_finish"), id: z.string().uuid(), idx: z.array(z.number().int().min(0)).min(1).max(CHUNK) }),
+  z.object({ action: z.literal("batch_confirm"), id: z.string().uuid() }),
+  z.object({ action: z.literal("batch_cancel"), id: z.string().uuid() }),
   z.object({ action: z.literal("complete"), problem: z.unknown() }),
   z.object({ action: z.literal("standardize_draft"), problem: z.unknown() }),
   z.object({ action: z.literal("delete"), id: z.string().uuid() }),
@@ -72,15 +80,6 @@ export const POST = api(async (req, tr) => {
   if (!p.success) return bad(p.error.issues[0]?.message ?? "Dữ liệu không hợp lệ.");
   const b = p.data;
   tr.action = b.action;
-
-  if (b.action === "import_json") {
-    let raw: unknown;
-    try { raw = JSON.parse(b.raw); } catch { return bad("JSON sai cú pháp. Kiểm tra dấu ngoặc và dấu phẩy."); }
-    const { ok, errors } = parseProblems(raw);
-    if (errors.length) return bad(errors.join(" | "));
-    const n = await save(u.id, ok.map(lockIfAnswered)); // đáp án do giáo viên đưa vào: khóa luôn
-    return Response.json({ ok: true, saved: n });
-  }
 
   // Đọc đề của giáo viên (đã qua kiểm định dạng) cùng version để khóa khi ghi lại.
   const NO_KEY = "Chưa có API key. Vào Cài đặt để nhập.";
@@ -205,29 +204,118 @@ export const POST = api(async (req, tr) => {
     return Response.json({ ok: true, made, failed, left: left.map((r) => r.id) });
   }
 
-  // Đề thô -> đề nháp (chưa duyệt) lưu vào DB với mã mới BT01, BT02...; phần còn lại (đáp án khớp, lời giải, chỉ dẫn) do "finish" làm. texts là mảng của client: trả chỉ số.
-  if (b.action === "normalize_batch") {
+  // Đọc một ảnh hoặc một đoạn chữ thành nhiều đề (chưa lưu gì): trả cho giáo viên xem trước, sửa, xác nhận đáp số rồi mới tạo đợt.
+  if (b.action === "read_items") {
     const cfg = await llmCfg(u.id);
     if (!cfg) return bad(NO_KEY);
-    const { data: have } = await admin().from("problems").select("code").eq("teacher_id", u.id).is("deleted_at", null);
-    const taken = new Set(((have ?? []) as { code: string }[]).map((r) => r.code));
-    const failed: { name: string; reason: string; i: number }[] = [];
-    let made = 0;
-    const left = await pool(b.texts.map((text, i) => ({ text, i })), PAR, Date.now() + BUDGET_MS, async ({ text, i }) => {
-      try {
-        const out = await askJson(cfg, NORMALIZE_SYSTEM + gradeRule(b.grade), [{ role: "user", text }], problemSchema, { think: true, use: "normalize" });
-        out.grade = b.grade; // lớp do giáo viên chọn, không tin AI
-        out.id = freeCode("BT01", taken); taken.add(out.id); // đồng bộ, không có await giữa kiểm và thêm nên các đề song song không trùng mã
-        out.reviewed = false;
-        out.solution_steps = []; out.step_goals = []; out.step_hints = []; out.step_checks = []; out.error_traps = []; // lời giải và chỉ dẫn do "finish" viết khớp đáp án
-        await save(u.id, [out]);
-        made++;
-      } catch (e) {
-        await reportError(e, "chuẩn hóa đề hàng loạt", { teacherId: u.id, actor: "teacher" });
-        failed.push({ name: `Đề thứ ${i + 1} trong văn bản`, reason: "AI chưa chuẩn hóa được đề này.", i });
+    let image: { mime: string; b64: string } | undefined;
+    if (b.image) { const [head, b64] = b.image.split(","); image = { mime: head.slice(5, head.indexOf(";")), b64 }; }
+    const r = await readExamItems(cfg, { image, text: b.text });
+    await log({ actor: "teacher", action: "import_read", teacherId: u.id, meta: { items: r.items.length, attempts: r.attempts, answers: r.items.filter((i) => Object.keys(i.solution).length).length, warnings: r.items.reduce((n, i) => n + i.warnings.length, 0) } });
+    return Response.json({ ok: true, items: r.items, attempts: r.attempts });
+  }
+
+  type Batch = { id: string; status: BatchStatus; items: BatchItem[]; grade: number; file_name: string };
+  const loadBatch = async (id: string) => {
+    const { data } = await admin().from("import_batches").select("id,status,items,grade,file_name").eq("id", id).eq("teacher_id", u.id).maybeSingle();
+    return data as Batch | null;
+  };
+  const saveItems = async (id: string, items: BatchItem[]) => {
+    const { error } = await admin().from("import_batches").update({ items, updated_at: new Date().toISOString() } as never).eq("id", id).eq("teacher_id", u.id).eq("status", "draft");
+    if (error) throw new Error("Lỗi cơ sở dữ liệu: " + error.message);
+  };
+  const within = <T,>(p: Promise<T>, what: string) => Promise.race([p, new Promise<never>((_, rej) => { const t = setTimeout(() => rej(new Error(`AI_TIMEOUT: ${what} quá 50s`)), 50_000); t.unref?.(); })]);
+
+  if (b.action === "batch_start") {
+    const { data: open } = await admin().from("import_batches").select("id").eq("teacher_id", u.id).eq("status", "draft").limit(1);
+    if (open?.length) return bad("Còn một đợt nháp chưa xác nhận. Xác nhận hoặc hủy đợt đó trước.", 409);
+    const items: BatchItem[] = b.items.map((x) => ({ statement: x.statement, answers: x.answers, steps: x.steps, status: "pending" }));
+    const { data, error } = await admin().from("import_batches").insert({ teacher_id: u.id, file_name: b.file_name, grade: b.grade, sources: b.sources, read_errors: b.read_errors, items } as never).select("id").single();
+    if (error) throw new Error("Lỗi cơ sở dữ liệu: " + error.message);
+    await log({ actor: "teacher", action: "import_batch_created", teacherId: u.id, meta: { file: b.file_name, found: items.length, with_answer: summary(items).withAnswer, read_errors: b.read_errors.length } });
+    return Response.json({ ok: true, id: (data as { id: string }).id });
+  }
+
+  // Hai pha, mỗi pha một request ngắn dưới 60s: make = AI đọc đề thành đề nháp (tiêu đề, chủ đề, kỹ năng...), finish = AI viết lời giải, chỉ dẫn và kiểm chéo.
+  // Kết quả ghi vào đợt nháp sau mỗi lượt nên đóng tab giữa chừng vẫn làm tiếp được. Đề đã có đáp số thì khóa luôn (giáo viên xác nhận ở bước xem trước).
+  if (b.action === "batch_make" || b.action === "batch_finish") {
+    const cfg = await llmCfg(u.id);
+    if (!cfg) return bad(NO_KEY);
+    const batch = await loadBatch(b.id);
+    if (!batch) return bad("Không tìm thấy đợt nạp.", 404);
+    if (batch.status !== "draft") return bad("Đợt này đã xác nhận hoặc đã hủy.", 409);
+    const make = b.action === "batch_make";
+    const todo = [...new Set(b.idx)].filter((i) => { const it = batch.items[i]; return !!it && (make ? it.status === "pending" || (it.status === "failed" && !it.draft) : !!it.draft && (it.status === "drafted" || it.status === "failed")); });
+    const patch = new Map<number, Partial<BatchItem>>();
+    const left = await pool(todo, PAR, Date.now() + BUDGET_MS, async (i) => {
+      const it = batch.items[i];
+      const name = `Đề thứ ${i + 1}`;
+      if (make) {
+        try {
+          const raw = await askJson(cfg, NORMALIZE_SYSTEM + gradeRule(batch.grade), [{ role: "user", text: it.statement }], problemSchema, { think: true, use: "normalize" });
+          const out = walk({ ...raw, grade: batch.grade, statement: it.statement }) as Problem; // lớp do giáo viên chọn, đề bài là bản giáo viên đã duyệt
+          out.id = "BT00"; out.reviewed = false; out.check_note = "";
+          out.solution_steps = []; out.step_goals = []; out.step_hints = []; out.step_checks = []; out.error_traps = []; // do pha finish viết khớp đáp án
+          if (Object.keys(it.answers).length) { out.solution = it.answers as Problem["solution"]; } // đáp số từ tệp chỉ để AI bám theo, không khóa: giáo viên tự xác nhận sau khi lưu
+          out.answer_locked = false;
+          patch.set(i, { status: "drafted", reason: "", draft: out });
+        } catch (e) {
+          await reportError(e, `nạp hàng loạt: đọc ${name}`, { teacherId: u.id, actor: "teacher" });
+          patch.set(i, { status: "failed", reason: "AI chưa đọc được đề này. Bấm chạy lại." });
+        }
+        return;
       }
+      const r0 = await within(standardizeProblem(cfg, holdAnswer(it.draft!, Object.keys(it.answers).length > 0), referenceNote(it.steps)), `làm ${name}`).catch(async (e) => { await reportError(e, `nạp hàng loạt: làm ${name}`, { teacherId: u.id, actor: "teacher" }); return "AI chưa trả lời được. Bấm chạy lại."; });
+      const r = typeof r0 === "string" ? r0 : releaseAnswer(r0);
+      if (typeof r === "string") {
+        if (!r.startsWith("AI chưa trả lời được")) await reportError(new Error(r), `nạp hàng loạt ${name}: không đạt chuẩn`, { teacherId: u.id, actor: "teacher", kind: "format" });
+        patch.set(i, { status: "failed", reason: r.slice(0, 500) });
+        return;
+      }
+      patch.set(i, { status: r.check_note ? "review" : "ok", reason: r.check_note ?? "", draft: r });
     });
-    return Response.json({ ok: true, made, failed, left: left.map((x) => x.i) });
+    // Ghi gộp một lần (các đề chạy song song, tránh ghi đè lẫn nhau): đọc lại đợt mới nhất rồi chèn kết quả.
+    const fresh = (await loadBatch(b.id)) ?? batch;
+    patch.forEach((p, i) => { fresh.items[i] = { ...fresh.items[i], ...p }; });
+    await saveItems(b.id, fresh.items);
+    return Response.json({ ok: true, left, view: viewOf(fresh.items) });
+  }
+
+  // Xác nhận: chỉ các đề đạt (ok, review) được ghi vào bảng problems với mã BT mới; đề lỗi ở lại trong đợt để tra lịch sử.
+  if (b.action === "batch_confirm") {
+    const batch = await loadBatch(b.id);
+    if (!batch) return bad("Không tìm thấy đợt nạp.", 404);
+    if (batch.status !== "draft") return bad("Đợt này đã xác nhận hoặc đã hủy.", 409);
+    const ready = batch.items.flatMap((it, i) => (it.draft && (it.status === "ok" || it.status === "review") ? [i] : []));
+    if (!ready.length) return bad("Chưa có đề nào đạt để lưu. Chạy AI trước.");
+    const now = new Date().toISOString();
+    const { data: claim } = await admin().from("import_batches").update({ status: "confirmed", confirmed_at: now, updated_at: now } as never).eq("id", b.id).eq("teacher_id", u.id).eq("status", "draft").select("id");
+    if (!claim?.length) return bad("Đợt này đã xác nhận hoặc đã hủy.", 409);
+    try {
+      const { data: have } = await admin().from("problems").select("code").eq("teacher_id", u.id).is("deleted_at", null);
+      const taken = new Set(((have ?? []) as { code: string }[]).map((r) => r.code));
+      const list: Problem[] = [];
+      for (const i of ready) {
+        const code = freeCode("BT01", taken); taken.add(code);
+        batch.items[i].code = code;
+        list.push({ ...batch.items[i].draft!, id: code });
+      }
+      await save(u.id, list);
+      check(await admin().from("import_batches").update({ items: batch.items } as never).eq("id", b.id));
+    } catch (e) {
+      await admin().from("import_batches").update({ status: "draft", confirmed_at: null } as never).eq("id", b.id).then((x) => x, () => null); // lưu hỏng thì trả về nháp để thử lại
+      throw e;
+    }
+    const sm = summary(batch.items);
+    await log({ actor: "teacher", action: "import_batch_confirmed", teacherId: u.id, meta: { batch: b.id, saved: ready.length, failed: sm.failed, review: sm.review } });
+    return Response.json({ ok: true, saved: ready.length, view: viewOf(batch.items) });
+  }
+
+  if (b.action === "batch_cancel") {
+    const { data } = await admin().from("import_batches").update({ status: "cancelled", updated_at: new Date().toISOString() } as never).eq("id", b.id).eq("teacher_id", u.id).eq("status", "draft").select("id");
+    if (!data?.length) return bad("Không hủy được: đợt không còn ở dạng nháp.", 409);
+    await log({ actor: "teacher", action: "import_batch_cancelled", teacherId: u.id, meta: { batch: b.id } });
+    return Response.json({ ok: true });
   }
 
   // Một đề chưa lưu (trình sửa đề): làm cho đạt chuẩn rồi trả về, giáo viên bấm Lưu mới ghi.

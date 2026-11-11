@@ -1,5 +1,3 @@
-import type { Problem } from "@/lib/schema/problem";
-import { groupAnswers } from "@/lib/answers";
 
 // Nhãn tiếng Việt cho các khóa thường gặp trong data/solution. Khóa lạ thì hiện nguyên tên.
 const LABEL: Record<string, [string, string?]> = {
@@ -24,11 +22,23 @@ const LABEL: Record<string, [string, string?]> = {
 
 export const labelOf = (k: string) => LABEL[k]?.[0] ?? k.replace(/_/g, " ");
 
+export function asFraction(v: number): string | null {
+  if (!Number.isFinite(v) || Number.isInteger(v) || (String(v).split(".")[1] ?? "").length < 4) return null;
+  for (let q = 2; q <= 200; q++) {
+    const p = Math.round(Math.abs(v) * q);
+    if (Math.abs(Math.abs(v) - p / q) < 1e-6) return `$${v < 0 ? "-" : ""}\\frac{${p}}{${q}}$`;
+  }
+  return null;
+}
+
 export function fmtValue(k: string, v: unknown): string {
   const unit = LABEL[k]?.[1];
   if (typeof v === "number") {
     // Tỉ lệ dạng thập phân (0,15) của giảm giá, lãi suất, thuế... hiện thành phần trăm (15%).
     if (/discount|rate|percent|vat/i.test(k) && v > 0 && v < 1) return `${+(v * 100).toFixed(2)}%`.replace(".", ",");
+    // Số thập phân vô hạn đã bị làm tròn (4,666667) hiện lại thành phân số; số thập phân ngắn (0,4) giữ nguyên.
+    const fr = asFraction(v);
+    if (fr) return fr;
     const n = v.toLocaleString("vi-VN", { maximumFractionDigits: 2 });
     return unit ? `${n}${unit === "%" ? "%" : " " + unit}` : n;
   }
@@ -39,19 +49,3 @@ export function fmtValue(k: string, v: unknown): string {
 }
 
 export const entries = (o: Record<string, unknown>) => Object.entries(o).map(([k, v]) => ({ key: k, label: labelOf(k), value: fmtValue(k, v) }));
-
-// Toàn bộ đề, lời giải, kết quả ở dạng văn bản thuần: để sao chép sang Word hoặc in.
-export function problemToText(p: Problem): string {
-  const line = (e: { label: string; value: string }) => `- ${e.label}: ${e.value}`;
-  const out: string[] = [`${p.id}. ${p.title}`, p.topic ? `Chủ đề: ${p.topic} (Lớp ${p.grade})` : `Lớp ${p.grade}`, ""];
-  out.push("ĐỀ BÀI", p.statement ?? "(Đề chưa có phần nội dung bài)", "");
-  if (Object.keys(p.data).length) out.push("DỮ KIỆN", ...entries(p.data).map(line), "");
-  out.push("LỜI GIẢI", ...(p.solution_steps.length ? p.solution_steps.map((s, i) => `Bước ${i + 1}. ${s}`) : ["(Chưa có lời giải từng bước)"]), "");
-  out.push("KẾT QUẢ", ...groupAnswers(p.solution).flatMap((g) => (g.part === ""
-    ? entries(Object.fromEntries(g.items.map((i) => [i.key, i.value]))).map(line)
-    : g.items.map((i) => line({ label: `Ý ${g.part}) ${labelOf(i.key)}`, value: fmtValue(i.key, i.value) })))), "");
-  if (p.common_errors.length) out.push("SAI LẦM THƯỜNG GẶP", ...p.common_errors.map((e) => `- ${e}`), "");
-  out.push("GỢI Ý CHO HỌC SINH", ...[...p.hints].sort((a, b) => a.level - b.level).map((h) => `Mức ${h.level}: ${h.text}`));
-  if (p.extension) out.push("", "CÂU HỎI MỞ RỘNG", p.extension);
-  return out.join("\n");
-}

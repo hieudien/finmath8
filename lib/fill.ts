@@ -13,6 +13,7 @@ import { FORMAT_RULE, FORMAT_JSON } from "@/lib/format-rule";
 import { stripStep } from "@/lib/chat/progress";
 import { solveOnce } from "@/lib/solve";
 import { swallow } from "@/lib/errors";
+import { wrapRecord } from "@/lib/math-wrap";
 import type { Problem } from "@/lib/schema/problem";
 
 export const SOLUTION_SYSTEM = `Giải bài Toán rồi trả đáp án chuẩn. Tự giải thật cẩn thận, đừng bịa số. Mỗi đáp án một phần tử {"name","value"}: số thì value là chuỗi số, ví dụ x = 3 là {"name":"x","value":"3"}; hệ hai ẩn x = 4, y = -3 là hai phần tử x và y; nhiều nghiệm đặt tên x1, x2; vô nghiệm hoặc đáp án chữ là {"name":"ket_luan","value":"vô nghiệm"}. Đáp án dạng điều kiện (tìm tham số, có nghiệm hay vô nghiệm) viết NGẮN GỌN một cụm, ví dụ {"name":"ket_luan","value":"m khác -4"}, không viết cả câu giải thích. Chỉ trả JSON {"answers":[{"name":string,"value":string}]}.`;
@@ -32,9 +33,9 @@ Dữ liệu: ${JSON.stringify(p.data)}
 }
 
 // Nạp phần còn thiếu theo thứ tự: đáp án, lời giải từng bước, chỉ dẫn từng bước. Phần đã có thì giữ nguyên.
-export async function fillMissing(cfg: LlmCfg, p: Problem): Promise<Problem | string> {
+export async function fillMissing(cfg: LlmCfg, p: Problem, ref = ""): Promise<Problem | string> {
   let q = p;
-  let reference = "";
+  let reference = ref; // lời giải có sẵn (từ tệp nạp) làm tham khảo cho makeSteps; bước giải riêng bên dưới ghi đè nếu phải tự giải
   if (!Object.keys(q.solution).length) {
     // Bước giải riêng (lib/solve.ts): đo trên 10 đề đúng 30/30 so với 12/30 của lời gọi chỉ trả đáp án bên dưới. Lỗi hoặc lệch lời giải đang có thì rơi về cách cũ.
     const sv = await solveOnce(cfg, q).catch(swallow("giải đề (điền đáp án)", { teacherId: cfg.teacherId, actor: "teacher" }));
@@ -66,7 +67,7 @@ export async function fillMissing(cfg: LlmCfg, p: Problem): Promise<Problem | st
 }
 
 const deriveSystem = (keep: boolean) => `Đọc đề Toán, rút dữ kiện, ${keep ? "" : "tính đáp án chuẩn "}và viết phần phụ của đề. Chỉ dựa vào đề bài, tự giải thật cẩn thận, đừng bịa số. Công thức đặt trong $...$ theo LaTeX, KHÔNG dùng \\( \\) hay \\[ \\].
-"data": mỗi dữ kiện cho trong đề là một phần tử {"name","value"} (CHỈ khóa "name" viết không dấu, ví dụ principal, rate, years; số thì value là chuỗi số, tỉ lệ viết dạng thập phân).
+"data": mỗi dữ kiện cho trong đề là một phần tử {"name","value"} (CHỈ khóa "name" viết không dấu, ví dụ principal, rate, years; số thì value là chuỗi số; đề cho PHÂN SỐ (2/5, một phần sáu...) thì giữ đúng phân số, viết "$\\\\frac{2}{5}$", TUYỆT ĐỐI không đổi sang số thập phân hay làm tròn; chỉ viết thập phân khi đề cho thập phân hoặc phần trăm; value là biểu thức, phân thức, căn, lũy thừa thì viết LaTeX và BỌC trong $...$, ví dụ "$\\\\frac{4}{x+y} + \\\\frac{1}{y-1} = 5$").
 ${keep ? "" : `"answers": mỗi đáp án một phần tử {"name","value"}: số thì value là chuỗi số; nhiều nghiệm đặt tên x1, x2; điều kiện hoặc đáp án chữ là {"name":"ket_luan","value":"..."} viết NGẮN GỌN một cụm (ví dụ "m khác -4"), không viết cả câu giải thích.`}
 "skills": 2–5 kỹ năng hoặc kiến thức chính cần dùng, mỗi mục một cụm ngắn. "learning_objectives": 2–4 mục tiêu học tập. "common_errors": 2–4 sai lầm học sinh hay mắc với chính đề này.
 "hints": đúng 3 mức. Mức 1 chỉ hỏi định hướng; mức 2 gợi ý cách giải; mức 3 nêu bước tính đầu tiên, KHÔNG nêu kết quả cuối. "extension": một câu hỏi mở rộng.
@@ -130,14 +131,14 @@ async function rebuildFromStatement(cfg: LlmCfg, p: Problem, keep: boolean): Pro
 // Chuẩn hóa một đề: lấy đề bài (statement) làm gốc, AI tạo lại data, lời giải, chỉ dẫn từng bước, gợi ý... (cái cũ bị thay hết).
 // Đáp án cũ giữ nguyên khi giáo viên đã duyệt (không còn cảnh báo) hoặc đã qua kiểm thay nghiệm bằng code, và không bị code bắt sai;
 // ngược lại AI giải lại có bỏ phiếu. Rồi finishProblem kiểm lời giải và lint. Không đạt thì trả chuỗi lỗi, đề cũ không bị ghi đè.
-export async function standardizeProblem(cfg: LlmCfg, p: Problem): Promise<Problem | string> {
+export async function standardizeProblem(cfg: LlmCfg, p: Problem, ref = ""): Promise<Problem | string> {
   const q0 = repairProblem(p), sub = substituteState(q0);
   const has = Object.keys(q0.solution).length > 0;
   // Đáp án khóa (giáo viên xác nhận) luôn giữ, kể cả khi code thấy không thỏa đề (khi đó ghi cảnh báo để giáo viên xem lại).
   const keep = has && (q0.answer_locked || sub.state === "pass");
   const q = await rebuildFromStatement(cfg, q0, keep);
   if (typeof q === "string") return q;
-  const r = await finishProblem(cfg, q, keep);
+  const r = await finishProblem(cfg, q, keep, ref);
   return typeof r !== "string" && q0.answer_locked && sub.state === "fail" ? { ...r, check_note: sub.msg } : r;
 }
 
@@ -146,13 +147,15 @@ const stale = (q: Problem) => lintProblem(q).length > 0 || q.step_checks.length 
 // Làm một đề đạt chuẩn để dùng luôn: kiểm chéo đáp án khớp, đủ lời giải và chỉ dẫn từng bước, lint sạch, đã duyệt.
 // Không đạt thì trả chuỗi lỗi (không lưu đề dở). Kiểm chéo chỉ chạy với đề AI mới tạo hoặc đang có cảnh báo; đề giáo viên đã duyệt thì giữ nguyên đáp án.
 // trusted: đáp án đã đáng tin (giáo viên duyệt hoặc qua kiểm bằng code): bỏ kiểm chéo bằng AI nhưng vẫn rà lỗi tính trong lời giải.
-export async function finishProblem(cfg: LlmCfg, p0: Problem, trusted = false): Promise<Problem | string> {
-  const p = walk(p0) as Problem; // đề từ bước AI giải (normalize) có thể còn ký tự điều khiển do JSON nuốt dấu gạch chéo ngược: sửa trước khi kiểm lint (chỉ sửa ký tự, không làm gọn chữ)
+export async function finishProblem(cfg: LlmCfg, p0: Problem, trusted = false, ref = ""): Promise<Problem | string> {
+  const w = walk(p0) as Problem;
+  const p: Problem = { ...w, data: wrapRecord(w.data) as Problem["data"] }; // dữ kiện LaTeX trần thì bọc $...$ để hiện công thức
+  // đề từ bước AI giải (normalize) có thể còn ký tự điều khiển do JSON nuốt dấu gạch chéo ngược: sửa trước khi kiểm lint (chỉ sửa ký tự, không làm gọn chữ)
   if (!trusted && Object.keys(p.solution).length && (!p.reviewed || p.check_note)) {
     const note = await crossCheck(cfg, p);
     if (note) return note;
   }
-  let q = await fillMissing(cfg, p);
+  let q = await fillMissing(cfg, p, ref);
   if (typeof q === "string") return q;
   // Đề mới hoặc đang có cảnh báo: rà lỗi tính trong lời giải (kiểm chéo chỉ so đáp án cuối). Sai thì viết lại một lần kèm chỗ sai, vẫn sai thì báo lỗi.
   if (trusted || !p.reviewed || p.check_note) {

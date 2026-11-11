@@ -13,15 +13,6 @@ export async function pool<T>(items: T[], n: number, stopAt: number, fn: (x: T) 
   return items.slice(i);
 }
 
-// Tách văn bản dán thành từng đề: theo dòng mở đầu "Bài 1", "Câu 2.", "Đề 3:"; không có thì theo khoảng trống từ 2 dòng trở lên; không có nữa thì cả văn bản là một đề.
-const HEAD = /^\s*(?:#+\s*)?(?:bài|câu|đề)\s*(?:số\s*)?\d+\s*[.:)\-–]?(?:\s|$)/i;
-export function splitProblems(text: string): string[] {
-  const lines = text.replace(/\r/g, "").split("\n");
-  const heads = lines.flatMap((l, i) => (HEAD.test(l) ? [i] : []));
-  const parts = heads.length >= 2 ? heads.map((h, k) => lines.slice(h, heads[k + 1] ?? lines.length).join("\n")) : text.replace(/\r/g, "").split(/\n[ \t]*\n[ \t]*\n+/);
-  return parts.map((s) => s.trim()).filter((s) => s.length >= 20);
-}
-
 // Mã đề chưa dùng, dạng BT01, BT02... (want là tiền tố hoặc mã mong muốn). Mã trùng thì tăng số.
 export function freeCode(want: string, taken: Set<string>): string {
   const w = want.trim().toUpperCase().replace(/[^A-Z0-9._-]/g, "").slice(0, 20) || "BT";

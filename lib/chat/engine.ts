@@ -50,10 +50,11 @@ export async function finish(cfg: LlmCfg, s: Session, p: Problem, teacherId: str
   const hintCount = bots.filter((m, i) => i > 0 && (m.hint_level ?? 1) > (bots[i - 1].hint_level ?? 1)).length;
   const duration = Math.round((Date.now() - new Date(s.started_at).getTime()) / 1000);
   const total = identify + plan + calculate + explain;
-  check(await db.from("session_evals").insert({
+  // Hai lượt chốt phiên có thể chạy gần như cùng lúc (tin cuối tự chốt + gửi thêm tin gần trần): bản chấm đến sau bỏ qua thay vì lỗi trùng khóa.
+  check(await db.from("session_evals").upsert({
     session_id: s.id, identify, plan, calculate, explain, total, final_correct: r.final_correct,
     max_hint_level: maxHint, hint_count: hintCount, errors: r.errors, duration_s: duration, gaps: helped.length ? r.gaps : [],
-  } as never));
+  } as never, { onConflict: "session_id", ignoreDuplicates: true }));
   check(await db.from("chat_sessions").update({ status: "done", ended_at: new Date().toISOString() } as never).eq("id", s.id));
   await log({ actor: "system", action: "eval_done", teacherId, anonId: s.anon_id, linkId: s.link_id, meta: { total, revealed: helped.length } });
   await log({ actor: "student", action: "chat_session_ended", teacherId, anonId: s.anon_id, linkId: s.link_id });
