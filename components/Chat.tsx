@@ -140,17 +140,17 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   if (!prob && problems.length === 1) return err ? <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col gap-4 px-4 py-8"><Brand tagline /><Alert tone="danger">{err}</Alert><Button variant="secondary" type="button" onClick={changeWho}>Đổi thông tin</Button></main> : null;
   if (!prob) {
     return (
-      <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col gap-4 px-4 py-8">
+      <main className="h-screen-d mx-auto flex max-w-md flex-col gap-4 overflow-hidden px-4 py-8">
         <Brand tagline />
         <h1>{label}</h1>
         <p className="text-text-muted">Xin chào <b>{who.name}</b> ({who.code}). Chọn một bài để bắt đầu. Chatbot sẽ gợi ý từng bước, bạn hãy tự suy nghĩ trước khi xin gợi ý.</p>
         <Button variant="ghost" type="button" onClick={changeWho} className="-ml-3 self-start text-sm">Đổi thông tin</Button>
         {err && <Alert tone="danger">{err}</Alert>}
-        <ul className="flex flex-col gap-2">
-          {problems.map((p) => (
+        <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain">
+          {problems.map((p, i) => (
             <li key={p.id}>
               <button onClick={() => start(p)} className="min-h-11 w-full rounded-sm border border-border-strong bg-surface px-4 py-3 text-left hover:bg-primary-soft">
-                <span className="font-medium">{p.title}</span>
+                <span className="font-medium"><span className="tnum mr-2 text-text-muted">{i + 1}.</span>{p.title}</span>
               </button>
             </li>
           ))}
@@ -161,14 +161,14 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
 
   return (
     <div className="h-screen-d mx-auto flex max-w-2xl flex-col overflow-hidden text-sm lg:max-w-6xl">
-      <header className="shrink-0 border-b border-border bg-surface px-4 py-2 sm:py-3">
+      <header className="shrink-0 border-b border-border bg-surface px-4 py-0.5 sm:py-3">
         <div className="mb-2 hidden items-center justify-between gap-3 sm:flex">
           <Brand size="sm" />
           <p className="truncate text-sm text-text-muted" title={label}>{label}{sid && <span className="tnum ml-2 font-mono text-xs">#{shortId(sid)}</span>}</p>
         </div>
         <div className="flex items-center justify-between gap-2">
-          <h1 className="truncate text-sm font-semibold sm:text-lg">{prob.title}</h1>
-          {problems.length > 1 && <Button variant="ghost" type="button" onClick={back} className="-mr-3 shrink-0 text-sm">← Danh sách</Button>}
+          <h1 className="truncate text-xs font-semibold sm:text-lg">MathStep AI</h1>
+          {problems.length > 1 && <Button variant="ghost" type="button" onClick={back} className="-mr-3 shrink-0 text-xs max-sm:min-h-8! sm:text-sm">← Danh sách bài</Button>}
         </div>
       </header>
 
@@ -179,7 +179,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
             <h2 className="text-xs font-semibold uppercase tracking-wide text-primary">Đề bài</h2>
             <button type="button" onClick={() => setShowStmt(true)} className="-mr-2 h-7 rounded-sm px-2 text-xs font-medium text-primary hover:bg-surface lg:hidden">Xem đủ</button>
           </div>
-          <div onClick={() => setShowStmt(true)} className="max-h-[5.5rem] cursor-pointer overflow-hidden leading-tight [mask-image:linear-gradient(to_bottom,black_65%,transparent)] lg:max-h-none lg:cursor-auto lg:overflow-visible lg:leading-normal lg:[mask-image:none][&_.katex]:text-[1.05em] [&_.katex-display]:my-0.5 [&_.py-1]:py-0"><MathText text={prob.statement.replace(/\n{2,}/g, "\n").trim()} /></div>
+          <div className="max-h-[5.5rem] overflow-y-auto overscroll-contain leading-tight lg:max-h-none lg:overflow-visible lg:leading-normal [&_.katex]:text-[1.05em] [&_.katex-display]:my-0.5 [&_.py-1]:py-0"><MathText text={prob.statement.replace(/\n{2,}/g, "\n").trim()} /></div>
         </section>
       )}
       {showStmt && prob.statement && (
@@ -207,7 +207,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
         <div ref={end} />
       </div>
 
-      <footer className="max-h-[45dvh] shrink-0 overflow-y-auto border-t border-border bg-surface px-4 pt-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
+      <footer className="max-h-[35dvh] shrink-0 overflow-y-auto border-t border-border bg-surface px-4 pt-2 sm:max-h-[45dvh]" style={{ paddingBottom: "max(0.25rem, env(safe-area-inset-bottom))" }}>
         {err && <div className="mb-2"><Alert tone="danger">{err}{sid ? ` (Mã phiên: ${shortId(sid)})` : ""}</Alert></div>}
         {done ? (
           <div className="flex flex-col gap-3">

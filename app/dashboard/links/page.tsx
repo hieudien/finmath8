@@ -2,7 +2,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { CreateLink, LinkActions } from "@/components/LinkTools";
 import { Empty, LinkButton } from "@/components/ui";
 import { MathText } from "@/components/MathText";
-import { parseProblems } from "@/lib/schema/problem";
+import { livePick } from "@/lib/links";
 import { missingInfo } from "@/lib/ready";
 
 type L = { id: string; slug: string; label: string; tag: string | null; active: boolean; created_at: string; problems_snapshot: unknown[] };
@@ -16,6 +16,7 @@ export default async function Page() {
   ]);
   const problems = ((pr ?? []) as { id: string; code: string; content: { title: string; answer_locked?: boolean } }[]).map((p) => ({ id: p.id, code: p.code, title: p.content.title, missing: missingInfo(p.content), unconfirmed: p.content.answer_locked !== true }));
   const links = (ln ?? []) as L[];
+  const rows = ((pr ?? []) as { code: string; content: unknown }[]);
   const idOf = new Map(((pr ?? []) as { id: string; code: string }[]).map((p) => [p.code, p.id]));
   const fmt = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" });
   return (
@@ -41,7 +42,7 @@ export default async function Page() {
                 <details className="rounded-sm border border-border px-3">
                   <summary className="min-h-11 cursor-pointer py-2 font-medium">Xem {l.problems_snapshot.length} đề trong liên kết</summary>
                   <ul className="flex flex-col divide-y divide-border pb-2">
-                    {parseProblems(l.problems_snapshot).ok.map((p) => (
+                    {livePick(l.problems_snapshot, rows).map((p) => (
                       <li key={p.id} className="flex flex-col gap-1 py-3">
                         <p className="font-medium"><span className="tnum text-text-muted">{p.id}</span> {p.title}</p>
                         {p.statement && <p className="max-w-prose text-sm"><MathText text={p.statement} /></p>}

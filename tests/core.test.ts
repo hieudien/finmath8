@@ -245,12 +245,12 @@ describe("readiness", () => {
 
 describe("kieu tuong tac", () => {
   const p = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
-  it("markByNumbers: nhay coc van duoc ghi nhan, gop buoc", () => {
+  it("markByNumbers: dung thu tu, nhay coc khong ghi nhan, gop buoc", () => {
     const cp = (id: number, must: string[]) => ({ id, label: "", anchors: must, must });
     const cps = [cp(0, ["8"]), cp(1, ["4"]), cp(2, [])];
     expect(markByNumbers("chưa biết", cps, 0)).toBe(0);
     expect(markByNumbers("2x = 8", cps, 0)).toBe(0b001); // buoc 1 xong
-    expect(markByNumbers("x = 4", cps, 0)).toBe(0b010); // nhay coc: ghi nhan buoc 2, buoc 1 van thieu
+    expect(markByNumbers("x = 4", cps, 0)).toBe(0); // nhay coc: buoc 1 chua xong thi khong ghi nhan buoc 2
     expect(markByNumbers("2x = 8 nên x = 4", cps, 0)).toBe(0b011); // gop 2 buoc
     expect(markByNumbers("x = 4", cps, 0b001)).toBe(0b011);
     expect(markByNumbers("mọi số", cps, 0b011)).toBe(0b011); // buoc 3 khong co so: cho AI, server khong tu xac nhan
@@ -410,8 +410,8 @@ describe("sua chat luong tung buoc", () => {
     const cps = checkpoints(tc05);
     expect(cps[1].must).toEqual(["53000000"]);
     expect(cps[2].must).toEqual(["56180000"]);
-    expect(markByNumbers("50.000.000 × 1,06 = 53.000.000", cps, 0) & 2).toBe(2);
-    expect(markByNumbers("mình tính ra 54.000.000", cps, 0) & 2).toBe(0);
+    expect(markByNumbers("50.000.000 × 1,06 = 53.000.000", cps, 1) & 2).toBe(2);
+    expect(markByNumbers("mình tính ra 54.000.000", cps, 1) & 2).toBe(0);
   });
   it("he so nho chi la toan hang khong bi coi la lo dap an; ket qua van bi chan", () => {
     const g = [tc05.data, tc05.statement];

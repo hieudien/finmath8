@@ -21,7 +21,7 @@ export default function FormulaButton({ target, value, onChange, disabled }: { t
   }
   return (
     <>
-      <Button variant="secondary" type="button" onClick={show} disabled={disabled} aria-label="Chèn công thức toán" className="px-3 text-sm">∑ Công thức</Button>
+      <Button variant="secondary" type="button" onClick={show} disabled={disabled} aria-label="Chèn công thức toán" className="px-3 text-sm max-sm:min-h-8! max-sm:px-2.5! max-sm:text-xs!">∑ Công thức</Button>
       {open && <Dialog onInsert={insert} onClose={() => { setOpen(false); target.current?.focus(); }} />}
     </>
   );

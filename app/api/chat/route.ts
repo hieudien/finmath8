@@ -8,7 +8,7 @@ import { llmCfg } from "@/lib/teacher";
 import { getLink } from "@/lib/links";
 import { finish, type Session, type Tm } from "@/lib/chat/engine";
 import { stepAsk, stepHint, stepsOpening, stepTurn } from "@/lib/chat/steps";
-import { type Problem } from "@/lib/schema/problem";
+import { parseProblems, type Problem } from "@/lib/schema/problem";
 import { log } from "@/lib/log";
 import { failResponse, reportError } from "@/lib/errors";
 import { clientIp, limited } from "@/lib/ratelimit";
@@ -89,7 +89,7 @@ async function handle(req: Request) {
     const { data: seq } = await db.rpc("next_seq", { p_link: link.id } as never); // sau khi qua mọi giới hạn, để số thứ tự không bị hụt
     if (!prob.solution_steps.length) return err("Bài này chưa sẵn sàng. Báo giáo viên của em.", 409); // đề cũ thiếu lời giải từng bước
     const mode = "steps"; // cột mode giữ lại cho phiên cũ (chat, quiz)
-    const { data: s, error } = await db.from("chat_sessions").insert({ link_id: link.id, anon_id: anon, seq: (seq as number | null) ?? 1, problem_code: prob.id, student_code: b.studentCode, student_name: b.studentName, mode, hint_level: 0 } as never).select("*").single();
+    const { data: s, error } = await db.from("chat_sessions").insert({ link_id: link.id, anon_id: anon, seq: (seq as number | null) ?? 1, problem_code: prob.id, student_code: b.studentCode, student_name: b.studentName, mode, hint_level: 0, problem_snapshot: prob } as never).select("*").single();
     if (error || !s) throw new Error("Không tạo được phiên chat: " + (error?.message ?? "rỗng"));
     // Học sinh có bảng riêng, sống sót khi xóa liên kết. Vào lại bằng cùng mã thì hiện lại (deleted_at = null).
     const up = await db.from("students").upsert({ teacher_id: link.teacher_id, code: b.studentCode, name: b.studentName, last_seen_at: new Date().toISOString(), deleted_at: null } as never);
@@ -115,9 +115,10 @@ async function handle(req: Request) {
     b.action === "message" ? db.from("messages").select("role,content,hint_level,ts").eq("session_id", b.sessionId).order("id") : { data: null },
   ]);
   tm.db_pre = Date.now() - t0;
-  const sess = sd as (Session & { problem_code: string }) | null;
+  const sess = sd as (Session & { problem_code: string; problem_snapshot?: unknown }) | null;
   if (!sess) return err("Phiên chat không tồn tại.", 404);
-  const prob = problems.find((x) => x.id === sess.problem_code) as Problem;
+  // Phiên giữ bản đề lúc mở; phiên cũ (chưa có bản ghim) dùng đề của liên kết.
+  const prob = (sess.problem_snapshot ? parseProblems([sess.problem_snapshot]).ok[0] : undefined) ?? (problems.find((x) => x.id === sess.problem_code) as Problem);
 
   if (b.action === "survey") {
     const upd = { ...(b.likert && { survey_likert: b.likert }), ...(b.confidence && { confidence: b.confidence }) };

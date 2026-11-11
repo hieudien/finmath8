@@ -28,9 +28,9 @@ type Cfg = NonNullable<Awaited<ReturnType<typeof llmCfg>>>;
 
 // Nhận xét một phiên. Đọc qua RLS nên chỉ phiên của giáo viên này đọc được. Không gửi tên hay mã học sinh cho AI.
 async function analyzeSession(sb: Sb, cfg: Cfg, teacherId: string, id: string) {
-  const { data: s } = await sb.from("chat_sessions").select("id,link_id,problem_code,status").eq("id", id).maybeSingle();
+  const { data: s } = await sb.from("chat_sessions").select("id,link_id,problem_code,status,problem_snapshot").eq("id", id).maybeSingle();
   if (!s) return bad("Không tìm thấy phiên này.", 404);
-  const sess = s as { link_id: string; problem_code: string; status: string };
+  const sess = s as { link_id: string; problem_code: string; status: string; problem_snapshot: { title?: string; statement?: string; solution_steps?: string[] } | null };
   const [{ data: ms }, { data: ev }, { data: ln }] = await Promise.all([
     sb.from("messages").select("role,content").eq("session_id", id).order("id").limit(500),
     sb.from("session_evals").select("identify,plan,calculate,explain,total,final_correct,hint_count,errors,gaps").eq("session_id", id).maybeSingle(),
@@ -38,7 +38,7 @@ async function analyzeSession(sb: Sb, cfg: Cfg, teacherId: string, id: string) {
   ]);
   const msgs = (ms ?? []) as { role: "student" | "bot"; content: string }[];
   if (!msgs.some((m) => m.role === "student")) return bad("Phiên này chưa có tin nhắn nào của học sinh để phân tích.");
-  const prob = ((ln as { problems_snapshot: { id: string; title?: string; statement?: string; solution_steps?: string[] }[] } | null)?.problems_snapshot ?? []).find((x) => x.id === sess.problem_code);
+  const prob = sess.problem_snapshot ?? ((ln as { problems_snapshot: { id: string; title?: string; statement?: string; solution_steps?: string[] }[] } | null)?.problems_snapshot ?? []).find((x) => x.id === sess.problem_code);
   const text = JSON.stringify({
     de: prob ? { tieu_de: prob.title, de_bai: prob.statement, cac_buoc_loi_giai: prob.solution_steps } : { ma_de: sess.problem_code },
     trang_thai: sess.status === "done" ? "đã kết thúc" : "chưa kết thúc",

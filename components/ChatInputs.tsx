@@ -14,8 +14,8 @@ export type InputProps = {
   box: RefObject<HTMLTextAreaElement | null>;
 };
 
-const BOX = "min-h-11 flex-1 resize-y rounded-sm border border-border-strong bg-surface px-3 py-2 text-base";
-const NOTE = <p className="text-xs text-text-muted">MathStep AI · Giáo viên xem được bài làm của bạn. Đừng gõ số điện thoại hay email.</p>;
+const BOX = "min-h-11 flex-1 resize-y rounded-sm border border-border-strong bg-surface px-3 py-2 text-base max-sm:min-h-9 max-sm:py-1";
+const SM = "max-sm:min-h-8! max-sm:px-2.5! max-sm:text-xs!";
 const Preview = ({ text }: { text: string }) => text.includes("$") ? <div className="rounded-sm border border-border bg-primary-soft px-3 py-2 text-sm"><span className="block text-xs text-text-muted">Xem trước</span><MathText text={text} /></div> : null;
 
 const STEP_MAX = 150;
@@ -25,26 +25,25 @@ export function StepInput({ text, setText, busy, ready, onSend, onHint, progress
   const n = progress ? Math.min(progress.next ?? progress.done + 1, progress.total) : 1;
   const label = asking ? "Bạn chưa hiểu chỗ nào?" : "Viết bước giải của bạn";
   return (
-    <form onSubmit={onSend} className="flex flex-col gap-2">
+    <form onSubmit={onSend} className="flex flex-col gap-1 sm:gap-2">
       {progress && (
-        <div className="rounded-sm border border-border border-l-4 border-l-primary bg-primary-soft px-3 py-2 text-sm" aria-live="polite">
+        <div className="rounded-sm border border-border border-l-4 border-l-primary bg-primary-soft mt-1 px-3 py-1 text-xs sm:py-2 sm:text-sm" aria-live="polite">
           <span className="font-semibold">Bước {n}/{progress.total}</span>{progress.goal && <>: <MathText text={progress.goal} /></>}
         </div>
       )}
-      <label htmlFor="step" className="text-sm font-medium">{label}</label>
+      <label htmlFor="step" className="text-xs font-medium sm:text-sm">{label}</label>
       <div className="flex items-end gap-2">
-        <textarea id="step" ref={box} rows={2} value={text} onChange={(e) => setText(e.target.value)} disabled={busy || !ready} maxLength={STEP_MAX} placeholder={!ready ? "Đang mở bài, chờ một chút..." : asking ? "Ví dụ: Đề hỏi gì vậy?" : "Ví dụ: 2x = 14 - 6"} className={BOX} />
-        <Button type="submit" block={false} disabled={!text.trim() || !ready} pending={busy ? (ready ? "Đang kiểm tra..." : "Đang mở bài...") : undefined}>{asking ? "Gửi câu hỏi" : "Nộp bước"}</Button>
+        <textarea id="step" ref={box} rows={1} value={text} onChange={(e) => setText(e.target.value)} disabled={busy || !ready} maxLength={STEP_MAX} placeholder={!ready ? "Đang mở bài, chờ một chút..." : asking ? "Ví dụ: Đề hỏi gì vậy?" : "Ví dụ: 2x = 14 - 6"} className={BOX} />
+        <Button type="submit" block={false} className={SM} disabled={!text.trim() || !ready} pending={busy ? (ready ? "Đang kiểm tra..." : "Đang mở bài...") : undefined}>{asking ? "Gửi câu hỏi" : "Nộp bước"}</Button>
       </div>
       <p className={`text-right text-xs tnum ${text.length >= STEP_MAX - 20 ? "text-danger" : "text-text-muted"}`} aria-live="off">{text.length}/{STEP_MAX}</p>
       <Preview text={text} />
       {stuck && !asking && <p className="text-sm text-primary" role="status">Chưa ra? Bấm Gợi ý hoặc Em chưa hiểu nhé.</p>}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
         <FormulaButton target={box} value={text} onChange={setText} disabled={busy || !ready} />
-        <Button variant="secondary" type="button" onClick={onHint} disabled={busy || !ready} className="text-sm">Gợi ý</Button>
-        <Button variant={asking ? "primary" : "secondary"} type="button" onClick={() => setAsking(!asking)} disabled={busy || !ready} aria-pressed={asking} className="text-sm">{asking ? "Quay lại nộp bước" : "Em chưa hiểu"}</Button>
+        <Button variant="secondary" type="button" onClick={onHint} disabled={busy || !ready} className={`text-sm ${SM}`}>Gợi ý</Button>
+        <Button variant={asking ? "primary" : "secondary"} type="button" onClick={() => setAsking(!asking)} disabled={busy || !ready} aria-pressed={asking} className={`text-sm ${SM}`}>{asking ? "Quay lại nộp bước" : "Em chưa hiểu"}</Button>
       </div>
-      {NOTE}
     </form>
   );
 }

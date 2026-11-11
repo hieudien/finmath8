@@ -14,12 +14,13 @@ export const GET = api(async (req) => {
   const [r, an, ss] = await Promise.all([
     sb.from("messages").select("role,content,ts").eq("session_id", id).order("id").limit(500),
     sb.from("session_analysis").select("content,updated_at").eq("session_id", id).maybeSingle(),
-    sb.from("chat_sessions").select("problem_code,public_links(problems_snapshot)").eq("id", id).maybeSingle(),
+    sb.from("chat_sessions").select("problem_code,problem_snapshot,public_links(problems_snapshot)").eq("id", id).maybeSingle(),
   ]);
   check(r);
-  // Đề lấy từ bản chụp trong liên kết: đúng nội dung học sinh đã làm, kể cả khi đề gốc đã sửa hoặc xóa.
-  const s = (ss.error ? null : ss.data) as { problem_code: string; public_links: { problems_snapshot: { id: string; title?: string; statement?: string }[] } | null } | null;
-  const p = s?.public_links?.problems_snapshot?.find((x) => x.id === s.problem_code);
+  // Đề lấy từ bản ghim của phiên (phiên cũ: bản chụp của liên kết): đúng nội dung học sinh đã làm, kể cả khi đề gốc đã sửa hoặc xóa.
+  type P = { id: string; title?: string; statement?: string };
+  const s = (ss.error ? null : ss.data) as { problem_code: string; problem_snapshot: P | null; public_links: { problems_snapshot: P[] } | null } | null;
+  const p = s?.problem_snapshot ?? s?.public_links?.problems_snapshot?.find((x) => x.id === s.problem_code);
   const problem = p ? { id: p.id, title: p.title ?? "", statement: p.statement ?? "" } : null;
   const items = ((r.data ?? []) as { role: "student" | "bot"; content: string; ts: string }[]).map((m) => ({
     role: m.role,

@@ -25,6 +25,7 @@ export function checkpoints(p: Problem): Cp[] {
   const chk = p.step_checks.length === p.solution_steps.length ? p.step_checks : []; // lệch số bước (giáo viên sửa lời giải) thì không dùng
   // Kết quả chuẩn dạng số thuần (45000, 15%, 0,5): so bằng số. Còn lại (x=2, vô nghiệm, biểu thức): so chuỗi chính tắc.
   const isNum = (x: string) => /^[-+]?[\d.,\s]+\s*(%|đồng|nghìn|ngàn|k|tuần|tháng|năm|ngày|bạn|gb|cm|kg|m)?$/iu.test(x.trim().replace(/^\$|\$$/g, ""));
+  const seen = new Set<string>();
   return p.solution_steps.map((label, id) => {
     const anchors = [...new Set(numsIn(stripStep(label)))]; // bỏ "Bước N:" khỏi nhãn: số thứ tự bước không phải số của lời giải
     const cand = chk[id]?.result ? [chk[id].result, ...chk[id].accepts] : [];
@@ -34,7 +35,10 @@ export function checkpoints(p: Problem): Cp[] {
     const tail = stripStep(label).split("=").slice(1).pop() ?? "";
     const eq = numsIn(tail).slice(0, 1).filter((n) => !given.has(n) && (n.length >= 3 || n.includes(".")));
     const own = anchors.filter((n) => sol.has(n));
-    return { id, label, anchors, must: sets[0] ?? (own.length ? own : eq), alt: sets.slice(1), words };
+    let must = sets[0] ?? (own.length ? own : eq);
+    // Số suy ra (không phải kết quả chuẩn) mà mốc trước đã dùng: mốc sau chỉ khớp bằng dạng chữ hoặc AI duyệt, để "x = 4" không ghi nhận luôn bước thay x=4 hay kết luận.
+    if (!sets.length && must.length) { const key = must.join(","); if (seen.has(key)) must = []; else seen.add(key); }
+    return { id, label, anchors, must, alt: sets.slice(1), words };
   });
 }
 
@@ -53,10 +57,14 @@ export function hasWord(text: string, w: string) {
 export const met = (c: Cp, text: string) =>
   (c.must.length > 0 && c.must.every((n) => hasNum(text, n))) || !!c.alt?.some((s) => s.every((n) => hasNum(text, n))) || !!c.words?.some((w) => hasWord(text, w));
 
-// Kiểu "từng bước": mốc nào đủ thì ghi nhận, không cần đúng thứ tự
-// (học sinh nhảy cóc thì không bị chặn oan); một bước gộp nhiều mốc cũng ghi nhận hết.
+// Kiểu "từng bước": đúng thứ tự. Mốc chỉ được ghi nhận khi mọi mốc trước đã xong; một tin gộp nhiều mốc liên tiếp thì ghi nhận hết.
+// Nhảy cóc (viết kết quả bước sau khi bước hiện tại chưa xong) không ghi nhận gì.
 export function markByNumbers(text: string, cps: Cp[], mask: number) {
-  for (const c of cps) if (met(c, text)) mask |= 1 << c.id;
+  for (const c of cps) {
+    if (mask >> c.id & 1) continue;
+    if (!met(c, text)) break;
+    mask |= 1 << c.id;
+  }
   return mask;
 }
 

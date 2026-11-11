@@ -4,7 +4,7 @@ import { check } from "@/lib/db";
 import { admin } from "@/lib/supabase/admin";
 import { askJson, type LlmCfg } from "@/lib/llm";
 import { leaks, leaksCalc } from "@/lib/chat/prompt";
-import { checkpoints, countDone, hasEq, markByNumbers, needsEq, numsIn, shapeOk, SOS_REPLY, stepOf, verify, type Cp } from "@/lib/chat/progress";
+import { checkpoints, countDone, hasEq, markByNumbers, met, needsEq, numsIn, shapeOk, SOS_REPLY, stepOf, verify, type Cp } from "@/lib/chat/progress";
 import { botMsg, finish, INJECT, MAX_TURNS, SOS, withReview, type Msg, type Session, type Tm } from "@/lib/chat/engine";
 import { stepCue, stepLead, stepsGreeting } from "@/lib/chat/goals";
 import { ladder, MAX_HINT, revealLine, stepText } from "@/lib/chat/assist";
@@ -151,7 +151,7 @@ export async function stepTurn(cfg: LlmCfg, s: Session, p: Problem, text: string
   const stuck = !off && cur && mask === mask0 ? cannedStuck(s, p, cps, mask0, clean, prior, lastBot(all)) : "";
   // Nộp đúng một kết quả sai đã biết của bước này (do AI viết sẵn lúc tạo chỉ dẫn): trả lời giải thích lỗi đó, không gọi AI.
   const why = !off && cur && mask === mask0 && !stuck ? trapReply(p, cur, clean, known(cps, mask0)) : "";
-  const canned = stuck || (why ? `${dot(why)} ${cueLine(p, cps, mask0)}` : "") || (noEq ? NEED_EQ : "");
+  let canned = stuck || (why ? `${dot(why)} ${cueLine(p, cps, mask0)}` : "") || (noEq ? NEED_EQ : "");
   if (canned) reply = canned;
   else if (!off && cur && mask === mask0) {
     // Server không xác nhận được: nhờ AI nhận xét bước này. Mốc có số thì quyền quyết đúng/sai ở server, AI chỉ viết lời.
@@ -163,6 +163,10 @@ export async function stepTurn(cfg: LlmCfg, s: Session, p: Problem, text: string
     // Mốc không có số: AI phán đúng thì phải trích nguyên văn bằng chứng từ bước học sinh viết, server kiểm trích dẫn có thật (như kiểu chat).
     if (!cur.must.length && out.verdict === "đủ" && shapeOk(cur, clean) && verify(cur, out.evidence, clean)) mask |= 1 << cur.id;
     reply = out.reply;
+  }
+  // Nhảy cóc: bước hiện tại chưa xong mà tin đã có kết quả của bước sau. Không ghi nhận, bắt làm đúng thứ tự.
+  if (!off && cur && !canned && mask === mask0 && cps.some((c) => c.id > cur.id && !(mask0 >> c.id & 1) && met(c, clean))) {
+    reply = canned = `Bạn cần hoàn thành bước ${cur.id + 1}/${cps.length} trước nhé. ${cueLine(p, cps, mask0)}`;
   }
   await saveStudent;
 
@@ -184,11 +188,7 @@ export async function stepTurn(cfg: LlmCfg, s: Session, p: Problem, text: string
   if (finished) reply = revealed ? `${revLine ? revLine + " " : ""}${closingHelp()}` : closing();
   else if (revLine) reply = `${revLine} ${nextLine(p, cps, mask)}`.trim();
   else if (progressed) {
-    // Nhảy cóc (viết kết quả của bước sau trước): ghi nhận số đúng nhưng bước hiện tại còn thiếu, nhắc bổ sung để thấy cách tính.
-    const curGoal = cur ? stepCue(p, cur.id, known(cps, mask)) : "";
-    reply = cur && !(mask >> cur.id & 1)
-      ? `Kết quả này đúng rồi. Bạn viết thêm bước ${cur.id + 1}/${cps.length} (còn thiếu) để thấy cách tính${curGoal ? `. Việc cần làm: ${dot(curGoal)}` : "."}`
-      : `${reply || "Đúng rồi!"} ${nextLine(p, cps, mask)}`;
+    reply = `${reply || "Đúng rồi!"} ${nextLine(p, cps, mask)}`;
   } else if (capped) reply = cappedLine(done, cps.length);
   else if (cur && !off && !canned && !reply.includes("?")) { // canned đã kèm sẵn "Việc cần làm ở bước k/n"
     // Chưa qua bước mà lời AI không có câu hỏi dẫn tiếp (ví dụ khen mà server chưa ghi nhận): nhắc lại việc của bước hiện tại để học sinh không bị cụt.
