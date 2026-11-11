@@ -32,7 +32,15 @@ export default function SettingsForm(props: Props) {
   }
 
   return (
-    <form onSubmit={submit} className="flex max-w-2xl flex-col gap-6">
+    <details aria-labelledby="key-setup" className="group rounded-lg border border-border bg-surface p-4 md:p-6">
+    <summary className="flex cursor-pointer list-none items-start gap-3 [&::-webkit-details-marker]:hidden">
+      <svg aria-hidden="true" viewBox="0 0 20 20" className="mt-1.5 size-5 shrink-0 text-text-muted transition-transform group-open:rotate-90" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 4l6 6-6 6" /></svg>
+      <span className="flex min-w-0 flex-col gap-1">
+        <h2 id="key-setup" className="inline">Nhà cung cấp AI và API key</h2>
+        <span className="text-sm font-normal text-text-muted">Đang dùng {info.label}: {tails[provider] ? `đã lưu key (…${tails[provider]})` : "chưa có key"}.</span>
+      </span>
+    </summary>
+    <form onSubmit={submit} className="mt-3 flex max-w-2xl flex-col gap-6">
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 font-medium">Nhà cung cấp AI</legend>
         <div className="grid gap-2 sm:grid-cols-2">
@@ -63,5 +71,6 @@ export default function SettingsForm(props: Props) {
 
       <Button type="submit" pending={busy ? "Đang kiểm tra key..." : undefined} className="self-start">Lưu cài đặt <AiBadge /></Button>
     </form>
+    </details>
   );
 }

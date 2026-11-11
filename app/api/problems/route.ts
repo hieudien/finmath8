@@ -14,7 +14,7 @@ import { repairProblem } from "@/lib/repair";
 import { CHUNK, PAR, BUDGET_MS, freeCode, pool } from "@/lib/batch";
 import { cannotLock, needsWork } from "@/lib/ready";
 import { gradeRule } from "@/lib/grade";
-import { crossCheck } from "@/lib/verify-solution";
+import { checkSteps, crossCheck } from "@/lib/verify-solution";
 const NORMALIZE_SYSTEM = `Bạn chuẩn hóa một đề Toán từ văn bản thô sang JSON. Đề có thể thuộc bất kỳ chủ đề và lớp nào (giải phương trình, hình học, tỉ lệ, tình huống thực tế...). Chỉ trả JSON một đối tượng đúng mẫu:
 {"id":"BTxx","title":string,"grade":số lớp (đúng lớp được giao ở cuối),"topic":string,"skills":[2–5 kỹ năng/kiến thức chính cần dùng, mỗi mục một cụm ngắn],"statement":string (nguyên văn đề bài cho học sinh),"learning_objectives":[string],"data":{số liệu đề cho, nếu có; tỉ lệ dạng thập phân 0.x},"solution":{đáp án chuẩn. Số thì dạng số, ví dụ {"x":3}; nhiều nghiệm {"x1":2,"x2":-3}; vô nghiệm hoặc đáp án chữ {"ket_luan":"vô nghiệm"}},"solution_steps":[lời giải từng bước, mỗi bước 1–2 câu có phép tính, bước cuối là kết luận],"common_errors":[sai lầm học sinh hay mắc với đề này],"hints":[{"level":1,"text":..},{"level":2,"text":..},{"level":3,"text":..}],"extension":string,"rubric":{"identify":3,"plan":3,"calculate":3,"explain":3}}
 Quy tắc: công thức, phương trình có ký hiệu toán đặt trong $...$ theo LaTeX (ví dụ $x^2$, $2x + 3 = 11$), KHÔNG dùng \( \) hay \[ \]. Tự giải đề, tính đáp án thật cẩn thận, đừng bịa số không có trong đề. Gợi ý mức 1 chỉ hỏi định hướng; mức 2 gợi ý cách giải; mức 3 nêu bước tính đầu tiên, KHÔNG nêu kết quả cuối. Nếu văn bản có nhiều đề, chỉ chuẩn hóa đề đầu. Nếu thiếu id, dùng "BT99".`;
@@ -53,6 +53,7 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("todo") }),
   z.object({ action: z.literal("todo_all") }),
   z.object({ action: z.literal("finish"), ids: z.array(z.string().uuid()).min(1).max(CHUNK) }),
+  z.object({ action: z.literal("audit"), ids: z.array(z.string().uuid()).min(1).max(CHUNK) }),
   z.object({ action: z.literal("normalize_batch"), texts: z.array(z.string().min(20).max(20_000)).min(1).max(CHUNK), grade }),
   z.object({ action: z.literal("complete"), problem: z.unknown() }),
   z.object({ action: z.literal("standardize_draft"), problem: z.unknown() }),
@@ -146,6 +147,33 @@ export const POST = api(async (req) => {
   if (b.action === "todo_all") {
     const { data } = await admin().from("problems").select("id").eq("teacher_id", u.id).is("deleted_at", null).order("code");
     return Response.json({ ok: true, ids: ((data ?? []) as { id: string }[]).map((r) => r.id) });
+  }
+
+  // Chỉ kiểm, không viết lại: AI giải lại đáp án (bỏ qua nếu đã khóa) và rà lời giải. Đề có vấn đề được gắn check_note
+  // nên hiện "Cần xem lại" ở trang Đề bài và được nút Chuẩn hóa nhận làm lại. Đề không vấn đề giữ nguyên, không đổi version.
+  if (b.action === "audit") {
+    const cfg = await llmCfg(u.id);
+    if (!cfg) return bad(NO_KEY);
+    const { data } = await admin().from("problems").select("id,code,content,version").eq("teacher_id", u.id).is("deleted_at", null).in("id", b.ids);
+    const flagged: { name: string; reason: string }[] = [], failed: { name: string; reason: string }[] = [];
+    let checked = 0;
+    const rows = (data ?? []) as { id: string; code: string; content: unknown; version: number }[];
+    const left = await pool(rows, PAR, Date.now() + BUDGET_MS, async (row) => {
+      const pp = problemSchema.safeParse(row.content);
+      if (!pp.success) { checked++; flagged.push({ name: row.code, reason: "Đề lưu sai định dạng." }); return; }
+      try {
+        const run = async () => (pp.data.answer_locked ? "" : await crossCheck(cfg, pp.data)) || (await checkSteps(cfg, pp.data));
+        const note = await Promise.race([run(), new Promise<never>((_, rej) => { const t = setTimeout(() => rej(new Error("AI_TIMEOUT: đề kiểm quá 50s")), 50_000); t.unref?.(); })]);
+        checked++;
+        if (!note) return;
+        const { data: upd } = await admin().from("problems").update({ content: { ...pp.data, check_note: note.slice(0, 500) }, version: row.version + 1, updated_at: new Date().toISOString() } as never).eq("id", row.id).eq("version", row.version).select("id");
+        flagged.push({ name: row.code, reason: upd?.length ? note : `${note} (đề vừa được sửa ở nơi khác nên chưa gắn cảnh báo, kiểm lại sau)` });
+      } catch (e) {
+        await reportError(e, `kiểm đề ${row.code}`, { teacherId: u.id, actor: "teacher" });
+        failed.push({ name: row.code, reason: "AI chưa trả lời được." });
+      }
+    });
+    return Response.json({ ok: true, checked, flagged, failed, left: left.map((r) => r.id) });
   }
 
   if (b.action === "finish") {

@@ -4,6 +4,7 @@ import { type Provider } from "@/lib/models";
 import SettingsForm from "@/components/SettingsForm";
 import ActivityLog from "@/components/ActivityLog";
 import ErrorLog from "@/components/ErrorLog";
+import AuditAll from "@/components/AuditAll";
 import NormalizeAll from "@/components/NormalizeAll";
 import ConfirmAnswers, { type AnswerRow } from "@/components/ConfirmAnswers";
 import { problemSchema } from "@/lib/schema/problem";
@@ -35,6 +36,7 @@ export default async function Page() {
         last4={{ gemini: tail(s?.gemini_key_enc), openai: tail(s?.openai_key_enc) }}
       />
       <ConfirmAnswers rows={answers} />
+      <AuditAll />
       <NormalizeAll />
       <ActivityLog />
       <ErrorLog />

@@ -39,8 +39,15 @@ export default function NormalizeAll() {
   const running = !!run && run.phase !== "done";
   const seen = run ? run.done + run.fails.length : 0;
   return (
-    <section aria-labelledby="norm-all" className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4 md:p-6">
-      <h2 id="norm-all">Chuẩn hóa tất cả đề</h2>
+    <details aria-labelledby="norm-all" className="group rounded-lg border border-border bg-surface p-4 md:p-6">
+      <summary className="flex cursor-pointer list-none items-start gap-3 [&::-webkit-details-marker]:hidden">
+        <svg aria-hidden="true" viewBox="0 0 20 20" className="mt-1.5 size-5 shrink-0 text-text-muted transition-transform group-open:rotate-90" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 4l6 6-6 6" /></svg>
+        <span className="flex min-w-0 flex-col gap-1">
+          <h2 id="norm-all" className="inline">Chuẩn hóa tất cả đề</h2>
+          <span className="text-sm font-normal text-text-muted">AI viết lại lời giải và chỉ dẫn từng bước cho mọi đề.</span>
+        </span>
+      </summary>
+      <div className="mt-3 flex flex-col gap-3">
       <p className="text-sm text-text-muted">AI chạy lại mọi đề chưa xóa, kể cả đề đã đạt chuẩn: sửa công thức hỏng, kiểm chéo đáp án, viết lại lời giải và chỉ dẫn từng bước. Mỗi đề mất khoảng 1 phút và tốn chi phí AI; dừng lúc nào cũng được, đề nào không đạt chuẩn thì giữ nguyên bản cũ. Đề đã khóa đáp án được giữ nguyên đáp án; AI có thể giải sai nên đáp án chưa khóa vẫn cần giáo viên tự kiểm tra và xác nhận ở trang đề.</p>
       <div className="flex flex-wrap items-center gap-2">
         <AiButton variant="secondary" onClick={go} disabled={running}>Chuẩn hóa tất cả đề</AiButton>
@@ -57,6 +64,7 @@ export default function NormalizeAll() {
           {run.phase === "done" && run.fails.length > 0 && <ul className="list-disc space-y-1 pl-5 text-sm">{run.fails.map((f, k) => <li key={k}><strong>{f.name}</strong>: {f.reason}</li>)}</ul>}
         </div>
       )}
-    </section>
+      </div>
+    </details>
   );
 }
