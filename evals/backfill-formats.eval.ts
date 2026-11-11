@@ -8,10 +8,11 @@ const env = Object.fromEntries(readFileSync(".env", "utf8").split(/\r?\n/).flatM
 Object.assign(process.env, env);
 const LIMIT = Number(process.env.BACKFILL_LIMIT ?? 3);
 const WRITE = process.env.BACKFILL_WRITE === "1";
+const REDO = process.env.BACKFILL_REDO === "1"; // làm lại cả đề đã có format và viết lại step_goals (chỉ ghi đè mục tiêu không rỗng; hints, traps, checks giữ nguyên)
 
 it("bổ sung dạng cần viết + ví dụ cho đề cũ", async () => {
   const { admin } = await import("../lib/supabase/admin");
-  const { makeStepFormats } = await import("../lib/step-guides");
+  const { makeStepFormats, makeStepGuides } = await import("../lib/step-guides");
   const { PROVIDERS, TEMPERATURE } = await import("../lib/models");
   const { problemSchema } = await import("../lib/schema/problem");
   const db = admin();
@@ -25,13 +26,22 @@ it("bổ sung dạng cần viết + ví dụ cho đề cũ", async () => {
     if (done >= LIMIT) break;
     const p = problemSchema.safeParse(row.content);
     if (!p.success || !p.data.solution_steps.length) { skipped++; continue; }
-    if (p.data.step_formats.length === p.data.solution_steps.length) { skipped++; continue; } // đã có
-    const f = await makeStepFormats(cfg, p.data);
-    if (!f) { failed++; console.log(`[${row.code}] AI không trả đủ ${p.data.solution_steps.length} bước`); continue; }
-    console.log(`\n[${row.code}] ${p.data.title}`);
-    f.formats.forEach((x, i) => console.log(`  Bước ${i + 1}: ${x || "(trống)"}  | ví dụ: ${f.examples[i] || "(trống)"}`));
+    if (!REDO && p.data.step_formats.length === p.data.solution_steps.length) { skipped++; continue; } // đã có
+    // REDO: viết lại goal và hints (giữ lại bản cũ ở chỗ AI trả rỗng; step_checks, error_traps không đụng), rồi sinh format dựa trên goal mới.
+    let q = p.data;
+    if (REDO) {
+      const g = await makeStepGuides(cfg, q);
+      if (g) q = { ...q, step_goals: g.goals.map((x, i) => x || q.step_goals[i] || ""), step_hints: g.hints.map((h, i) => h.map((x, j) => x || q.step_hints[i]?.[j] || "")) };
+    }
+    const f = await makeStepFormats(cfg, q);
+    if (!f) { failed++; console.log(`[${row.code}] AI không trả đủ ${q.solution_steps.length} bước`); continue; }
+    console.log(`
+[${row.code}] ${q.title}`);
+    f.formats.forEach((x, i) => console.log(`  Bước ${i + 1}: ${q.step_goals[i] || "(trống)"}
+     cần viết: ${x || "(trống)"}  | ví dụ: ${f.examples[i] || "(trống)"}
+     gợi ý: ${(q.step_hints[i] ?? []).join(" / ")}`));
     if (WRITE) {
-      const r = await db.from("problems").update({ content: { ...(row.content as object), step_formats: f.formats, step_examples: f.examples } } as never).eq("id", row.id);
+      const r = await db.from("problems").update({ content: { ...(row.content as object), step_formats: f.formats, step_examples: f.examples, step_goals: q.step_goals, step_hints: q.step_hints } } as never).eq("id", row.id);
       if (r.error) throw new Error(r.error.message);
     }
     done++;
