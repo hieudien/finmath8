@@ -1,9 +1,12 @@
 import { mean, standardDeviation, sampleVariance } from "simple-statistics";
 import type { supabaseServer } from "@/lib/supabase/server";
 
-export type Sess = { id: string; link_id: string; seq: number; status: string; started_at: string; problem_code: string; student_code: string | null; student_name: string | null; revealed?: number; struggled?: number };
+export type Sess = { id: string; link_id: string; seq: number; status: string; started_at: string; problem_code: string; student_code: string | null; student_name: string | null; student_class?: string | null; revealed?: number; struggled?: number };
 export const bits = (n: number) => n.toString(2).replace(/0/g, "").length; // số bit 1 của mặt nạ (số bước được giải hộ)
-export const who = (x: { seq: number; student_code: string | null; student_name: string | null }) => x.student_name ? `${x.student_name} (${x.student_code})` : `Ẩn danh (cũ) #${x.seq}`;
+// Khóa nội bộ của học sinh: tên bỏ dấu + lớp, in hoa. Cùng tên cùng lớp là một học sinh.
+export const studentKey = (name: string, cls: string) => `${name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/gi, "d").replace(/[^A-Za-z0-9]/g, "").toUpperCase()}.${cls.replace(/[^A-Za-z0-9]/g, "").toUpperCase()}`;
+// Học sinh cũ chưa có lớp thì hiện mã cũ trong ngoặc.
+export const who = (x: { seq: number; student_code: string | null; student_name: string | null; student_class?: string | null }) => x.student_name ? `${x.student_name} (${x.student_class || x.student_code})` : `Ẩn danh (cũ) #${x.seq}`;
 export type Ev = { session_id: string; identify: number; plan: number; calculate: number; explain: number; total: number; final_correct: boolean; max_hint_level: number; hint_count: number; errors: string[]; duration_s: number; survey_likert: number | null; confidence?: number | null };
 
 export const r1 = (n: number) => Math.round(n * 10) / 10;

@@ -84,7 +84,7 @@ h3 { font-size: 1.125rem; font-weight: 600; }
 :focus-visible { outline: 3px solid var(--color-primary); outline-offset: 2px; }
 
 .tnum { font-variant-numeric: tabular-nums; }
-.h-screen-d { height: 100vh; height: 100dvh; }
+.h-screen-d { height: 100vh; height: var(--vvh, 100dvh); } /* --vvh: chiều cao vùng nhìn thấy khi bàn phím ảo mở (Chat.tsx) */
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

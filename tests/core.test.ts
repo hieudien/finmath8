@@ -12,7 +12,7 @@ import { missingInfo, needsWork, readiness } from "../lib/ready";
 import { ladder, revealLine, scoreCap, STALL_LIMIT } from "../lib/chat/assist";
 import { ASK_METHOD, ASK_NEXT, keepOrAsk, earlyClose, checkpoints, countDone, hasEq, hasNum, markByNumbers, needsEq, offStreak, OFF_REPLIES, shapeOk, sim, stepOf, tighten, verdict, verify } from "../lib/chat/progress";
 import { SEED } from "../lib/seed";
-import { hardSteps, weakSteps } from "../lib/stats";
+import { hardSteps, studentKey, weakSteps } from "../lib/stats";
 import { leaksCalc } from "../lib/chat/prompt";
 import { cannedStuck, looksLikeStep, misses, NOT_JUDGE, offReply, PRAISE } from "../lib/chat/steps";
 import { ASK_ANSWER, ASK_IS_STEP, ASK_LEAK, ASK_LIMIT, ASK_NOT_JUDGE, CLOSINGS, CLOSINGS_HELP, isOff, OFF_AGAIN, OFF_FIRST, pick, REPEAT, RETRY, STEP_LEAK, STUCK_HINT, STUCK_NOHINT } from "../lib/chat/canned";
@@ -430,5 +430,13 @@ describe("lint: ky tu hong va buoc bi cat vun", () => {
     expect(w).toMatch(/ký tự điều khiển/);
     expect(w).toMatch(/Bước 2 không mở đầu/);
     expect(lintProblem({ ...base, solution_steps: ["Bước 1: a = 1.", "Bước 2: b = 2."] }).join(" ")).not.toMatch(/ký tự điều khiển|không mở đầu/);
+  });
+});
+
+describe("studentKey", () => {
+  it("bỏ dấu, in hoa, gộp khoảng trắng; cùng tên cùng lớp cùng khóa", () => {
+    expect(studentKey("Nguyễn  Văn Đạt", "8a1")).toBe("NGUYENVANDAT.8A1");
+    expect(studentKey("nguyen van dat", "8A1")).toBe("NGUYENVANDAT.8A1");
+    expect(studentKey("Nguyễn Văn Đạt", "8A2")).not.toBe(studentKey("Nguyễn Văn Đạt", "8A1"));
   });
 });

@@ -25,7 +25,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const raw = (await params).code;
   let code = raw;
   try { code = decodeURIComponent(raw); } catch { notFound(); } // %zz trong URL: 404, không 500
-  if (!/^[A-Z0-9._-]{1,20}$/.test(code)) notFound();
+  if (!/^[A-Z0-9._-]{1,80}$/.test(code)) notFound();
   const sb = await supabaseServer();
   const [prof, adv] = await Promise.all([loadStudent(sb, code), sb.from("student_advice").select("content,sessions,updated_at").eq("student_code", code).maybeSingle()]);
   if (!prof) notFound();
@@ -39,7 +39,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     <div className="flex max-w-3xl flex-col gap-6">
       <div>
         <Link href="/dashboard/students" className="inline-flex min-h-11 items-center text-sm text-primary underline">Tất cả học sinh</Link>
-        <h1>{prof.names.join(" / ") || "Học sinh"} <span className="tnum text-text-muted">({prof.code})</span></h1>
+        <h1>{prof.names.join(" / ") || "Học sinh"} <span className="tnum text-text-muted">({prof.cls || prof.code})</span></h1>
         <p className="text-text-muted">{prof.attempts.length} phiên, {prof.evaluated} phiên đã chấm.</p>
         <StudentDelete code={prof.code} />
       </div>

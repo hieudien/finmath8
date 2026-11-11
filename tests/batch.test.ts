@@ -112,8 +112,7 @@ describe("repairProblem + standardizeProblem", () => {
     vi.mocked(makeStepGuides).mockReset().mockResolvedValue(guides);
     vi.mocked(askJson).mockReset()
       .mockResolvedValueOnce({ data: [{ name: "budget", value: "300000" }, { name: "rate", value: "0.15" }], answers: [{ name: "cost", value: "255000" }], skills: ["Tính phần trăm"], learning_objectives: ["Tính giá sau giảm"], common_errors: ["Quên trừ tiền giảm"], hints: ["h1", "h2", "h3"], extension: "Giảm 20% thì sao?" })
-      .mockResolvedValueOnce({ answers: [{ name: "cost", value: "255000" }] }) // phiếu 2
-      .mockResolvedValueOnce({ answers: [{ name: "cost", value: "999" }] }) // phiếu 3 lệch: vẫn đủ 2/3
+      .mockResolvedValueOnce({ answers: [{ name: "cost", value: "255000" }] }) // phiếu 2 trùng phiếu 1: đủ, không giải lượt thứ ba
       .mockResolvedValueOnce({ steps: ["Tiền giảm là 300000 x 0,15 = 45000.", "Phải trả 300000 - 45000 = 255000."] });
     const stale = base({ common_errors: ["Dùng lãi đơn"], extension: "Gửi 3 năm?", skills: ["Lãi kép"], learning_objectives: ["Phân biệt lãi"], data: { principal: 50000000 }, solution: { simple_total: 56000000 }, solution_steps: ["Lãi đơn 56.000.000."], check_note: "lệch", reviewed: true });
     const r = await standardizeProblem(cfg, stale) as Problem;
@@ -121,6 +120,7 @@ describe("repairProblem + standardizeProblem", () => {
     expect(r.solution_steps.join(" ")).not.toContain("56.000.000");
     expect(r).toMatchObject({ common_errors: ["Quên trừ tiền giảm"], extension: "Giảm 20% thì sao?", skills: ["Tính phần trăm"], learning_objectives: ["Tính giá sau giảm"] });
     expect(r.hints.map((h) => h.text)).toEqual(["h1", "h2", "h3"]);
+    expect(askJson).toHaveBeenCalledTimes(3); // tạo lại + 1 phiếu + lời giải (trước đây 4)
   });
   const derive = (v: string) => ({ data: [], answers: [{ name: "cost", value: v }], skills: ["a"], learning_objectives: ["b"], common_errors: ["c"], hints: ["h1", "h2", "h3"], extension: "e" });
   it("standardizeProblem: AI giải 3 lần khác nhau thì báo chưa có đáp án đáng tin, không ghi đè", async () => {

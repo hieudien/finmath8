@@ -157,7 +157,7 @@ export const POST = api(async (req) => {
     const rows = (data ?? []) as { id: string; code: string; content: unknown; version: number }[];
     const left = await pool(rows, PAR, Date.now() + BUDGET_MS, async (row) => {
       const pp = problemSchema.safeParse(row.content);
-      const r = pp.success ? await standardizeProblem(cfg, pp.data).catch(async (e) => { await reportError(e, `hoàn thiện đề ${row.code}`, { teacherId: u.id, actor: "teacher" }); return "AI chưa trả lời được. Bấm chạy lại."; }) : "Đề lưu sai định dạng.";
+      const r = pp.success ? await Promise.race([standardizeProblem(cfg, pp.data), new Promise<never>((_, rej) => { const t = setTimeout(() => rej(new Error("AI_TIMEOUT: đề làm quá 50s")), 50_000); t.unref?.(); })]).catch(async (e) => { await reportError(e, `hoàn thiện đề ${row.code}`, { teacherId: u.id, actor: "teacher" }); return "AI chưa trả lời được. Bấm chạy lại."; }) : "Đề lưu sai định dạng.";
       if (typeof r === "string") {
         failed.push({ name: row.code, reason: r });
         // Lỗi AI (exception) đã ghi ở trên; đề không đạt chuẩn thì ghi lý do vào Nhật ký lỗi để xem lại sau.

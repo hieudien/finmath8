@@ -15,9 +15,9 @@ const SOLUTION_SYSTEM = `Giải bài Toán rồi trả đáp án chuẩn. Tự g
 
 // Viết lời giải từng bước khớp đáp án đã có. Trả mảng bước, hoặc chuỗi lỗi để báo giáo viên.
 export async function makeSteps(cfg: LlmCfg, p: Problem, note = ""): Promise<string[] | string> {
-  const out = await askJson(cfg, 'Viết lời giải từng bước (3–8 bước) cho bài Toán. Mỗi bước 1–2 câu, nêu rõ phép tính và kết quả trung gian CỤ THỂ (mỗi bước phải là một phép tính hay kết luận học sinh tự làm được, không viết bước chỉ chép lại dữ kiện đề), bước cuối là kết luận. Mỗi bước là MỘT phần tử riêng của mảng, không ghi "Bước N" đầu câu (giao diện tự đánh số). Lời giải PHẢI ra đúng đáp án đã cho trong "solution". Chỉ trả JSON {"steps": [string]}.' + gradeRule(p.grade), [{ role: "user", text: `${p.statement}
+  const out = await askJson(cfg, 'Viết lời giải từng bước (3–8 bước) cho bài Toán. Mỗi bước 1–2 câu, nêu rõ phép tính và kết quả trung gian CỤ THỂ (mỗi bước phải là một phép tính hay kết luận học sinh tự làm được, không viết bước chỉ chép lại dữ kiện đề), bước cuối là kết luận. Mỗi bước là MỘT phần tử riêng của mảng, không ghi "Bước N" đầu câu (giao diện tự đánh số). Lời giải PHẢI ra đúng đáp án đã cho trong "solution". Chỉ trả JSON {"steps": [string]}. Trong JSON, mỗi dấu \\ của LaTeX phải viết gấp đôi (\\\\frac, \\\\times, \\\\begin), nếu không sẽ thành ký tự điều khiển.' + gradeRule(p.grade), [{ role: "user", text: `${p.statement}
 Dữ liệu: ${JSON.stringify(p.data)}
-Đáp án: ${JSON.stringify(p.solution)}${note ? `\n${note}` : ""}` }], z.object({ steps: z.array(z.string().min(3)).min(2).max(12) }), { think: true, use: "solution_steps" });
+Đáp án: ${JSON.stringify(p.solution)}${note ? `\n${note}` : ""}` }], z.object({ steps: z.array(z.string().min(3)).min(2).max(8) }), { think: "low", use: "solution_steps" });
   // Mọi số lớn trong đáp án phải xuất hiện trong lời giải, nếu không thì không dùng (AI giải lệch đáp án).
   const steps = out.steps.map(stripStep);
   const missing = missingAnswers(p.solution, steps);
@@ -49,13 +49,13 @@ export async function fillMissing(cfg: LlmCfg, p: Problem): Promise<Problem | st
   return q;
 }
 
-const DERIVE_SYSTEM = `Đọc đề Toán, rút dữ kiện, tính đáp án chuẩn và viết phần phụ của đề. Chỉ dựa vào đề bài, tự giải thật cẩn thận, đừng bịa số. Công thức đặt trong $...$ theo LaTeX, KHÔNG dùng \\( \\) hay \\[ \\].
+const deriveSystem = (keep: boolean) => `Đọc đề Toán, rút dữ kiện, ${keep ? "" : "tính đáp án chuẩn "}và viết phần phụ của đề. Chỉ dựa vào đề bài, tự giải thật cẩn thận, đừng bịa số. Công thức đặt trong $...$ theo LaTeX, KHÔNG dùng \\( \\) hay \\[ \\].
 "data": mỗi dữ kiện cho trong đề là một phần tử {"name","value"} (CHỈ khóa "name" viết không dấu, ví dụ principal, rate, years; số thì value là chuỗi số, tỉ lệ viết dạng thập phân).
-"answers": mỗi đáp án một phần tử {"name","value"}: số thì value là chuỗi số; nhiều nghiệm đặt tên x1, x2; điều kiện hoặc đáp án chữ là {"name":"ket_luan","value":"..."} viết NGẮN GỌN một cụm (ví dụ "m khác -4"), không viết cả câu giải thích.
+${keep ? "" : `"answers": mỗi đáp án một phần tử {"name","value"}: số thì value là chuỗi số; nhiều nghiệm đặt tên x1, x2; điều kiện hoặc đáp án chữ là {"name":"ket_luan","value":"..."} viết NGẮN GỌN một cụm (ví dụ "m khác -4"), không viết cả câu giải thích.`}
 "skills": 2–5 kỹ năng hoặc kiến thức chính cần dùng, mỗi mục một cụm ngắn. "learning_objectives": 2–4 mục tiêu học tập. "common_errors": 2–4 sai lầm học sinh hay mắc với chính đề này.
 "hints": đúng 3 mức. Mức 1 chỉ hỏi định hướng; mức 2 gợi ý cách giải; mức 3 nêu bước tính đầu tiên, KHÔNG nêu kết quả cuối. "extension": một câu hỏi mở rộng.
 QUAN TRỌNG: mọi chữ tiếng Việt trong skills, learning_objectives, common_errors, hints, extension và value của đáp án chữ phải có dấu đầy đủ, KHÔNG viết không dấu.
-Chỉ trả JSON {"data":[...],"answers":[...],"skills":[...],"learning_objectives":[...],"common_errors":[...],"hints":[string,string,string],"extension":string}.`;
+Chỉ trả JSON {"data":[...],${keep ? "" : `"answers":[...],`}"skills":[...],"learning_objectives":[...],"common_errors":[...],"hints":[string,string,string],"extension":string}. Trong JSON, mỗi dấu \\ của LaTeX phải viết gấp đôi (\\\\frac, \\\\times, \\\\begin), nếu không sẽ thành ký tự điều khiển.`;
 const pairs = z.array(z.object({ name: z.string().min(1), value: z.string().min(1) }));
 const toRecord = (a: { name: string; value: string }[]) => Object.fromEntries(a.map((x) => [x.name, /^-?\d+(\.\d+)?$/.test(x.value.trim()) ? Number(x.value) : x.value]));
 const derived = z.object({
@@ -83,7 +83,8 @@ async function voteAnswer(cfg: LlmCfg, p: Problem, first: Record<string, unknown
   if (!nums(first).length) return first;
   const solve = () => askJson({ ...cfg, model: smartModel(cfg.provider) }, SOLUTION_SYSTEM + gradeRule(p.grade), [{ role: "user", text: p.statement }], z.object({ answers: pairs.min(1) }), { think: true, use: "answer" })
     .then((r) => toRecord(r.answers), () => null);
-  const votes = [first, ...(await Promise.all([solve(), solve()]))].filter((v): v is Record<string, unknown> => !!v);
+  const second = await solve(); // trùng `first` thì đủ phiếu; lệch mới giải lượt thứ ba (tiết kiệm lượt suy nghĩ)
+  const votes = [first, second, ...(second && sameAnswer(first, second) ? [] : [await solve()])].filter((v): v is Record<string, unknown> => !!v);
   const win = votes.find((v, i) => votes.some((w, j) => j !== i && sameAnswer(v, w)));
   return win && ok(win) ? win : null;
 }
@@ -92,11 +93,15 @@ async function voteAnswer(cfg: LlmCfg, p: Problem, first: Record<string, unknown
 // Đáp án: `keep` (đề đã có đáp án giáo viên duyệt hoặc đã qua kiểm thay nghiệm) thì giữ nguyên; không thì lấy bản bỏ phiếu, không đồng thuận thì báo lỗi.
 async function rebuildFromStatement(cfg: LlmCfg, p: Problem, keep: boolean): Promise<Problem | string> {
   // Model mạnh: model nhỏ hay giải sai (đáp án lệch khi kiểm chéo), và cả đáp án lẫn phần phụ đều suy ra từ đây.
-  const ask = () => askJson({ ...cfg, model: smartModel(cfg.provider) }, DERIVE_SYSTEM + gradeRule(p.grade), [{ role: "user", text: p.statement }], derived, { think: true, use: "answer" });
+  // keep: đáp án đã có nên không giải lại (bỏ mục answers, bớt suy nghĩ), đưa đáp án vào để gợi ý và sai lầm khớp với nó.
+  const smart = { ...cfg, model: smartModel(cfg.provider) };
+  const ask = () => keep
+    ? askJson(smart, deriveSystem(true) + gradeRule(p.grade), [{ role: "user", text: `${p.statement}\nĐáp án: ${JSON.stringify(p.solution)}` }], derived.omit({ answers: true }), { think: "low", use: "answer" })
+    : askJson(smart, deriveSystem(false) + gradeRule(p.grade), [{ role: "user", text: p.statement }], derived, { think: true, use: "answer" });
   let r = await ask();
   if (unaccented(r)) r = await ask(); // thử lại một lần
   if (unaccented(r)) return "AI trả phần gợi ý, sai lầm thường gặp không có dấu tiếng Việt. Bấm chạy lại.";
-  const solution = keep ? p.solution : await voteAnswer(cfg, p, toRecord(r.answers));
+  const solution = keep ? p.solution : await voteAnswer(cfg, p, toRecord((r as { answers?: { name: string; value: string }[] }).answers ?? []));
   if (!solution) return "Chưa có đáp án đáng tin: AI giải nhiều lần cho kết quả khác nhau hoặc không thỏa đề. Nhập đáp án đúng ở trang sửa đề rồi bấm chuẩn hóa lại.";
   return withGuides({
     ...p, data: toRecord(r.data), solution, skills: r.skills, learning_objectives: r.learning_objectives, common_errors: r.common_errors,

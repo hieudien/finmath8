@@ -10,9 +10,9 @@ import { log } from "@/lib/log";
 
 const UUID = z.string().uuid();
 const body = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("advise"), code: z.string().regex(/^[A-Z0-9._-]{1,20}$/) }),
+  z.object({ action: z.literal("advise"), code: z.string().regex(/^[A-Z0-9._-]{1,80}$/) }),
   z.object({ action: z.literal("analyze_session"), id: UUID }),
-  z.object({ action: z.literal("delete"), code: z.string().regex(/^[A-Z0-9._-]{1,20}$/) }),
+  z.object({ action: z.literal("delete"), code: z.string().regex(/^[A-Z0-9._-]{1,80}$/) }),
 ]);
 const sessionOut = z.object({ summary: z.string().min(1), strengths: z.array(z.string()).max(5), weaknesses: z.array(z.string()).max(5), next_steps: z.array(z.string()).max(5) });
 

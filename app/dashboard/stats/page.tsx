@@ -27,7 +27,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
   const res = await Promise.all([
     sb.from("public_links").select("id,label,tag").order("created_at", { ascending: false }),
     sb.from("link_stats").select("*"),
-    link ? sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code,student_code,student_name,revealed,struggled").eq("link_id", link).order("seq", { ascending: false }).limit(RECENT) : null,
+    link ? sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code,student_code,student_name,student_class,revealed,struggled").eq("link_id", link).order("seq", { ascending: false }).limit(RECENT) : null,
     link ? sb.rpc("link_summary", { p_link: link } as never) : null,
     link ? null : sb.from("tag_stats").select("*"),
   ]);

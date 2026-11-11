@@ -7,7 +7,7 @@ import { fmtTime, hardSteps, r1, sessionState, studentMsgs, who, type StepInfo }
 import { MathText } from "@/components/MathText";
 
 type L = { id: string; label: string; active: boolean };
-type Sess = { id: string; link_id: string; seq: number; status: string; started_at: string; problem_code: string; student_code: string | null; student_name: string | null };
+type Sess = { id: string; link_id: string; seq: number; status: string; started_at: string; problem_code: string; student_code: string | null; student_name: string | null; student_class: string | null };
 type Ov = { sessions: number; done: number; evals: number; total_avg: number; correct_pct: number; duration_s: number; hint_avg: number };
 
 export default async function Page() {
@@ -19,7 +19,7 @@ export default async function Page() {
     sb.from("teacher_settings").select("*").eq("teacher_id", u.id).maybeSingle(),
     sb.from("problems").select("id", { count: "exact", head: true }).is("deleted_at", null),
     sb.from("public_links").select("id,label,active").order("created_at", { ascending: false }),
-    sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code,student_code,student_name").order("started_at", { ascending: false }).limit(5),
+    sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code,student_code,student_name,student_class").order("started_at", { ascending: false }).limit(5),
     sb.from("overview_stats").select("*").maybeSingle(),
     sb.from("error_counts").select("name,value").order("value", { ascending: false }).limit(5),
   ]);

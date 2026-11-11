@@ -66,7 +66,7 @@ export async function crossCheck(cfg: LlmCfg, p: Problem): Promise<string> {
   if (sub) return `Kiểm chéo đáp án: ${sub}`;
   const smart = { ...cfg, model: smartModel(cfg.provider) };
   const r = await askJson(smart, SOLVE + gradeRule(p.grade), [{ role: "user", text: `${p.statement}\nDữ liệu: ${JSON.stringify(p.data)}` }],
-    z.object({ answers: z.array(z.object({ name: z.string(), value: z.string() })).min(1) }), { think: true, use: "cross_check" });
+    z.object({ answers: z.array(z.object({ name: z.string(), value: z.string() })).min(1) }), { think: true, use: "cross_check", temperature: 0 });
   const gotN = r.answers.flatMap((a) => nums(a.value));
   const gotT = r.answers.map((a) => canon(a.value));
   const lack = missingNums(nums(p.solution), gotN);
@@ -75,22 +75,45 @@ export async function crossCheck(cfg: LlmCfg, p: Problem): Promise<string> {
   const notes: string[] = [];
   if (lack.length) notes.push(`lời giải độc lập không ra ${lack.join(", ")}`);
   if (lackT.length) {
-    const j = await askJson(smart, JUDGE, [{ role: "user", text: `Bài: ${p.statement}\nĐáp án của đề: ${JSON.stringify(p.solution)}\nĐáp án độc lập: ${JSON.stringify(r.answers)}` }], z.object({ same: z.boolean(), reason: z.string().default("") }), { use: "cross_check" });
+    const j = await askJson(smart, JUDGE, [{ role: "user", text: `Bài: ${p.statement}\nĐáp án của đề: ${JSON.stringify(p.solution)}\nĐáp án độc lập: ${JSON.stringify(r.answers)}` }], z.object({ same: z.boolean(), reason: z.string().default("") }), { use: "cross_check", temperature: 0 });
     if (!j.same) notes.push(`kết luận chữ khác (${j.reason.slice(0, 120)})`);
   }
   return notes.length ? `Kiểm chéo đáp án: ${notes.join("; ")}. Kiểm tra lại đáp án và lời giải của đề.` : "";
 }
 
-const AUDIT = `Bạn rà soát lời giải từng bước của một bài Toán. Đáp án cho trước có thể đúng hoặc sai. Tự tính lại MỌI phép biến đổi, thay số, khai triển, rút gọn trong từng bước.
+const AUDIT = `Bạn rà soát lời giải từng bước của một bài Toán. Tự tính lại MỌI phép biến đổi, thay số, khai triển, rút gọn, giải phương trình trong từng bước, độc lập, không dựa vào kết luận của lời giải.
 Chỉ báo lỗi khi CHẮC CHẮN một phép tính hoặc suy luận SAI (khác cách trình bày không phải lỗi). Nếu không chắc thì ok = true.
-Chỉ khi các bước đều đúng và kết luận cuối KHÁC đáp án cho trước về GIÁ TRỊ (viết khác nhau nhưng cùng giá trị thì KHÔNG phải lỗi, khi đó ok = true), mới báo đúng mẫu: "Kết luận của lời giải là <...> nhưng đáp án cho trước là <...>: đáp án có thể sai."
-Chỉ trả JSON {"ok":boolean,"error":string}. error chỉ 1–2 câu, theo mẫu "Bước N: <chỗ sai>. Đúng phải là <...>.", không giải thích dài, không tự mâu thuẫn.`;
+Nếu có lỗi: step = số bước sai, wrong = đoạn ngắn chép từ bước đó, right = nội dung đúng (phải KHÁC wrong).
+Chỉ trả JSON {"ok":boolean,"step":number,"wrong":string,"right":string}.`;
 
-// Rà lỗi tính trong lời giải từng bước (kiểm chéo ở trên chỉ so đáp án cuối). Trả chuỗi mô tả lỗi, rỗng = không thấy lỗi.
+const stepsText = (p: Problem) => p.solution_steps.map((s, i) => `Bước ${i + 1}: ${s}`).join("\n");
+
+// Lỗi chỉ tính khi chỗ sai và chỗ đúng khác nhau (người rà hay tự mâu thuẫn: nói "sai" rồi viết lại đúng chính điều đó). Rỗng = không có lỗi.
+export function auditVerdict(r: { ok: boolean; step?: number; wrong?: string; right?: string }): string {
+  if (r.ok) return "";
+  const w = (r.wrong ?? "").trim(), g = (r.right ?? "").trim();
+  if (!w || !g || canon(w) === canon(g)) return "";
+  return `Bước ${r.step ?? "?"}: ${w}. Đúng phải là ${g}.`.slice(0, 400);
+}
+
+// Rà lỗi tính trong lời giải từng bước (kiểm chéo ở trên chỉ so đáp án cuối). Không đưa đáp án cho người rà: có đáp án thì nó neo vào đó (đáp án sai vẫn "xác nhận").
+// Trả chuỗi mô tả lỗi, rỗng = không thấy lỗi.
 export async function checkSteps(cfg: LlmCfg, p: Problem): Promise<string> {
   if (!p.solution_steps.length) return "";
   const smart = { ...cfg, model: smartModel(cfg.provider) };
-  const r = await askJson(smart, AUDIT + gradeRule(p.grade), [{ role: "user", text: `${p.statement}\nĐáp án: ${JSON.stringify(p.solution)}\nLời giải:\n${p.solution_steps.map((s, i) => `Bước ${i + 1}: ${s}`).join("\n")}` }],
-    z.object({ ok: z.boolean(), error: z.string().default("") }), { think: true, use: "cross_check" });
-  return r.ok ? "" : (r.error || "có phép tính sai").slice(0, 400);
+  const r = await askJson(smart, AUDIT + gradeRule(p.grade), [{ role: "user", text: `${p.statement}
+Lời giải:
+${stepsText(p)}` }],
+    z.object({ ok: z.boolean(), step: z.number().default(0), wrong: z.string().default(""), right: z.string().default("") }), { think: true, use: "cross_check", temperature: 0 });
+  const err = auditVerdict(r);
+  if (!err) return "";
+  // Hỏi lại một lần: báo lỗi có thật không.
+  const c = await askJson(smart, CONFIRM, [{ role: "user", text: `${p.statement}
+Lời giải:
+${stepsText(p)}
+Báo lỗi: ${err}` }],
+    z.object({ real: z.boolean() }), { think: true, use: "cross_check", temperature: 0 });
+  return c.real ? err : "";
 }
+
+const CONFIRM = `Một người rà soát báo lỗi trong lời giải Toán. Tự tính lại bước bị nêu. Nếu bước đó thực sự sai về phép tính hoặc suy luận, real = true. Nếu bước đúng, hoặc báo lỗi tự mâu thuẫn, hoặc chỉ khác cách diễn đạt, real = false. Chỉ trả JSON {"real":boolean}.`;

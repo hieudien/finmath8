@@ -12,9 +12,10 @@ import { parseProblems, type Problem } from "@/lib/schema/problem";
 import { log } from "@/lib/log";
 import { failResponse, reportError } from "@/lib/errors";
 import { clientIp, limited } from "@/lib/ratelimit";
+import { studentKey } from "@/lib/stats";
 
 const body = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("start"), slug: z.string().min(4), problemCode: z.string(), studentCode: z.string().trim().toUpperCase().regex(/^[A-Z0-9._-]{1,20}$/), studentName: z.string().trim().min(2).max(60) }),
+  z.object({ action: z.literal("start"), slug: z.string().min(4), problemCode: z.string(), studentName: z.string().trim().min(2).max(60), studentClass: z.string().trim().min(1).max(10) }),
   z.object({ action: z.literal("message"), slug: z.string().min(4), sessionId: z.string().uuid(), text: z.string().trim().min(1).max(500), ask: z.boolean().optional() }), // ask: câu hỏi "Em chưa hiểu"
   z.object({ action: z.literal("end"), slug: z.string().min(4), sessionId: z.string().uuid() }),
   z.object({ action: z.literal("hint"), slug: z.string().min(4), sessionId: z.string().uuid() }),
@@ -89,10 +90,11 @@ async function handle(req: Request) {
     const { data: seq } = await db.rpc("next_seq", { p_link: link.id } as never); // sau khi qua mọi giới hạn, để số thứ tự không bị hụt
     if (!prob.solution_steps.length) return err("Bài này chưa sẵn sàng. Báo giáo viên của em.", 409); // đề cũ thiếu lời giải từng bước
     const mode = "steps"; // cột mode giữ lại cho phiên cũ (chat, quiz)
-    const { data: s, error } = await db.from("chat_sessions").insert({ link_id: link.id, anon_id: anon, seq: (seq as number | null) ?? 1, problem_code: prob.id, student_code: b.studentCode, student_name: b.studentName, mode, hint_level: 0, problem_snapshot: prob } as never).select("*").single();
+    const name = b.studentName.replace(/\s+/g, " "), cls = b.studentClass.replace(/\s+/g, "").toUpperCase(), code = studentKey(name, cls);
+    const { data: s, error } = await db.from("chat_sessions").insert({ link_id: link.id, anon_id: anon, seq: (seq as number | null) ?? 1, problem_code: prob.id, student_code: code, student_name: name, student_class: cls, mode, hint_level: 0, problem_snapshot: prob } as never).select("*").single();
     if (error || !s) throw new Error("Không tạo được phiên chat: " + (error?.message ?? "rỗng"));
     // Học sinh có bảng riêng, sống sót khi xóa liên kết. Vào lại bằng cùng mã thì hiện lại (deleted_at = null).
-    const up = await db.from("students").upsert({ teacher_id: link.teacher_id, code: b.studentCode, name: b.studentName, last_seen_at: new Date().toISOString(), deleted_at: null } as never);
+    const up = await db.from("students").upsert({ teacher_id: link.teacher_id, code, name, class: cls, last_seen_at: new Date().toISOString(), deleted_at: null } as never);
     if (up.error) await reportError(new Error("Lỗi cơ sở dữ liệu: " + up.error.message), "lưu học sinh (upsert)", { teacherId: link.teacher_id, linkId: link.id, anonId: anon, actor: "student" });
     const sess = s as Session & { seq: number };
     try {

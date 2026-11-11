@@ -11,7 +11,7 @@ const TEACHER = [
 ];
 
 const STUDENT = [
-  ["Vào bằng liên kết", "Nhập mã và họ tên một lần, không cần tài khoản."],
+  ["Vào bằng liên kết", "Nhập họ tên và lớp, không cần tài khoản."],
   ["Được hỏi từng bước", "Đọc đề, nêu dữ kiện, chọn cách giải, tự tính. Bot không nói đáp án."],
   ["Gợi ý khi kẹt", "Gợi ý tăng dần: định hướng, chỉ cách giải, nêu bước kế. Kẹt quá lâu thì bot hiện lời giải của bước đó để em đi tiếp."],
   ["Nộp từng bước", "Mỗi lần một bước vào ô ngắn. Chưa rõ đề thì bấm Em chưa hiểu để hỏi."],
@@ -122,7 +122,7 @@ export default function Home() {
             ))}
           </ul>
           <p className="max-w-prose text-sm text-text-muted">
-            Học sinh nhập mã và họ tên khi vào bài để thầy cô biết ai cần hỗ trợ. Hệ thống không lưu lớp hay IP.
+            Học sinh nhập họ tên và lớp mỗi khi mở liên kết để thầy cô biết ai cần hỗ trợ. Hệ thống không lưu IP.
           </p>
         </section>
 

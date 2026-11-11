@@ -11,7 +11,7 @@ export type Attempt = {
   ev: { identify: number; plan: number; calculate: number; explain: number; total: number; final_correct: boolean; hint_count: number; errors: string[]; gaps: string[] } | null;
 };
 export type Profile = {
-  code: string; names: string[]; attempts: Attempt[];
+  code: string; cls: string | null; names: string[]; attempts: Attempt[];
   rubric: { key: string; name: string; value: number }[]; // trung bình 0..3, yếu nhất đứng đầu
   errors: { name: string; value: number }[];
   gaps: { name: string; value: number }[]; // kiến thức nền còn thiếu (AI ghi khi chấm phiên có bước được giải hộ)
@@ -26,7 +26,7 @@ const top = (m: Map<string, number>) => [...m].map(([name, value]) => ({ name, v
 // RLS của supabaseServer giới hạn: giáo viên chỉ đọc được học sinh của mình.
 export async function loadStudent(sb: Sb, code: string): Promise<Profile | null> {
   const [st, s, p] = await Promise.all([
-    sb.from("students").select("name").eq("code", code).maybeSingle(), // RLS: chỉ học sinh của giáo viên này và chưa xóa
+    sb.from("students").select("name,class").eq("code", code).maybeSingle(), // RLS: chỉ học sinh của giáo viên này và chưa xóa
 
     sb.from("chat_sessions").select("id,problem_code,status,started_at,student_name,revealed,struggled,session_evals(identify,plan,calculate,explain,total,final_correct,hint_count,errors,gaps)").eq("student_code", code).order("started_at", { ascending: false }).limit(200),
     sb.from("problems").select("code,title:content->>title,skills:content->skills,steps:content->solution_steps,goals:content->step_goals").is("deleted_at", null), // chỉ lấy tiêu đề và kỹ năng, không tải cả đề
@@ -36,7 +36,7 @@ export async function loadStudent(sb: Sb, code: string): Promise<Profile | null>
   const rows = (s.data ?? []) as SR[];
   if (st.error) throw new Error("Lỗi cơ sở dữ liệu: " + st.error.message);
   if (!st.data) return null; // học sinh không có hoặc đã xóa; còn học sinh mà hết phiên (liên kết đã xóa) thì vẫn trả hồ sơ rỗng
-  const stName = (st.data as { name: string | null }).name;
+  const stName = (st.data as { name: string | null; class: string | null }).name, stClass = (st.data as { class: string | null }).class;
   const pd = (p.data ?? []) as { code: string; title: string | null; skills: string[] | null; steps: string[] | null; goals: string[] | null }[];
   const prob = new Map(pd.map((x) => [x.code, { title: x.title ?? undefined, skills: x.skills ?? undefined }]));
   const info = new Map<string, StepInfo>(pd.map((x) => [x.code, { title: x.title ?? x.code, steps: x.steps ?? [], goals: x.goals?.length === x.steps?.length ? x.goals ?? [] : [] }]));
@@ -49,5 +49,5 @@ export async function loadStudent(sb: Sb, code: string): Promise<Profile | null>
     (a.ev!.gaps ?? []).forEach((g) => gaps.set(g, (gaps.get(g) ?? 0) + 1));
     if (a.ev!.total < 8 || !a.ev!.final_correct || a.revealed > 0) (prob.get(a.problem_code)?.skills ?? []).forEach((k) => skills.set(k, (skills.get(k) ?? 0) + 1));
   }
-  return { code, names: stName ? [stName] : [...new Set(rows.map((r) => r.student_name).filter((x): x is string => !!x))], attempts, rubric, errors: top(errors), gaps: top(gaps), weakSkills: top(skills), weakSteps: weakSteps(rows.map((r) => ({ id: r.id, problem_code: r.problem_code, student_code: code, struggled: r.struggled, revealed: r.revealed, started_at: r.started_at })), info), evaluated: done.length };
+  return { code, cls: stClass, names: stName ? [stName] : [...new Set(rows.map((r) => r.student_name).filter((x): x is string => !!x))], attempts, rubric, errors: top(errors), gaps: top(gaps), weakSkills: top(skills), weakSteps: weakSteps(rows.map((r) => ({ id: r.id, problem_code: r.problem_code, student_code: code, struggled: r.struggled, revealed: r.revealed, started_at: r.started_at })), info), evaluated: done.length };
 }

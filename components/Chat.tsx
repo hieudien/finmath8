@@ -25,14 +25,43 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   const [asking, setAsking] = useState(false); // ô đang dùng để hỏi "Em chưa hiểu"
   const [wrong, setWrong] = useState(0); // số lần nộp liên tiếp chưa qua bước, từ 2 thì nhắc bấm Gợi ý
   const [showStmt, setShowStmt] = useState(false); // mobile: đề thu gọn 1 dòng, bấm mở bottom sheet; desktop: đề luôn hiện đủ ở cột trái
-  const [who, setWho] = useState<{ code: string; name: string } | null>(null); // thông tin học sinh, nhập một lần rồi nhớ trong trình duyệt
-  const [ready, setReady] = useState(false);
-  const [fCode, setFCode] = useState("");
+  const [who, setWho] = useState<{ name: string; cls: string } | null>(null); // thông tin học sinh, chỉ giữ trong trang này; vào lại link hoặc tải lại là nhập lại
+  const [fClass, setFClass] = useState("");
   const [fName, setFName] = useState("");
   const end = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLTextAreaElement>(null);
   const started = useRef(false);
   const tok = useRef(0); // mỗi lần mở bài/quay lại tăng 1: phản hồi của lần cũ đến muộn thì bỏ
+
+  const [kbVv, setKb] = useState(false); // visualViewport co lại (Android)
+  const lastH = useRef(0);
+  const [focus, setFocus] = useState(false); // iOS Safari không co visualViewport đáng tin: ô nhập đang focus trên mobile thì coi như bàn phím mở
+  const kb = kbVv || focus;
+
+  useEffect(() => {
+    const on = () => setTimeout(() => setFocus(window.innerWidth < 640 && !!box.current && document.activeElement === box.current), 0);
+    document.addEventListener("focusin", on); document.addEventListener("focusout", on);
+    return () => { document.removeEventListener("focusin", on); document.removeEventListener("focusout", on); };
+  }, []);
+
+  // Bàn phím ảo không làm dvh co lại: đo visualViewport, khung chat khớp phần nhìn thấy để đề, bước và ô nhập không bị che.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv || !who) return; // form nhập tên: không khóa cuộn trang
+    const root = document.documentElement;
+    const upd = () => {
+      // iOS "Xong" đóng bàn phím nhưng ô nhập vẫn giữ focus: vùng nhìn thấy to ra thì bỏ focus để thoát chế độ gọn
+      if (vv.height > lastH.current + 80 && document.activeElement === box.current) { box.current?.blur(); setFocus(false); }
+      lastH.current = vv.height;
+      root.style.setProperty("--vvh", `${vv.height}px`);
+      root.style.setProperty("--vvt", `${vv.offsetTop}px`); // iOS: vùng nhìn thấy có thể lệch xuống so với trang
+      setKb(window.innerWidth < 640 && vv.height < window.innerHeight * 0.75);
+    };
+    document.body.style.overflow = "hidden"; // iOS tự cuộn trang khi focus; khung chat là fixed và bám theo vùng nhìn thấy, trang không cần cuộn
+    upd();
+    vv.addEventListener("resize", upd); vv.addEventListener("scroll", upd);
+    return () => { vv.removeEventListener("resize", upd); vv.removeEventListener("scroll", upd); root.style.removeProperty("--vvh"); root.style.removeProperty("--vvt"); document.body.style.overflow = ""; };
+  }, [who]);
 
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [msgs, busy]);
 
@@ -40,7 +69,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
     const my = ++tok.current;
     setProb(p); setBusy(false); setErr(""); setAsking(false); setWrong(0); setProg({ done: 0, total: p.total, next: 1, goal: p.goal });
     setMsgs([{ role: "bot", text: p.greeting }]); // hiện lời chào ngay; server tạo phiên song song, có sid thì mở ô nhập
-    const { ok, data } = await post<R>("/api/chat", { action: "start", slug, problemCode: p.id, studentCode: who?.code, studentName: who?.name });
+    const { ok, data } = await post<R>("/api/chat", { action: "start", slug, problemCode: p.id, studentName: who?.name, studentClass: who?.cls });
     if (my !== tok.current) return;
     setBusy(false);
     if (!ok) { setErr(data.error ?? "Có lỗi."); started.current = false; setMsgs([]); if (problems.length > 1) setProb(null); return; } // lỗi: bỏ lời chào đã hiện, nhiều đề thì về danh sách (lỗi hiện ở đó)
@@ -49,28 +78,20 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   }
 
   useEffect(() => {
-    try { const v = JSON.parse(localStorage.getItem("ms_student") ?? "null"); if (v?.code && v?.name) setWho(v); } catch {}
-    setReady(true);
-  }, []);
-
-  useEffect(() => {
     if (who && problems.length === 1 && !started.current) { started.current = true; start(problems[0]); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [who]);
 
   function saveWho(e: React.FormEvent) {
     e.preventDefault();
-    const code = fCode.trim().toUpperCase(), name = fName.trim().replace(/\s+/g, " ");
-    if (!/^[A-Z0-9._-]{1,20}$/.test(code)) return setErr("Mã học sinh gồm chữ và số, tối đa 20 ký tự.");
+    const cls = fClass.trim().replace(/\s+/g, "").toUpperCase(), name = fName.trim().replace(/\s+/g, " ");
     if (name.length < 2) return setErr("Bạn nhập họ và tên nhé.");
+    if (!cls || cls.length > 10) return setErr("Bạn nhập lớp nhé (tối đa 10 ký tự).");
     setErr("");
-    const v = { code, name };
-    try { localStorage.setItem("ms_student", JSON.stringify(v)); } catch {}
-    setWho(v);
+    setWho({ name, cls });
   }
 
   function changeWho() {
-    try { localStorage.removeItem("ms_student"); } catch {}
     started.current = false; tok.current++;
     setWho(null); setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setSure(false); setErr(""); setProg(null); setAsking(false); setWrong(0);
   }
@@ -120,18 +141,17 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
     await post("/api/chat", { action: "survey", slug, sessionId: sid, likert: n });
   }
 
-  if (!ready) return null;
   if (!who) {
     return (
       <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col gap-4 px-4 py-8">
         <Brand tagline />
         <h1>{label}</h1>
-        <p className="text-text-muted">Nhập mã học sinh và họ tên để bắt đầu. Giáo viên sẽ xem kết quả để biết bạn cần hỗ trợ phần nào.</p>
+        <p className="text-text-muted">Nhập họ tên và lớp để bắt đầu. Giáo viên sẽ xem kết quả để biết bạn cần hỗ trợ phần nào.</p>
         <form onSubmit={saveWho} className="flex flex-col gap-3">
-          <Field label="Mã học sinh" value={fCode} onChange={(e) => setFCode(e.target.value)} maxLength={20} autoComplete="off" required />
-          <Field label="Họ và tên" value={fName} onChange={(e) => setFName(e.target.value)} maxLength={60} autoComplete="name" required />
+          <Field label="Họ và tên" value={fName} onChange={(e) => setFName(e.target.value)} maxLength={60} autoComplete="off" required />
+          <Field label="Lớp" value={fClass} onChange={(e) => setFClass(e.target.value)} maxLength={10} autoComplete="off" required />
           {err && <Alert tone="danger">{err}</Alert>}
-          <Button type="submit" disabled={!fCode.trim() || !fName.trim()}>Tiếp tục</Button>
+          <Button type="submit" disabled={!fClass.trim() || !fName.trim()}>Tiếp tục</Button>
         </form>
       </main>
     );
@@ -143,7 +163,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
       <main className="h-screen-d mx-auto flex max-w-md flex-col gap-4 overflow-hidden px-4 py-8">
         <Brand tagline />
         <h1>{label}</h1>
-        <p className="text-text-muted">Xin chào <b>{who.name}</b> ({who.code}). Chọn một bài để bắt đầu. Chatbot sẽ gợi ý từng bước, bạn hãy tự suy nghĩ trước khi xin gợi ý.</p>
+        <p className="text-text-muted">Xin chào <b>{who.name}</b> (lớp {who.cls}). Chọn một bài để bắt đầu. Chatbot sẽ gợi ý từng bước, bạn hãy tự suy nghĩ trước khi xin gợi ý.</p>
         <Button variant="ghost" type="button" onClick={changeWho} className="-ml-3 self-start text-sm">Đổi thông tin</Button>
         {err && <Alert tone="danger">{err}</Alert>}
         <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain">
@@ -160,8 +180,9 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   }
 
   return (
-    <div className="h-screen-d mx-auto flex max-w-2xl flex-col overflow-hidden text-sm lg:max-w-6xl">
-      <header className="shrink-0 border-b border-border bg-surface px-4 py-0.5 sm:py-3">
+    <>
+    <div style={{ transform: "translateY(var(--vvt, 0px))" }} className="h-screen-d fixed inset-x-0 top-0 mx-auto flex max-w-2xl flex-col overflow-hidden bg-bg text-sm lg:max-w-6xl">
+      <header className={`shrink-0 border-b border-border bg-surface px-4 py-0.5 sm:py-3 ${kb ? "hidden" : ""}`}>
         <div className="mb-2 hidden items-center justify-between gap-3 sm:flex">
           <Brand size="sm" />
           <p className="truncate text-sm text-text-muted" title={label}>{label}{sid && <span className="tnum ml-2 font-mono text-xs">#{shortId(sid)}</span>}</p>
@@ -179,12 +200,12 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
             <h2 className="text-xs font-semibold uppercase tracking-wide text-primary">Đề bài</h2>
             <button type="button" onClick={() => setShowStmt(true)} className="-mr-2 h-7 rounded-sm px-2 text-xs font-medium text-primary hover:bg-surface lg:hidden">Xem đủ</button>
           </div>
-          <div className="max-h-[5.5rem] overflow-y-auto overscroll-contain leading-tight lg:max-h-none lg:overflow-visible lg:leading-normal [&_.katex]:text-[1.05em] [&_.katex-display]:my-0.5 [&_.py-1]:py-0"><MathText text={prob.statement.replace(/\n{2,}/g, "\n").trim()} /></div>
+          <div style={kb ? { maxHeight: "calc(var(--vvh) * 0.22)" } : undefined} className={`${kb ? "" : "max-h-[5.5rem]"} overflow-y-auto overscroll-contain leading-tight lg:max-h-none lg:overflow-visible lg:leading-normal [&_.katex]:text-[1.05em] [&_.katex-display]:my-0.5 [&_.py-1]:py-0`}><MathText text={prob.statement.replace(/\n{2,}/g, "\n").trim()} /></div>
         </section>
       )}
       {showStmt && prob.statement && (
         <div className="fixed inset-0 z-30 flex flex-col justify-end bg-black/40 lg:hidden" onClick={() => setShowStmt(false)}>
-          <div role="dialog" aria-label="Đề bài" className="max-h-[75dvh] overflow-y-auto rounded-t-xl bg-surface px-4 pb-6 pt-3 text-base" onClick={(e) => e.stopPropagation()}>
+          <div role="dialog" aria-label="Đề bài" style={{ maxHeight: "calc(var(--vvh, 100dvh) * 0.75)" }} className="overflow-y-auto rounded-t-xl bg-surface px-4 pb-6 pt-3 text-base" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-primary">Đề bài</h2>
               <Button variant="ghost" type="button" onClick={() => setShowStmt(false)} className="-mr-3 text-sm">Đóng</Button>
@@ -207,7 +228,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
         <div ref={end} />
       </div>
 
-      <footer className="max-h-[35dvh] shrink-0 overflow-y-auto border-t border-border bg-surface px-4 pt-2 sm:max-h-[45dvh]" style={{ paddingBottom: "max(0.25rem, env(safe-area-inset-bottom))" }}>
+      <footer className={`shrink-0 overflow-y-auto border-border bg-surface px-4 pt-2 border-t ${kb ? "" : "max-h-[35dvh] sm:max-h-[45dvh]"}`} style={{ paddingBottom: "max(0.25rem, env(safe-area-inset-bottom))" }}>
         {err && <div className="mb-2"><Alert tone="danger">{err}{sid ? ` (Mã phiên: ${shortId(sid)})` : ""}</Alert></div>}
         {done ? (
           <div className="flex flex-col gap-3">
@@ -226,11 +247,12 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
             )}
           </div>
         ) : (
-          <StepInput text={text} setText={setText} busy={busy} ready={!!sid} onSend={send} onHint={hint} progress={prog} asking={asking} setAsking={setAsking} stuck={wrong >= 2} box={box} />
+          <StepInput text={text} setText={setText} busy={busy} ready={!!sid} onSend={send} onHint={hint} progress={prog} asking={asking} setAsking={setAsking} stuck={wrong >= 2} box={box} compact={kb} />
         )}
       </footer>
       </div>
       </div>
     </div>
+    </>
   );
 }

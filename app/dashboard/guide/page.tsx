@@ -22,11 +22,11 @@ const BLOCKS: [string, string[]][] = [
     "Mở một phiên (ở Thống kê hoặc hồ sơ học sinh) rồi bấm \"AI phân tích phiên này\" để có nhận xét riêng cho phiên đó: làm tốt ở đâu, yếu ở bước nào, nên làm gì tiếp. Kết quả được lưu, bấm \"Phân tích lại\" khi cần.",
     "Thống kê, hồ sơ và danh sách Học sinh cho biết bước nào học sinh hay gặp khó (bấm Gợi ý, hỏi, làm sai hoặc được giải hộ). AI đề xuất cải thiện có thêm mục Ôn tập theo bước.",
     "Cài đặt có mục Chi phí AI và Nhật ký lỗi để xem lượng AI đã dùng và lúc nào học sinh gặp lỗi.",
-    "Xóa liên kết hoặc xóa học sinh chỉ ẩn đi, dữ liệu vẫn được giữ. Học sinh vào lại bằng cùng mã thì hiện lại.",
+    "Xóa liên kết hoặc xóa học sinh chỉ ẩn đi, dữ liệu vẫn được giữ. Học sinh vào lại bằng cùng họ tên và lớp thì hiện lại.",
     "Chỉnh gợi ý trong đề rồi tạo liên kết mới (liên kết cũ giữ bản đề cũ).",
   ]],
   ["Bảo mật và đạo đức", [
-    "Học sinh không cần tài khoản. Em nhập mã và họ tên khi vào bài để thầy cô biết ai cần hỗ trợ. Hệ thống không lưu lớp hay IP, và tự che số điện thoại, email khi học sinh lỡ gõ.",
+    "Học sinh không cần tài khoản. Mỗi khi mở liên kết, em nhập họ tên và lớp để thầy cô biết ai cần hỗ trợ. Hệ thống không lưu IP, và tự che số điện thoại, email khi học sinh lỡ gõ.",
     "Thống kê hiện ngay khi có phiên đầu tiên; số liệu càng chính xác khi có nhiều học sinh.",
     "Dữ liệu bị xóa chỉ bị ẩn, không mất.",
     "Nhắc học sinh không chia sẻ thông tin cá nhân với chatbot.",
