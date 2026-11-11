@@ -1,0 +1,4 @@
+- [Kiểm tra trước khi khẳng định](verify-before-claiming-state.md) — kiểm tra chỉ-đọc trạng thái DB/hệ thống ngoài, đừng suy từ lệnh thất bại
+- [Nhẹ trước khi đổi schema](light-before-schema-change.md) — thiếu dữ liệu thì thử truy vấn khác trước khi đề xuất migration
+- [Test ở local 3000](test-on-local-3000.md) — dùng localhost:3000 sẵn có, không start server mới
+- [Không sửa file bằng script](no-script-edits.md) — chỉ dùng Edit/Write, không python/sed/node để ghi file
