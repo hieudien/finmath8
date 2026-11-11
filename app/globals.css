@@ -114,3 +114,6 @@ h3 { font-size: 1.125rem; font-weight: 600; }
 /* Flyout xem/sửa đề trượt vào từ bên phải (tắt khi người dùng chọn giảm chuyển động, xem khối ở trên) */
 @keyframes flyout-in { from { transform: translateX(24px); opacity: 0 } to { transform: none; opacity: 1 } }
 .flyout-in { animation: flyout-in .18s ease-out; }
+
+/* Hộp công thức: ẩn nút menu 3 gạch của MathLive (học sinh chỉ cần bàn phím ảo) */
+math-field::part(menu-toggle) { display: none; }

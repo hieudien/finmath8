@@ -14,10 +14,23 @@ export default function FormulaDialog({ initial = "", onInsert, onClose }: { ini
       if (gone || !host.current) return;
       MathfieldElement.fontsDirectory = "/mathlive-fonts"; // chép từ node_modules/mathlive/fonts vào public/
       MathfieldElement.soundsDirectory = null;
+      // Toán cấp 2: chỉ giữ số, phép tính, phân số, mũ, căn, so sánh. Không tích phân, giới hạn, chữ Hy Lạp, ma trận.
+      const k = (latex: string, insert = latex): { latex: string; insert: string } => ({ latex, insert });
+      window.mathVirtualKeyboard.layouts = [{
+        label: "Toán", tooltip: "Bàn phím toán cấp 2",
+        rows: [
+          ["x", "y", "a", "b", "[7]", "[8]", "[9]", "[/]", k("\\frac{#@}{#?}"), k("\\sqrt{#?}")],
+          ["<", ">", k("\\le"), k("\\ge"), "[4]", "[5]", "[6]", "[*]", k("#@^2"), k("#@^{#?}")],
+          [k("\\ne"), k("="), k("\\pi"), k("^\\circ"), "[1]", "[2]", "[3]", "[-]", k("("), k(")")],
+          ["[left]", "[right]", "[0]", "[.]", k("\\%"), "[+]", "[backspace]"],
+        ],
+      }];
       const mf = new MathfieldElement();
       mf.value = initial;
       mf.style.cssText = "display:block;width:100%;font-size:1.5rem;padding:0.5rem;border:1px solid var(--color-border-strong,#888);border-radius:6px;";
       host.current.appendChild(mf);
+      mf.inlineShortcuts = { sqrt: "\\sqrt{#?}", pi: "\\pi", sin: "\\sin", cos: "\\cos", tan: "\\tan", cot: "\\cot", "<=": "\\le", ">=": "\\ge", "!=": "\\ne" };
+      mf.menuItems = []; // ẩn menu chuột phải (chỉ gán được sau khi đã gắn vào trang)
       field.current = mf;
       mf.focus();
     }).catch(() => toast("danger", "Không tải được bộ soạn công thức. Bạn gõ công thức dạng $...$ cũng được."));
