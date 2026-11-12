@@ -9,7 +9,14 @@ import { shortId } from "@/lib/sid";
 type P = { id: string; title: string; statement: string; greeting: string; total: number; goal: string; example: string };
 type M = { role: "student" | "bot"; text: string };
 type Prog = { done: number; total: number; next?: number; goal?: string; example?: string };
-type R = { sessionId?: string; reply?: string; step?: number; done?: boolean; progress?: Prog; misrouted?: boolean };
+type Resume = { sessionId: string; progress: Prog; lastAt: string };
+type R = { sessionId?: string; msgs?: M[]; resume?: Resume; reply?: string; step?: number; done?: boolean; progress?: Prog; misrouted?: boolean };
+
+function ago(iso: string) {
+  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (!(m >= 0)) return "";
+  return m < 1 ? "vừa xong" : m < 60 ? `${m} phút trước` : m < 1440 ? `${Math.round(m / 60)} giờ trước` : `${Math.round(m / 1440)} ngày trước`;
+}
 
 export default function Chat({ slug, label, problems }: { slug: string; label: string; problems: P[] }) {
   const [prob, setProb] = useState<P | null>(null);
@@ -27,6 +34,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   const [wrong, setWrong] = useState(0); // số lần nộp liên tiếp chưa qua bước, từ 2 thì nhắc bấm Gợi ý
   const [showStmt, setShowStmt] = useState(false); // mobile: đề thu gọn 1 dòng, bấm mở bottom sheet; desktop: đề luôn hiện đủ ở cột trái
   const [who, setWho] = useState<{ name: string; cls: string } | null>(null); // thông tin học sinh, chỉ giữ trong trang này; vào lại link hoặc tải lại là nhập lại
+  const [pending, setPending] = useState<(Resume & { p: P }) | null>(null); // bài làm dở đang chờ học sinh chọn làm tiếp hay làm lại
   const [fClass, setFClass] = useState("");
   const [fName, setFName] = useState("");
   const end = useRef<HTMLDivElement>(null);
@@ -66,8 +74,37 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
 
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [msgs, busy]);
 
+  // Mở đề: nếu học sinh (cùng tên + lớp) đã làm dở đề này thì hỏi làm tiếp hay làm lại; kiểm tra lỗi thì cứ mở bài mới.
   async function start(p: P) {
     const my = ++tok.current;
+    setProb(p); setMsgs([]); setErr(""); setBusy(true); setPending(null); // chưa có sid: hiện khung "Đang mở bài"
+    const c = await post<R>("/api/chat", { action: "resume_check", slug, problemCode: p.id, studentName: who?.name, studentClass: who?.cls });
+    if (my !== tok.current) return;
+    if (c.ok && c.data.resume) { setBusy(false); setPending({ p, ...c.data.resume }); return; }
+    begin(p, my);
+  }
+
+  async function resume() {
+    if (!pending) return;
+    const my = ++tok.current, { p, sessionId } = pending;
+    setBusy(true);
+    const { ok, data } = await post<R>("/api/chat", { action: "resume", slug, sessionId, studentName: who?.name, studentClass: who?.cls });
+    if (my !== tok.current) return;
+    if (!ok || !data.sessionId) { setBusy(false); setErr(data.error ?? "Không mở lại được bài dở. Bạn thử lại hoặc chọn làm lại mới."); return; }
+    setPending(null); setBusy(false); setErr(""); setWrong(0); setDone(false); setRated(false); setSure(false); setAskOpen(false); setAskText("");
+    setMsgs(data.msgs ?? []); setSid(data.sessionId); setProg(data.progress ?? { done: 0, total: p.total });
+  }
+
+  async function restart() {
+    if (!pending) return;
+    const my = ++tok.current, { p, sessionId } = pending;
+    setPending(null); setBusy(true);
+    await post("/api/chat", { action: "abandon", slug, sessionId, studentName: who?.name, studentClass: who?.cls }); // lỗi cũng bỏ qua: vẫn mở bài mới
+    if (my !== tok.current) return;
+    begin(p, my);
+  }
+
+  async function begin(p: P, my: number) {
     setProb(p); setBusy(false); setErr(""); setAskOpen(false); setAskText(""); setWrong(0); setProg({ done: 0, total: p.total, next: 1, goal: p.goal, example: p.example });
     setMsgs([{ role: "bot", text: p.greeting }]); // hiện lời chào ngay; server tạo phiên song song, có sid thì mở ô nhập
     const { ok, data } = await post<R>("/api/chat", { action: "start", slug, problemCode: p.id, studentName: who?.name, studentClass: who?.cls });
@@ -93,7 +130,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   }
 
   function changeWho() {
-    started.current = false; tok.current++;
+    started.current = false; tok.current++; setPending(null);
     setWho(null); setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setSure(false); setErr(""); setProg(null); setAskOpen(false); setAskText(""); setWrong(0);
   }
 
@@ -129,7 +166,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
 
   // Quay lại danh sách đề. Phiên đang làm dở để nguyên ("Bỏ dở"), giống khi học sinh đóng tab.
   function back() {
-    tok.current++;
+    tok.current++; setPending(null);
     setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setSure(false); setText(""); setErr(""); setBusy(false); setShowStmt(false); setProg(null); setAskOpen(false); setAskText(""); setWrong(0);
   }
 
@@ -183,6 +220,18 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
 
   return (
     <>
+    {pending && (
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
+        <div role="dialog" aria-modal="true" aria-label="Bài làm dở" className="flex w-full max-w-sm flex-col gap-3 rounded-lg bg-surface p-5 shadow-lg">
+          <h2 className="text-base font-semibold">Em đang làm dở bài này</h2>
+          <p className="text-text-muted">Em đã làm {pending.progress.done}/{pending.progress.total} bước{ago(pending.lastAt) ? ` (${ago(pending.lastAt)})` : ""}. Em muốn làm tiếp hay làm lại từ đầu?</p>
+          {err && <Alert tone="danger">{err}</Alert>}
+          <Button type="button" onClick={resume} disabled={busy}>Làm tiếp</Button>
+          <Button type="button" variant="secondary" onClick={restart} disabled={busy}>Làm lại mới</Button>
+          {problems.length > 1 && <Button type="button" variant="ghost" onClick={back} disabled={busy}>← Danh sách bài</Button>}
+        </div>
+      </div>
+    )}
     <div style={{ transform: "translateY(var(--vvt, 0px))" }} className="h-screen-d fixed inset-x-0 top-0 mx-auto flex max-w-2xl flex-col overflow-hidden bg-bg text-sm lg:max-w-6xl">
       <header className={`shrink-0 border-b border-border bg-surface px-4 py-0.5 sm:py-3 ${kb ? "hidden" : ""}`}>
         <div className="mb-2 hidden items-center justify-between gap-3 sm:flex">

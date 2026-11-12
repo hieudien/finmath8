@@ -7,7 +7,8 @@ import { admin } from "@/lib/supabase/admin";
 import { llmCfg } from "@/lib/teacher";
 import { getLink } from "@/lib/links";
 import { finish, type Session, type Tm } from "@/lib/chat/engine";
-import { stepAsk, stepHint, stepsOpening, stepTurn } from "@/lib/chat/steps";
+import { progress, stepAsk, stepHint, stepsOpening, stepTurn } from "@/lib/chat/steps";
+import { checkpoints } from "@/lib/chat/progress";
 import { parseProblems, type Problem } from "@/lib/schema/problem";
 import { log } from "@/lib/log";
 import { failResponse, reportError, swallow, watchdog, type Trace } from "@/lib/errors";
@@ -16,6 +17,9 @@ import { studentKey } from "@/lib/stats";
 
 const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("start"), slug: z.string().min(4), problemCode: z.string(), studentName: z.string().trim().min(2).max(60), studentClass: z.string().trim().min(1).max(10) }),
+  z.object({ action: z.literal("resume_check"), slug: z.string().min(4), problemCode: z.string(), studentName: z.string().trim().min(2).max(60), studentClass: z.string().trim().min(1).max(10) }), // có phiên làm dở của đúng học sinh + đề này không
+  z.object({ action: z.literal("resume"), slug: z.string().min(4), sessionId: z.string().uuid(), studentName: z.string().trim().min(2).max(60), studentClass: z.string().trim().min(1).max(10) }), // làm tiếp phiên dở: trả lại tin cũ
+  z.object({ action: z.literal("abandon"), slug: z.string().min(4), sessionId: z.string().uuid(), studentName: z.string().trim().min(2).max(60), studentClass: z.string().trim().min(1).max(10) }), // chọn "làm lại mới": đóng phiên dở cũ
   z.object({ action: z.literal("message"), slug: z.string().min(4), sessionId: z.string().uuid(), text: z.string().trim().min(1).max(500), ask: z.boolean().optional() }), // ask: câu hỏi "Em chưa hiểu"
   z.object({ action: z.literal("end"), slug: z.string().min(4), sessionId: z.string().uuid() }),
   z.object({ action: z.literal("hint"), slug: z.string().min(4), sessionId: z.string().uuid() }),
@@ -78,6 +82,37 @@ async function handle(req: Request, tr: Trace) {
   }
   tr.teacherId = link.teacher_id; tr.linkId = link.id;
   const problems = link.problems;
+
+  // Làm tiếp bài dở: khớp theo tên + lớp (không cần cùng trình duyệt), phiên "active" hoặc "abandoned" đều làm tiếp được.
+  if (b.action === "resume_check" || b.action === "resume" || b.action === "abandon") {
+    const code = studentKey(b.studentName.replace(/\s+/g, " "), b.studentClass.replace(/\s+/g, "").toUpperCase());
+    const q = db.from("chat_sessions").select("id,problem_code,problem_snapshot,progress,step,status,started_at").eq("link_id", link.id).eq("student_code", code).in("status", ["active", "abandoned"]).eq("restarted", false);
+    if (b.action === "resume_check") {
+      // Phiên mới nhất có tin của học sinh (phiên mở rồi bỏ, chưa nộp gì thì không có gì để làm tiếp); xem tối đa 5 phiên gần nhất.
+      const { data } = await q.eq("problem_code", b.problemCode).order("started_at", { ascending: false }).limit(5);
+      for (const s of (data ?? []) as { id: string; problem_snapshot?: unknown; progress: number; started_at: string }[]) {
+        const { data: ms } = await db.from("messages").select("role,ts").eq("session_id", s.id).order("id", { ascending: false });
+        const rows = (ms ?? []) as { role: string; ts: string }[];
+        const pr = (s.problem_snapshot ? parseProblems([s.problem_snapshot]).ok[0] : undefined) ?? problems.find((x) => x.id === b.problemCode);
+        if (!pr || !rows.some((m) => m.role === "student")) continue;
+        return Response.json({ resume: { sessionId: s.id, progress: progress(pr, checkpoints(pr), s.progress ?? 0), lastAt: rows[0].ts } });
+      }
+      return Response.json({});
+    }
+    const { data } = await q.eq("id", b.sessionId).maybeSingle();
+    const s = data as { id: string; problem_snapshot?: unknown; problem_code: string; progress: number } | null;
+    if (!s) return err("Không tìm thấy bài làm dở.", 404);
+    if (b.action === "abandon") {
+      check(await db.from("chat_sessions").update({ restarted: true } as never).eq("id", s.id)); // không gợi ý làm tiếp nữa
+      check(await db.from("chat_sessions").update({ status: "abandoned", ended_at: new Date().toISOString() } as never).eq("id", s.id).eq("status", "active"));
+      return Response.json({ ok: true });
+    }
+    const pr = (s.problem_snapshot ? parseProblems([s.problem_snapshot]).ok[0] : undefined) ?? problems.find((x) => x.id === s.problem_code);
+    if (!pr) return err("Không tìm thấy bài.", 404);
+    check(await db.from("chat_sessions").update({ status: "active", ended_at: null } as never).eq("id", s.id));
+    const { data: ms } = await db.from("messages").select("role,content").eq("session_id", s.id).order("id");
+    return Response.json({ sessionId: s.id, msgs: ((ms ?? []) as { role: "student" | "bot"; content: string }[]).map((m) => ({ role: m.role, text: m.content })), progress: progress(pr, checkpoints(pr), s.progress ?? 0) });
+  }
 
   if (b.action === "start") {
     const prob = problems.find((x) => x.id === b.problemCode);
