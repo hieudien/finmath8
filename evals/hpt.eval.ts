@@ -24,7 +24,7 @@ const NAME: Record<string, string> = {
 const ALT: Record<string, string> = {
   HP01: "Nhân phương trình thứ hai với 2 ta được 6x - 2y = 14\nCộng với phương trình thứ nhất: 7x = 21 nên x = 3\nThay x = 3 vào x + 2y = 7 được 3 + 2y = 7 nên y = 2\nNghiệm của hệ là (x; y) = (3; 2)",
   HP02: "Từ phương trình thứ nhất ta có 2y = 12 - 3x nên y = (12 - 3x)/2\nThế vào phương trình thứ hai: 5x - 3(12 - 3x)/2 = 1 nên 10x - 36 + 9x = 2 nên 19x = 38 nên x = 2\nThay vào được y = (12 - 6)/2 = 3\nNghiệm của hệ là (x; y) = (2; 3)",
-  HP03: "Gọi x là giá một quyển vở, y là giá một cây bút (đồng)\n3x + 2y = 41000 và 2x + 4y = 46000\nLấy hai lần phương trình thứ nhất trừ phương trình thứ hai: 4x = 36000 nên x = 9000\nThay vào: 27000 + 2y = 41000 nên y = 7000\nVậy một quyển vở 9000 đồng và một cây bút 7000 đồng",
+  HP03: "Gọi x là giá một quyển vở, y là giá một cây bút (đồng), x > 0, y > 0\n3x + 2y = 41000 và 2x + 4y = 46000\nLấy hai lần phương trình thứ nhất trừ phương trình thứ hai: 4x = 36000 nên x = 9000\nThay vào: 27000 + 2y = 41000 nên y = 7000\nVậy một quyển vở 9000 đồng và một cây bút 7000 đồng",
   HP04: "Từ phương trình thứ nhất: 2x = 5 - 4y nên x = (5 - 4y)/2\nThế vào phương trình thứ hai: 2(5 - 4y) - 2y = 5 nên 10 - 10y = 5 nên y = 0,5\nThay vào được x = (5 - 2)/2 = 1,5\nNghiệm của hệ là (x; y) = (1,5; 0,5)",
   HP05: "Nhân phương trình thứ nhất với 2 ta được 2x + 4y = 6\nTrừ vế với vế cho phương trình thứ hai: 0 = 1 là điều vô lý\nNên hệ phương trình vô nghiệm",
 };
@@ -37,14 +37,14 @@ const SHORT: Record<string, string> = {
 const ALT_BAD: Record<string, string> = {
   HP01: ["Nhân phương trình thứ hai với 2 ta được 6x - 2y = 14", "Cộng với phương trình thứ nhất: 7x = 28 nên x = 3", "Thay x = 3 vào x + 2y = 7 được y = 2", "Nghiệm của hệ là (x; y) = (3; 2)"].join(String.fromCharCode(10)),
   HP02: ["Nhân phương trình thứ nhất với 3 và phương trình thứ hai với 2: 9x + 6y = 36 và 10x - 6y = 2", "Cộng vế với vế: 19x = 36 nên x = 2", "Thay x = 2 vào phương trình thứ nhất: 6 + 2y = 12 nên y = 3", "Nghiệm của hệ là (x; y) = (2; 3)"].join(String.fromCharCode(10)),
-  HP03: ["Gọi x là giá một quyển vở, y là giá một cây bút (đồng)", "3x + 2y = 41000 và 2x + 4y = 46000", "Nhân phương trình thứ nhất với 2: 6x + 4y = 82000", "Trừ vế với vế: 4x = 46000 nên x = 9000", "Thay vào: 27000 + 2y = 41000 nên y = 7000", "Vậy một quyển vở 9000 đồng và một cây bút 7000 đồng"].join(String.fromCharCode(10)),
+  HP03: ["Gọi x là giá một quyển vở, y là giá một cây bút (đồng), x > 0, y > 0", "3x + 2y = 41000 và 2x + 4y = 46000", "Nhân phương trình thứ nhất với 2: 6x + 4y = 82000", "Trừ vế với vế: 4x = 46000 nên x = 9000", "Thay vào: 27000 + 2y = 41000 nên y = 7000", "Vậy một quyển vở 9000 đồng và một cây bút 7000 đồng"].join(String.fromCharCode(10)),
   HP04: ["Từ phương trình thứ nhất: 2x = 5 - 4y nên x = (5 - 4y)/2", "Thế vào phương trình thứ hai: 2(5 - 4y) - 2y = 5 nên 10 - 6y = 5 nên y = 0,5", "Thay vào được x = (5 - 2)/2 = 1,5", "Nghiệm của hệ là (x; y) = (1,5; 0,5)"].join(String.fromCharCode(10)),
   HP05: ["Nhân phương trình thứ nhất với 2 ta được 2x + 4y = 7", "Trừ vế với vế cho phương trình thứ hai: 0 = 2 là điều vô lý", "Nên hệ phương trình vô nghiệm"].join(String.fromCharCode(10)),
 };
 const ALT_LINES: Record<string, string[]> = {
   HP01: ["Nhân phương trình thứ hai với 2 ta được 6x - 2y = 14","Cộng với phương trình thứ nhất: 7x = 21 nên x = 3","Thay x = 3 vào x + 2y = 7 được 3 + 2y = 7 nên y = 2","Nghiệm của hệ là (x; y) = (3; 2)"],
   HP02: ["Từ phương trình thứ nhất ta có 2y = 12 - 3x nên y = (12 - 3x)/2","Thế vào phương trình thứ hai: 5x - 3(12 - 3x)/2 = 1 nên 10x - 36 + 9x = 2 nên 19x = 38 nên x = 2","Thay vào được y = (12 - 6)/2 = 3","Nghiệm của hệ là (x; y) = (2; 3)"],
-  HP03: ["Gọi x là giá một quyển vở, y là giá một cây bút (đồng)","3x + 2y = 41000 và 2x + 4y = 46000","Lấy hai lần phương trình thứ nhất trừ phương trình thứ hai: 4x = 36000 nên x = 9000","Thay vào: 27000 + 2y = 41000 nên y = 7000","Vậy một quyển vở 9000 đồng và một cây bút 7000 đồng"],
+  HP03: ["Gọi x là giá một quyển vở, y là giá một cây bút (đồng), x > 0, y > 0","3x + 2y = 41000 và 2x + 4y = 46000","Lấy hai lần phương trình thứ nhất trừ phương trình thứ hai: 4x = 36000 nên x = 9000","Thay vào: 27000 + 2y = 41000 nên y = 7000","Vậy một quyển vở 9000 đồng và một cây bút 7000 đồng"],
   HP04: ["Từ phương trình thứ nhất: 2x = 5 - 4y nên x = (5 - 4y)/2","Thế vào phương trình thứ hai: 2(5 - 4y) - 2y = 5 nên 10 - 10y = 5 nên y = 0,5","Thay vào được x = (5 - 2)/2 = 1,5","Nghiệm của hệ là (x; y) = (1,5; 0,5)"],
   HP05: ["Nhân phương trình thứ nhất với 2 ta được 2x + 4y = 6","Trừ vế với vế cho phương trình thứ hai: 0 = 1 là điều vô lý","Nên hệ phương trình vô nghiệm"],
 };
@@ -199,6 +199,7 @@ async function runSession(n: number, scen: string, p: Problem): Promise<Result> 
       const rep = (r.j.reply as string) ?? "";
       check("dòng " + (i + 1) + " của cách khác không bị báo sai", !WRONG_CLAIM.test(rep));
       if (!fin) check("dòng " + (i + 1) + " không bị đẩy về bước chuẩn", !/Bạn cần hoàn thành bước/.test(rep));
+      if (fin) break; // xong sớm (đã đủ bước toán dù chưa viết dòng kết luận cuối): không gửi tiếp vào phiên đã đóng
     }
     check("viết hết cách khác thì xong bài", fin);
     wait = fin;

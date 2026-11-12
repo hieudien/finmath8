@@ -279,8 +279,9 @@ describe("stepHint: thang gợi ý chỉ rõ, chia nhỏ, ví dụ tương tự"
 // Cách làm KHÁC lời giải mẫu (giai đoạn 1 và 2): AI phán, server giữ cổng.
 describe("stepTurn: cách làm khác đúng", () => {
   const alt = (o: { errors?: string[]; on_track?: boolean; complete?: boolean }, cheap = o) => {
-    vi.mocked(askJson).mockImplementation((async (c: { model: string }, sys: string) => {
-      if (sys.includes("soát CÁCH LÀM")) { const x = c.model === "gemini-3.5-flash" ? o : cheap; return { errors: [], on_track: false, complete: false, ...x }; }
+    let n = 0; // lượt đầu dùng o, các lượt xác nhận sau dùng cheap
+    vi.mocked(askJson).mockImplementation((async (_c: unknown, sys: string) => {
+      if (sys.includes("soát CÁCH LÀM")) { const x = n++ === 0 ? o : cheap; /* lượt xác nhận bật suy nghĩ */ return { errors: [], on_track: false, complete: false, ...x }; }
       return { verdict: "sai", scenario: "sai_so", reply: "Bạn viết chưa khớp", evidence: "" };
     }) as never);
   };
@@ -291,7 +292,7 @@ describe("stepTurn: cách làm khác đúng", () => {
     const r = await run("14 + 1 = 15", sess(), prev);
     expect(lastUpdate()?.progress).toBe(0b111);
     expect(r.done).toBe(true);
-    expect(altCalls()).toHaveLength(2); // model chính, rồi model rẻ xác nhận
+    expect(altCalls()).toHaveLength(2); // lượt đầu, rồi lượt xác nhận kỹ hơn
   });
   it("đúng hướng nhưng chưa xong: khẳng định, không đẩy về bước chuẩn, không tính kẹt", async () => {
     alt({ on_track: true, complete: false });
@@ -337,5 +338,34 @@ describe("stepTurn: cách làm khác đúng", () => {
     const r = await run("14 + 1 = 15", sess(), prev);
     expect(lastUpdate()?.progress).toBe(0);
     expect(r.done).toBe(false);
+  });
+});
+
+describe("stepTurn: số trơn không gọi AI", () => {
+  it("số trơn sai (không khớp mốc, không khớp bẫy): không gọi AI, trả câu nêu số và việc cần làm", async () => {
+    ai({ verdict: "sai", scenario: "sai_so", reply: "x" });
+    const r = await run("50");
+    expect(vi.mocked(askJson)).not.toHaveBeenCalled();
+    expect(r.reply).toMatch(/Con số 50 chưa khớp/);
+    expect(r.reply).toMatch(/bước 1\/3/);
+    expect(lastUpdate()?.progress).toBe(0);
+  });
+  it("số trơn trùng kết quả bước sau: vẫn bắt hoàn thành bước trước, không gọi AI", async () => {
+    ai({});
+    const r = await run("14");
+    expect(vi.mocked(askJson)).not.toHaveBeenCalled();
+    expect(r.reply).toMatch(/Bạn cần hoàn thành bước 1\/3 trước nhé/);
+  });
+  it("số trơn đúng: ghi nhận bước, không gọi AI soát lập luận", async () => {
+    ai({});
+    const r = await run("7");
+    expect(vi.mocked(askJson)).not.toHaveBeenCalled();
+    expect(lastUpdate()?.progress).toBe(1);
+    expect(r.reply).toMatch(/Đúng rồi/);
+  });
+  it("tin có chữ hoặc phép tính vẫn đi đường AI", async () => {
+    ai({ verdict: "sai", scenario: "sai_so", reply: "" });
+    await run("mình nghĩ A là 9 vì cộng hai số");
+    expect(vi.mocked(askJson)).toHaveBeenCalled();
   });
 });

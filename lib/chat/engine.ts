@@ -16,10 +16,13 @@ export const INJECT = /ignore (all |previous |the )?(instruction|prompt)|system 
 
 const VER = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "dev";
 // Mọi tin của bot ghi qua đây: meta.kind (right, wrong, hint, ask, reveal, off_topic, blocked, distress, capped, done, open, stuck, reply), meta.ai_ms (thời gian chờ AI) và meta.v (bản code).
-export const botMsg = (sid: string, m: { content: string; step?: number; hint_level?: number; kind: string; ms?: number }) =>
-  admin().from("messages").insert({ session_id: sid, role: "bot", content: m.content, step: m.step ?? null, hint_level: m.hint_level ?? null, meta: { kind: m.kind, ai_ms: m.ms, v: VER } } as never);
+export const botMsg = (sid: string, m: { content: string; step?: number; hint_level?: number; kind: string; ms?: number; parts?: Record<string, number>; fast?: boolean }) =>
+  admin().from("messages").insert({ session_id: sid, role: "bot", content: m.content, step: m.step ?? null, hint_level: m.hint_level ?? null, meta: { kind: m.kind, ai_ms: m.ms, v: VER, ...(m.parts && Object.keys(m.parts).length ? { ai_parts: m.parts } : {}), ...(m.fast ? { fast: true } : {}) } } as never);
 
 export type Tm = Record<string, number>; // thời gian từng bước (ms), route đưa ra header Server-Timing
+// Cộng thời gian một lần gọi AI vào tổng (ai) và vào khóa riêng (ai_<tên>) để biết lần gọi nào chậm.
+export const addAi = (tm: Tm | undefined, key: string, ms: number) => { if (tm) { tm.ai = (tm.ai ?? 0) + ms; tm[`ai_${key}`] = (tm[`ai_${key}`] ?? 0) + ms; } };
+export const aiParts = (tm?: Tm) => Object.fromEntries(Object.entries(tm ?? {}).filter(([k]) => k.startsWith("ai_")));
 
 // Chấm ngay phiên có bước được giải hộ để nối gợi ý ôn tập vào lời kết. Lỗi thì giữ nguyên lời kết, chấm ngầm sau.
 export async function withReview(cfg: LlmCfg, s: Session, p: Problem, teacherId: string, revealed: number, reply: string) {

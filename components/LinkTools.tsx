@@ -7,8 +7,16 @@ import { ExplainButton } from "@/components/ProblemViewTools";
 
 type P = { id: string; code: string; title: string; missing: string[]; unconfirmed: boolean };
 
-export function CreateLink({ problems }: { problems: P[] }) {
+export function CreateLink({ problems: initial }: { problems: P[] }) {
   const [rp, refresh] = useRefresh();
+  // Giữ danh sách đề trong state để chuẩn hóa xong chỉ cập nhật đúng đề đó, không tải lại cả trang.
+  const [problems, setProblems] = useState(initial);
+  useEffect(() => setProblems(initial), [initial]);
+  async function reload(id: string) {
+    const { ok, data } = await post<{ missing: string[]; unconfirmed: boolean }>("/api/problems", { action: "state", id });
+    if (!ok) { toast("danger", data.error ?? "Có lỗi."); refresh(); return; }
+    setProblems((l) => l.map((p) => p.id === id ? { ...p, missing: data.missing, unconfirmed: data.unconfirmed } : p));
+  }
   const [sel, setSel] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
@@ -49,7 +57,7 @@ export function CreateLink({ problems }: { problems: P[] }) {
             {p.missing.length > 0 && (
               <div className="ml-8 flex flex-col gap-2">
                 <Alert tone="warning">Chưa tạo liên kết được với đề này: thiếu {p.missing.join(", ")}. Đề cần đủ để dùng cho cả chat và từng bước.</Alert>
-                <ExplainButton id={p.id} />
+                <ExplainButton id={p.id} onDone={() => reload(p.id)} />
               </div>
             )}
           </div>

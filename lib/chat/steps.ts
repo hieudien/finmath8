@@ -7,7 +7,7 @@ import { PROVIDERS } from "@/lib/models";
 import { badClaims } from "@/lib/chat/arith";
 import { leaks, leaksCalc } from "@/lib/chat/prompt";
 import { checkpoints, countDone, hasNum, markByNumbers, met, norm, numsIn, shapeOk, SOS_REPLY, stepOf, stripEcho, verify, type Cp } from "@/lib/chat/progress";
-import { botMsg, finish, INJECT, SOS, withReview, type Msg, type Session, type Tm } from "@/lib/chat/engine";
+import { addAi, aiParts, botMsg, finish, INJECT, SOS, withReview, type Msg, type Session, type Tm } from "@/lib/chat/engine";
 import { stepCue, stepExample, stepFormat, stepLead, stepsGreeting } from "@/lib/chat/goals";
 import { SCENARIO_GUIDE, SCENARIOS, scenarioReply, withAiLine } from "@/lib/chat/scenarios";
 import { ladder, MAX_HINT, revealLine, stepText } from "@/lib/chat/assist";
@@ -52,7 +52,7 @@ export async function reviewSteps(cfg: LlmCfg, p: Problem, cps: Cp[], work: stri
   const ask = async (c: LlmCfg, want: number[]) => {
     const t0 = Date.now();
     const out = await (async () => askJson(c, reviewSystem(p, cps), [{ role: "user", text: `[Các bước cần soát: ${want.map((i) => "S" + (i + 1)).join(", ")}]\nBài làm của học sinh:\n${work}` }], reviewSchema, { maxTokens: 200, think: false, deadlineMs: 15_000, attemptMs: 6_000, use: "review", temperature: 0, seed: seedOf(p.id, "review", work) }))().catch(() => null);
-    if (tm) tm.ai = (tm.ai ?? 0) + Date.now() - t0;
+    addAi(tm, "review", Date.now() - t0);
     return new Set((out?.steps ?? []).filter((x) => x.verdict === "sai" && want.includes(x.step - 1)).map((x) => x.step - 1));
   };
   const first = await ask(cheapCfg(cfg), ids);
@@ -74,10 +74,10 @@ ${bai(p, cps)}
 Trả JSON {"errors":[string],"on_track":bool,"complete":bool}`;
 type AltOut = { errors: string[]; on_track: boolean; complete: boolean };
 export type AltRes = { kind: "complete" | "ontrack" | "error" | "none"; quote?: string };
-async function altAsk(c: LlmCfg, p: Problem, cps: Cp[], prev: string, now: string, tm?: Tm): Promise<AltOut | null> {
+async function altAsk(c: LlmCfg, p: Problem, cps: Cp[], prev: string, now: string, tm?: Tm, careful = false, salt = ""): Promise<AltOut | null> {
   const t0 = Date.now();
-  const out = await (async () => askJson(c, altSystem(p, cps), [{ role: "user", text: `[Các tin trước]\n${prev || "(chưa có)"}\n[TIN MỚI]\n${now}` }], altSchema, { maxTokens: 300, think: "low", deadlineMs: 30_000, attemptMs: 10_000, use: "alt", temperature: 0, seed: seedOf(p.id, "alt", prev, now) }))().catch(() => null);
-  if (tm) tm.ai = (tm.ai ?? 0) + Date.now() - t0;
+  const out = await (async () => askJson(c, altSystem(p, cps), [{ role: "user", text: `[Các tin trước]\n${prev || "(chưa có)"}\n[TIN MỚI]\n${now}` }], altSchema, { maxTokens: careful ? 1500 : 300, think: careful ? true : "low", deadlineMs: careful ? 25_000 : 30_000, attemptMs: careful ? 20_000 : 10_000, use: "alt", temperature: 0, seed: seedOf(p.id, "alt", prev, now, salt) }))().catch(() => null);
+  addAi(tm, "alt", Date.now() - t0);
   if (!out) return null;
   return { errors: Array.isArray(out.errors) ? out.errors : [], on_track: out.on_track === true, complete: out.complete === true };
 }
@@ -85,13 +85,13 @@ async function altAsk(c: LlmCfg, p: Problem, cps: Cp[], prev: string, now: strin
 const ownWork = (p: Problem, t: string) => stripEcho(t, [p.title, p.statement ?? ""]).split("\n").filter((l) => !badClaims(l).length).join("\n");
 export async function judgeAlt(cfg: LlmCfg, p: Problem, cps: Cp[], all: Msg[], work: string, tm?: Tm): Promise<AltRes> {
   const prev = all.filter((m) => m.role === "student" && !m.content.startsWith(ASK)).slice(-8).map((m) => ownWork(p, m.content)).filter(Boolean).join("\n");
-  const first = await altAsk(strongCfg(cfg), p, cps, prev, work, tm);
+  const first = await altAsk(strongCfg(cfg), p, cps, prev, work, tm, true);
   if (!first) return { kind: "none" };
   const flat = (t: string) => norm(t).replace(/\s+/g, " ").trim().toLowerCase();
   const quote = first.errors.map((q) => q.trim()).find((q) => q.length >= 3 && flat(work).includes(flat(q)));
-  // Báo lỗi cũng cần model thứ hai đồng ý (một model đọc nhầm một dòng đúng thành sai thì học sinh bị oan); không đồng ý thì coi như chưa rõ.
+  // Báo lỗi cũng cần lượt xét thứ hai (bật suy nghĩ) đồng ý (một model đọc nhầm một dòng đúng thành sai thì học sinh bị oan); không đồng ý thì coi như chưa rõ.
   if (quote) {
-    const sec = await altAsk(cheapCfg(cfg), p, cps, prev, work, tm);
+    const sec = await altAsk(strongCfg(cfg), p, cps, prev, work, tm, true, "2");
     return sec?.errors.some((q) => q.trim().length >= 3 && flat(work).includes(flat(q))) ? { kind: "error", quote } : { kind: "none" };
   }
   if (!first.on_track && !first.complete) return { kind: "none" };
@@ -99,8 +99,8 @@ export async function judgeAlt(cfg: LlmCfg, p: Problem, cps: Cp[], all: Msg[], w
   // Cả bài (các tin gộp lại) phải có phép biến đổi/tính toán thật: có toán tử giữa hai toán hạng, hoặc từ nối suy luận ("nên", "suy ra", "vô lý"...).
   // Chỉ nêu kết quả trơn ("x = 3", "(x; y) = (3; 2)") không phải cách làm. Tính trên cả bài để dòng kết luận đi sau các dòng biến đổi vẫn được.
   if (!/[\d)a-zA-Z]\s*[+\-×÷*/^]\s*[\d(a-zA-Z]/.test(norm(cum)) && !/nên|suy ra|do đó|vậy|⇒|=>|→|vô lý|vô lí|mâu thuẫn/i.test(cum)) return { kind: "none" };
-  // Chấp nhận (đúng hướng hoặc xong bài) cần model thứ hai, rẻ hơn, cũng không thấy lỗi và đồng ý: tránh khen oan một cách làm sai.
-  const second = await altAsk(cheapCfg(cfg), p, cps, prev, work, tm);
+  // Chấp nhận (đúng hướng hoặc xong bài) cần lượt xét thứ hai, kỹ hơn (bật suy nghĩ), cũng không thấy lỗi và đồng ý: tránh khen oan một cách làm sai.
+  const second = await altAsk(strongCfg(cfg), p, cps, prev, work, tm, true, "2");
   if (!second || second.errors.length || !(second.on_track || second.complete)) return { kind: "none" };
   const last = cps[cps.length - 1];
   const lines = cum.split("\n").filter((l) => /[=＝<>]/.test(l)).length;
@@ -266,7 +266,7 @@ export async function stepTurn(cfg: LlmCfg, s: Session, p: Problem, text: string
 Bài làm của học sinh:
 ${work}` }], batchSchema, { maxTokens: 400, think: "low", deadlineMs: 40_000, attemptMs: 8_000, use: "step", temperature: 0, seed: seedOf(p.id, "batch", work) })
         .catch(async (e) => { await saveStudent.catch(swallow("lưu tin học sinh sau lỗi AI", { teacherId, linkId: s.link_id, anonId: s.anon_id, actor: "student" })); throw e; });
-      if (tm) tm.ai = (tm.ai ?? 0) + Date.now() - t0;
+      addAi(tm, "batch", Date.now() - t0);
       const ok = new Set(out.steps.filter((x) => x.verdict === "đủ" && ids.includes(x.step - 1)).filter((x) => { const c = cps[x.step - 1]; return shapeOk(c, work) && verify(c, x.evidence, work); }).map((x) => x.step - 1));
       // Tính lại từ mask0 (không từ mask): markByNumbers chống dùng lại số chỉ nhớ các mốc trong cùng một lần gọi, gọi tiếp từ mask thì mốc kết luận có số trùng bước trước lọt qua.
       mask = markByNumbers(work, cps, mask0, ok);
@@ -276,7 +276,7 @@ ${work}` }], batchSchema, { maxTokens: 400, think: "low", deadlineMs: 40_000, at
   }
   // Tầng 1-2: mọi bước server vừa ghi nhận bằng số đều được soát lỗi lập luận. Có bước bị bác thì bỏ bước đó và các bước sau nó.
   const gained = cps.filter((c) => mask >> c.id & 1 && !(mask0 >> c.id & 1) && !aiOk.has(c.id)).map((c) => c.id);
-  if (!off && gained.length) {
+  if (!off && gained.length && !bareNum(work)) { // một con số trơn không có cách làm nào để soát lập luận: bỏ lượt AI soát
     const rej = await reviewSteps(cfg, p, cps, work, gained, tm);
     if (rej.size) {
       const first = Math.min(...rej);
@@ -291,9 +291,13 @@ ${work}` }], batchSchema, { maxTokens: 400, think: "low", deadlineMs: 40_000, at
   // Nộp đúng một kết quả sai đã biết của bước này (do AI viết sẵn lúc tạo chỉ dẫn): trả lời giải thích lỗi đó, không gọi AI.
   const why = !off && !echoOnly && !note && cur && mask === mask0 && !stuck ? trapReply(p, cur, work, known(cps, mask0)) : "";
   // Tin chỉ chép lại đề (hoặc dán cả trang): không có lời giải nào để chấm, không gọi AI.
+  // Tin chỉ là một con số trơn mà không qua bước, không khớp bẫy nào: không gọi AI (AI chỉ viết lại câu "chưa khớp" mà mất 5-6 giây).
+  // Số trùng kết quả của bước sau thì dùng đúng câu "hoàn thành bước trước" ở dưới.
+  const bareFast = !off && !echoOnly && !note && !!cur && mask === mask0 && !stuck && !why && bareNum(work);
+  const laterMet = !!cur && cps.some((c) => c.id > cur.id && !(mask0 >> c.id & 1) && met(c, work));
   let canned = echoOnly && cur ? `Tin này mới chép lại đề, mình chưa thấy lời giải của bạn. ${cueLine(p, cps, mask0)}`
     : note && cur && mask === mask0 ? `${note} ${cueLine(p, cps, mask0)}` // phép sai hoặc bước bị soát bác: nêu đúng chỗ, không gọi AI viết lời
-    : stuck || (why ? `${dot(why)} ${cueLine(p, cps, mask0)}` : "");
+    : stuck || (why ? `${dot(why)} ${cueLine(p, cps, mask0)}` : bareFast ? (laterMet && cur ? `Bạn cần hoàn thành bước ${cur.id + 1}/${cps.length} trước nhé. Mình thấy kết quả của bước sau nhưng chưa thấy cách làm: bạn viết các bước dẫn tới nó. ${cueLine(p, cps, mask0)}` : `Con số ${work.trim()} chưa khớp với kết quả của bước này, bạn soát lại phép tính nhé. ${cueLine(p, cps, mask0)}`) : "");
   let near = false; // lượt gần đúng (đúng hướng/thiếu, sai số, thiếu dấu =): không tính vào bộ đếm kẹt
   let vetted = false; // câu từ kịch bản (AI đã qua rào hoặc câu mẫu): bỏ qua rào lộ/khen và đoạn nhắc cuối, nhưng KHÔNG tắt phát hiện nhảy cóc như canned
   let altHandled = false; // đã xử lý bằng nhánh "cách làm khác": không nhắc nhảy cóc theo đường chuẩn
@@ -318,9 +322,9 @@ ${work}` }], batchSchema, { maxTokens: 400, think: "low", deadlineMs: 40_000, at
     // Server không xác nhận được: nhờ AI nhận xét bước này. Mốc có số thì quyền quyết đúng/sai ở server, AI chỉ viết lời.
     const t0 = Date.now();
     const goal = stepCue(p, cur.id, known(cps, mask0));
-    const out = await askJson(cfg, stepSystem(p, cps), [{ role: "user", text: `[Bước cần làm: S${cur.id + 1}${goal ? ": " + goal : ""}]${cur.must.length ? "\n" + machineCheck(p, work) : ""}${recent(all)}\nBước học sinh viết: ${work}` }], stepSchema, { maxTokens: 300, think: "low", deadlineMs: 40_000, attemptMs: 8_000, use: "step", temperature: 0, seed: seedOf(p.id, String(cur.id), work, String(lastBot(all) ?? "")) })
+    const out = await askJson(cfg, stepSystem(p, cps), [{ role: "user", text: `[Bước cần làm: S${cur.id + 1}${goal ? ": " + goal : ""}]${cur.must.length ? "\n" + machineCheck(p, work) : ""}${recent(all)}\nBước học sinh viết: ${work}` }], stepSchema, { maxTokens: 300, think: false, deadlineMs: 40_000, attemptMs: 5_000, use: "step", temperature: 0, seed: seedOf(p.id, String(cur.id), work, String(lastBot(all) ?? "")) })
       .catch(async (e) => { await saveStudent.catch(swallow("lưu tin học sinh sau lỗi AI", { teacherId, linkId: s.link_id, anonId: s.anon_id, actor: "student" })); throw e; });
-    if (tm) tm.ai = (tm.ai ?? 0) + Date.now() - t0;
+    addAi(tm, "step", Date.now() - t0);
     // Mốc không có số: AI phán đúng thì phải trích nguyên văn bằng chứng từ bước học sinh viết, server kiểm trích dẫn có thật (như kiểu chat).
     if (!cur.must.length && out.verdict === "đủ" && shapeOk(cur, work) && verify(cur, out.evidence, work)) mask = markByNumbers(work, cps, mask | 1 << cur.id); // AI duyệt mốc không có số: các mốc số liền sau trong cùng tin được ghi nhận luôn
     if (mask !== mask0) reply = out.reply;
@@ -386,12 +390,15 @@ ${work}` }], batchSchema, { maxTokens: 400, think: "low", deadlineMs: 40_000, at
   const altOnTrack = altHandled && near; // cách làm khác đúng hướng: không phải "gặp khó" ở bước chuẩn
   const sg = !off && (!progressed || revLine) && !altOnTrack ? struggle(s, cur) : (s.struggled ?? 0); // nộp mà chưa qua bước, hoặc được giải hộ: bước này gặp khó
   await Promise.all([
-    botMsg(s.id, { content: reply, step, hint_level: hl, ms: tm?.ai, kind: cry ? "distress" : off ? "off_topic" : blocked ? "blocked" : revLine ? "reveal" : finished ? "done" : progressed || altOnTrack ? "right" : stuck ? "stuck" : "wrong" }).then(check),
+    botMsg(s.id, { content: reply, step, hint_level: hl, ms: tm?.ai, parts: aiParts(tm), fast: bareFast, kind: cry ? "distress" : off ? "off_topic" : blocked ? "blocked" : revLine ? "reveal" : finished ? "done" : progressed || altOnTrack ? "right" : stuck ? "stuck" : "wrong" }).then(check),
     db.from("chat_sessions").update({ step, progress: mask, hint_level: hl, stall: revLine ? 0 : lad.stall, revealed, struggled: sg } as never).eq("id", s.id).then(check),
   ]);
   if (finished) after(() => finish(cfg, s, p, teacherId).catch((e) => reportError(e, "chấm điểm (finish)", { teacherId, linkId: s.link_id, anonId: s.anon_id, actor: "system" })));
   return { reply, step, done: finished, progress: progress(p, cps, mask) };
 }
+
+// Tin chỉ là một con số (có thể kèm đơn vị ngắn), không phép tính, không câu hỏi.
+export const bareNum = (t: string) => numsIn(t).length === 1 && t.trim().length <= 25 && !/[=+*/:×÷^?]|\d\s*-\s*\d/.test(t);
 
 // Tin "hỏi" nhưng thực ra là bước giải: có dấu "=", hoặc nêu số lạ/"là <số>" mà không có dấu hiệu câu hỏi. Không gọi AI (AI dễ khen đúng/sai trong khi tiến độ không ghi nhận).
 export const looksLikeStep = (p: Problem, text: string) => {
@@ -425,9 +432,9 @@ export async function stepAsk(cfg: LlmCfg, s: Session, p: Problem, text: string,
     const cur = cps.find((c) => !(mask >> c.id & 1));
     const t0 = Date.now();
     const goal = cur ? stepCue(p, cur.id, known(cps, mask)) : "";
-    const out = await askJson(cfg, askSystem(p, cps), [{ role: "user", text: `[Bước đang làm: S${(cur?.id ?? 0) + 1}${goal ? ": " + goal : ""}]${recent(all)}\nCâu hỏi của học sinh: ${clean}` }], askSchema, { maxTokens: 300, think: "low", deadlineMs: 40_000, attemptMs: 8_000, use: "ask", temperature: 0, seed: seedOf(p.id, String(cur?.id ?? 0), clean, String(lastBot(all) ?? "")) })
+    const out = await askJson(cfg, askSystem(p, cps), [{ role: "user", text: `[Bước đang làm: S${(cur?.id ?? 0) + 1}${goal ? ": " + goal : ""}]${recent(all)}\nCâu hỏi của học sinh: ${clean}` }], askSchema, { maxTokens: 300, think: "low", deadlineMs: 40_000, attemptMs: 5_000, use: "ask", temperature: 0, seed: seedOf(p.id, String(cur?.id ?? 0), clean, String(lastBot(all) ?? "")) })
       .catch(async (e) => { await saveStudent.catch(swallow("lưu tin học sinh sau lỗi AI", { teacherId, linkId: s.link_id, anonId: s.anon_id, actor: "student" })); throw e; });
-    if (tm) tm.ai = (tm.ai ?? 0) + Date.now() - t0;
+    addAi(tm, "ask", Date.now() - t0);
     const given = [p.data, p.statement, [...prior, clean].join("\n"), cps.filter((c) => mask >> c.id & 1).map((c) => c.must)];
     if (NOT_JUDGE.test(out.reply)) reply = pick(ASK_NOT_JUDGE, lastBot(all));
     else if (leaks(out.reply, p.solution, given, p.solution_steps) || leaksCalc(out.reply, p.solution, given, p.solution_steps)) {

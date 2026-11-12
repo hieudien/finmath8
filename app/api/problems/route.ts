@@ -12,7 +12,7 @@ import { missingAnswers } from "@/lib/answer-check";
 import { finishProblem, makeSteps, referenceNote, standardizeProblem } from "@/lib/fill";
 import { repairProblem, tidyLine, tidyStatement } from "@/lib/repair";
 import { CHUNK, PAR, BUDGET_MS, freeCode, pool } from "@/lib/batch";
-import { cannotLock, needsWork } from "@/lib/ready";
+import { cannotLock, missingInfo, needsWork } from "@/lib/ready";
 import { gradeRule } from "@/lib/grade";
 import { readExamImage, type ImageResult } from "@/lib/read-image";
 import { solveOnce } from "@/lib/solve";
@@ -56,6 +56,7 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("unlock_answer"), id: z.string().uuid() }),
   z.object({ action: z.literal("todo") }),
   z.object({ action: z.literal("todo_all") }),
+  z.object({ action: z.literal("state"), id: z.string().uuid() }),
   z.object({ action: z.literal("finish"), ids: z.array(z.string().uuid()).min(1).max(CHUNK) }),
   z.object({ action: z.literal("audit"), ids: z.array(z.string().uuid()).min(1).max(CHUNK) }),
   // Nạp hàng loạt từ tệp Word: đọc từng nguồn (ảnh/đoạn chữ) thành nhiều đề -> tạo đợt nháp -> AI làm theo hai pha (make, finish) -> xác nhận mới lưu vào problems.
@@ -144,6 +145,14 @@ export const POST = api(async (req, tr) => {
   if (b.action === "todo") {
     const { data } = await admin().from("problems").select("id,content").eq("teacher_id", u.id).is("deleted_at", null).order("code");
     return Response.json({ ok: true, ids: ((data ?? []) as { id: string; content: unknown }[]).filter((r) => needsWork(r.content)).map((r) => r.id) });
+  }
+
+  // Tình trạng một đề (thiếu gì, đã khóa đáp án chưa): trang tạo liên kết cập nhật riêng đề đó sau khi chuẩn hóa, không tải lại cả trang.
+  if (b.action === "state") {
+    const { data } = await admin().from("problems").select("content").eq("id", b.id).eq("teacher_id", u.id).is("deleted_at", null).maybeSingle();
+    if (!data) return bad("Không tìm thấy đề.", 404);
+    const c = (data as { content: { answer_locked?: boolean } }).content;
+    return Response.json({ ok: true, missing: missingInfo(c), unconfirmed: c.answer_locked !== true });
   }
 
   // Mọi đề chưa xóa, kể cả đề đã đạt chuẩn (nút "Chuẩn hóa tất cả" trong Cài đặt).
