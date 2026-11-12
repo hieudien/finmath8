@@ -4,7 +4,6 @@ import { ProblemList, type ProblemItem } from "@/components/ProblemList";
 import { Badge, Empty } from "@/components/ui";
 import { missingInfo, readiness } from "@/lib/ready";
 import { ProblemsTabs } from "@/components/ProblemsTabs";
-import Link from "next/link";
 
 type Row = { id: string; code: string; version: number; updated_at: string; content: { title: string; statement?: string; grade?: number; topic?: string; solution_steps?: string[] } };
 

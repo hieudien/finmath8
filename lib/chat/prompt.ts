@@ -20,6 +20,7 @@ Rubric (mỗi tiêu chí 0–3): identify = nhận diện vấn đề/đại lư
 Đề: ${p.title}. Dữ liệu: ${JSON.stringify(p.data)}. Đáp án: ${JSON.stringify(p.solution)}.
 Sai lầm có sẵn: ${JSON.stringify(p.common_errors)}. "errors" = các sai lầm trong danh sách này mà học sinh thực sự mắc (chép nguyên văn), có thể rỗng.
 final_correct = học sinh tự đi tới kết luận đúng.
+Học sinh có thể giải bằng cách KHÁC lời giải thông thường (đổi phương pháp, thứ tự bước khác). Cách khác mà đúng và đủ các bước toán học đi tới đáp án thì chấm như cách thông thường, đủ bước thì cho điểm tối đa; chỉ trừ điểm khi thiếu bước, tính sai hoặc lập luận sai.
 ${helped ? `Một số bước đã được bot hiện lời giải (dòng [Hệ thống] cuối): các bước đó học sinh không tự làm, không tính điểm. gaps = 2–4 kiến thức nền học sinh còn thiếu khiến kẹt ở các bước đó (cho giáo viên, nói cụ thể). review = 3 việc ôn tập ngắn, cụ thể cho học sinh, xưng "bạn", có thể kèm ví dụ bằng SỐ KHÁC; KHÔNG nêu đáp án hay số kết quả của đề này.\n` : ""}Chỉ trả JSON: {"identify":n,"plan":n,"calculate":n,"explain":n,"final_correct":bool,"errors":[string]${helped ? ',"gaps":[string],"review":[string]' : ""}}`;
 }
 

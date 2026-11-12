@@ -8,9 +8,12 @@ import { canon } from "@/lib/answer-check";
 const latex = (t: string) => plain(t.replace(/\\frac(?:\{(-?\d+)\}|(\d))(?:\{(\d+)\}|(\d))/g, (m, a1?: string, a2?: string, b1?: string, b2?: string) => { const a = a1 ?? a2!, b = b1 ?? b2!; return +b ? String(+(Number(a) / Number(b)).toFixed(4)) : m; }));
 export const norm = (t: string) =>
   latex(t).replace(/(?<=\d)[.,\s](?=\d{3}\b)/g, "").replace(/(?<=\d),(?=\d)/g, ".")
+    // Phân số số nguyên viết thẳng "3/2" thành số thập phân như \frac{3}{2} (học sinh gõ 3/2 thay vì 1,5). Không đổi "Bước 1/5" (số bước, không phải phân số).
+    .replace(/(?<!Bước\s)(?<![\d/.])(\d+)\s*\/\s*(\d+)(?![\d/])/g, (m, a: string, b: string) => (+b ? String(+(Number(a) / Number(b)).toFixed(4)) : m))
     .replace(/(\d+(?:\.\d+)?)\s*(?:k|nghìn|ngàn)\b/gi, (_, n: string) => String(Math.round(Number(n) * 1000)));
 export const numsIn = (t: string) => norm(t).match(/\d+(\.\d+)?/g) ?? [];
-export const hasNum = (text: string, n: string) => new RegExp(`(?<!\\d)${n}(?!\\d)`).test(norm(text));
+// n có thể là số thập phân ("1.5"): phải thoát dấu chấm, nếu không "1.5" khớp nhầm "1/5", "1 5" (vd "Bước 1/5").
+export const hasNum = (text: string, n: string) => new RegExp(`(?<!\\d)${n.replace(/\./g, "\\.")}(?!\\d)`).test(norm(text));
 
 // must = số kết quả chuẩn của mốc; alt = các bộ số khác cũng được (accepts); words = dạng chữ/biểu thức chuẩn hóa (từ step_checks).
 export type Cp = { id: number; label: string; anchors: string[]; must: string[]; alt?: string[][]; words?: string[] };
@@ -56,6 +59,14 @@ export function hasWord(text: string, w: string) {
   return false;
 }
 
+// Gỡ những câu/dòng học sinh chép lại nguyên văn từ đề (hoặc dán cả trang chứa đề): đó không phải lời giải, nhưng có thể chứa sẵn chữ của mốc
+// (ví dụ "cửa hàng B"). Chỉ so với đề bài, không so với lời bot (học sinh được phép gõ lại lời giải bước đã hiện).
+export function stripEcho(text: string, sources: string[]) {
+  const src = canon(sources.join("\n"));
+  const trim = (s: string) => canon(s).replace(/[.!?:;,]+$/, "");
+  return text.split(/\n+|(?<=[.!?])\s+/).filter((seg) => { const c = trim(seg); return c.length < 12 || !src.includes(c); }).join("\n").trim();
+}
+
 // Mốc đủ khi tin của học sinh có mọi số của mốc, hoặc một bộ số khác được chấp nhận, hoặc đúng dạng chữ/biểu thức chuẩn.
 export const met = (c: Cp, text: string) =>
   (c.must.length > 0 && c.must.every((n) => hasNum(text, n))) || !!c.alt?.some((s) => s.every((n) => hasNum(text, n))) || !!c.words?.some((w) => hasWord(text, w));
@@ -73,12 +84,13 @@ const evidence = (c: Cp, text: string): string[] | null => {
 
 // Mốc đầu tiên khớp luôn được ghi nhận. Các mốc liền sau trong CÙNG một tin chỉ được gộp khi có số mới so với các mốc đã ghi nhận trong tin đó:
 // tin "x=10 hoặc x=-12" khớp luôn mốc chọn nghiệm và mốc kết luận chỉ nhờ cùng số 10, không phải bằng chứng cho hai bước sau.
-export function markByNumbers(text: string, cps: Cp[], mask: number) {
+// ok: các mốc không có số mà AI đã duyệt (server đã kiểm bằng chứng): ghi nhận như mốc khớp, không thêm số vào seen.
+export function markByNumbers(text: string, cps: Cp[], mask: number, ok?: ReadonlySet<number>) {
   const seen = new Set<string>();
   let first = true;
   for (const c of cps) {
     if (mask >> c.id & 1) continue;
-    const e = evidence(c, text);
+    const e = ok?.has(c.id) ? [] : evidence(c, text);
     if (!e) break;
     if (!first && e.length > 0 && e.every((n) => seen.has(n))) break;
     mask |= 1 << c.id;
@@ -150,7 +162,9 @@ export const countDone = (mask: number) => (mask & (METHOD - 1)).toString(2).rep
 
 // Server xác minh bằng chứng AI nộp: trích nguyên văn từ tin của học sinh, và số của mốc phải do học sinh tự viết.
 export function verify(c: Cp, evidence: string, said: string) {
-  const ev = norm(evidence).replace(/\s+/g, " ").trim().toLowerCase();
+  // Model hay viết "\times" trong JSON với MỘT dấu \ nên bị đọc thành ký tự điều khiển (tab + "imes", form feed + "rac"): trả lại dấu \ trước khi so với bài làm.
+  const fixed = evidence.replace(/\t/g, "\\t").replace(/\f/g, "\\f").replace(/\x08/g, "\\b").replace(/\r/g, "\\r").replace(/\x0b/g, "\\v");
+  const ev = norm(fixed).replace(/\s+/g, " ").trim().toLowerCase();
   // Trích dẫn thật và số đáp án của mốc đủ. Mốc không có số (nhận xét, nêu cách làm) thì không đòi chữ số: "đối nhau" là câu trả lời đúng.
   return ev.length >= 3 && norm(said).replace(/\s+/g, " ").toLowerCase().includes(ev) && c.must.every((n) => hasNum(said, n));
 }

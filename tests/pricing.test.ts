@@ -6,7 +6,7 @@ const p = { in: 1, cached: 0.5, out: 4 };
 
 describe("sumUses", () => {
   it("chi cong dong thuoc tap use, token gom thoughts cua Gemini", () => {
-    const rows = [row({ use: "chat", calls: 2, thoughts: 1_000_000 }), row({ use: "advise" }), row({ use: "eval", provider: "openai", thoughts: 9 })];
+    const rows = [row({ use: "chat", calls: 2, thoughts: 1_000_000 }), row({ use: "advise" }), row({ use: "eval" })];
     expect(sumUses(rows, ["chat", "eval"], () => 10)).toEqual({ calls: 3, tokens: 3_000_000 + 2_000_000, vnd: 20 });
   });
 });
@@ -18,9 +18,8 @@ describe("costUsd", () => {
   it("input cache tinh gia cache", () => {
     expect(costUsd(row({ cached: 400_000 }), p)).toBeCloseTo(0.6 + 0.2 + 4);
   });
-  it("Gemini cong them thoughts, OpenAI thi khong", () => {
+  it("Gemini cong them thoughts vao output", () => {
     expect(outBilled(row({ thoughts: 500_000 }))).toBe(1_500_000);
-    expect(outBilled(row({ provider: "openai", thoughts: 500_000 }))).toBe(1_000_000);
   });
   it("nhan la thi vao nhom Chua ro", () => {
     expect(purposeInfo("chat")[1]).toBe("Học sinh làm bài");

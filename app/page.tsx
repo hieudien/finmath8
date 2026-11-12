@@ -1,20 +1,20 @@
 import Brand from "@/components/Brand";
 import { LinkButton } from "@/components/ui";
 
-const NUMS = [["3", "mức gợi ý riêng cho từng bước"], ["4", "tiêu chí chấm: nhận diện, kế hoạch, tính toán, giải thích"], ["5", "bước giải quyết vấn đề theo Polya"]];
+const NUMS = [["3", "mức gợi ý riêng cho từng bước: chỉ rõ vấn đề, câu hỏi con, ví dụ tương tự"], ["4", "tiêu chí chấm: nhận diện, kế hoạch, tính toán, giải thích"], ["5", "bước giải quyết vấn đề theo Polya"]];
 
 const TEACHER = [
   ["Tạo đề nhanh", "Soạn đề trực tiếp, chụp ảnh đề để AI đọc, hoặc nạp cả tệp Word thành nhiều đề cùng lúc. Công thức soạn bằng bàn phím toán, không cần biết LaTeX."],
   ["AI làm phần nặng", "AI tạo đáp án, lời giải từng bước, gợi ý từng bước và câu chào. Đề do AI tạo phải được thầy cô duyệt mới đưa vào liên kết."],
   ["Làm bài từng bước", "Học sinh nộp một bước giải mỗi lần; kẹt thì có 3 mức gợi ý riêng cho từng bước, lấy từ đề."],
-  ["Gửi một liên kết", "Chọn đề, tạo liên kết công khai, đặt nhãn nhóm và giới hạn số tin. Chạy bằng API key Gemini hoặc OpenAI của chính thầy cô."],
+  ["Gửi một liên kết", "Chọn đề, tạo liên kết công khai, đặt nhãn nhóm và hạn dùng. Chạy bằng API key Gemini của chính thầy cô."],
 ];
 
 const STUDENT = [
   ["Vào bằng liên kết", "Nhập họ tên và lớp, không cần tài khoản."],
   ["Được hỏi từng bước", "Đọc đề, nêu dữ kiện, chọn cách giải, tự tính. Bot không nói đáp án."],
-  ["Gợi ý khi kẹt", "Gợi ý tăng dần: định hướng, chỉ cách giải, nêu bước kế. Kẹt quá lâu thì bot hiện lời giải của bước đó để em đi tiếp."],
-  ["Nộp từng bước", "Mỗi lần một bước vào ô ngắn. Chưa rõ đề thì bấm Em chưa hiểu để hỏi."],
+  ["Gợi ý khi kẹt", "Gợi ý tăng dần: định hướng, chỉ cách giải, nêu bước kế. Kẹt quá lâu thì bot hiện lời giải của bước đó, em gõ lại bước đó để đi tiếp."],
+  ["Nộp từng bước", "Mỗi lần một bước vào ô ngắn. Chưa rõ đề thì bấm Em chưa hiểu để mở khung Hỏi bài riêng."],
   ["Gõ công thức dễ dàng", "Nút Công thức mở bàn phím toán: phân số, căn, số mũ."],
 ];
 
@@ -26,7 +26,7 @@ const FEATURES = [
   ["Thống kê theo liên kết", "Số phiên, tỉ lệ hoàn thành, điểm trung bình, mức gợi ý, so sánh giữa các nhóm."],
   ["Xóa an toàn", "Xóa liên kết hay học sinh chỉ là ẩn đi. Bài làm, tin nhắn và điểm vẫn được giữ."],
   ["Xem lại hội thoại", "Đọc từng phiên chat, xuất CSV để phân tích tiếp."],
-  ["Chống lộ đáp án", "Server kiểm tra từng lượt: bot không nêu kết quả, không xác nhận đáp án sai."],
+  ["Chống lộ đáp án", "Server kiểm tra từng lượt: bot không nêu kết quả, không xác nhận đáp án sai. Tin chỉ chép lại đề, hay đáp án trơn không có cách làm, không được tính."],
   ["Riêng tư có kiểm soát", "Tự che số điện thoại, email trong tin nhắn. API key mã hóa AES-256-GCM."],
 ];
 

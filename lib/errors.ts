@@ -8,9 +8,9 @@ export type Trace = Ctx & { action?: string };
 // Nhóm lỗi dùng chung cho câu thân thiện và cột error_logs.kind. Nhãn hiển thị ở lib/log-labels.ts (ERR_KIND).
 const RE = {
   db: /Lỗi cơ sở dữ liệu/,
-  quota: /PerDay|insufficient_quota|RESOURCE_EXHAUSTED|\b429\b|quota/i,
+  quota: /PerDay|RESOURCE_EXHAUSTED|\b429\b|quota/i,
   timeout: /AI_TIMEOUT/,
-  key: /API key not valid|API_KEY_INVALID|invalid_api_key|Incorrect API key|\b401\b|\b403\b|PERMISSION_DENIED|UNAUTHENTICATED/i,
+  key: /API key not valid|API_KEY_INVALID|\b401\b|\b403\b|PERMISSION_DENIED|UNAUTHENTICATED/i,
   model: /model.*(not found|does not exist|no longer available)|\b404\b.*model|NOT_FOUND/i,
   overload: /\b50\d\b|UNAVAILABLE|overload|high demand|fetch failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|timeout|network|AI_SLOW/i,
   format: /sai định dạng/i,
@@ -32,7 +32,7 @@ export function friendly(e: unknown, who: Who = "teacher"): Friendly {
   const s = String((e as Error)?.message ?? e);
   const t = who === "teacher";
   if (RE.quota.test(s))
-    return { known: true, status: 503, message: t ? "AI chạm giới hạn: nhà cung cấp báo hết hạn mức hoặc hết số dư của API key. Kiểm tra gói hoặc thanh toán của key, hoặc chờ sang ngày mới rồi thử lại." : "AI đã chạm giới hạn lượt dùng nên chưa trả lời được. Bạn chờ một lúc rồi thử lại, hoặc báo giáo viên giúp nhé." };
+    return { known: true, status: 503, message: t ? "AI chạm giới hạn: nhà cung cấp báo hết hạn mức của API key. Kiểm tra gói hoặc thanh toán của key, hoặc chờ sang ngày mới rồi thử lại." : "AI đã chạm giới hạn lượt dùng nên chưa trả lời được. Bạn chờ một lúc rồi thử lại, hoặc báo giáo viên giúp nhé." };
   if (RE.timeout.test(s))
     return { known: true, status: 503, message: t ? "AI phản hồi quá chậm (có thể đang quá tải). Thử lại sau ít phút." : "AI đang quá tải hoặc phản hồi chậm. Bạn chờ khoảng 1 phút rồi bấm Gửi lại nhé, tin của bạn vẫn còn trong ô nhập." };
   if (RE.key.test(s))

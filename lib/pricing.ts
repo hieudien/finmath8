@@ -16,14 +16,10 @@ export const DEFAULT_PRICES: Record<string, Price> = {
   "gemini-3.1-flash-lite": FLASH_LITE,
   "gemini-3.5-flash": FLASH,
   "gemini-3.8-flash": FLASH,
-  "gpt-6-luna": { in: 0.15, cached: 0.075, out: 0.6 },
-  "gpt-6.1-terra": { in: 1.25, cached: 0.125, out: 10 },
-  "gpt-6.1-sol": { in: 2.5, cached: 0.25, out: 10 },
-  "gpt-6-astra": { in: 1.25, cached: 0.125, out: 10 },
 };
 
-// input đã gồm phần cache (cả Gemini và OpenAI). Gemini tính token suy nghĩ ngoài output nhưng vẫn trả theo giá output; OpenAI đã gộp vào output.
-export const outBilled = (r: Pick<UsageRow, "provider" | "output" | "thoughts">) => r.output + (r.provider === "gemini" ? r.thoughts : 0);
+// input đã gồm phần cache. Gemini tính token suy nghĩ ngoài output nhưng vẫn trả theo giá output.
+export const outBilled = (r: Pick<UsageRow, "output" | "thoughts">) => r.output + r.thoughts;
 export const costUsd = (r: UsageRow, p: Price) => ((r.input - r.cached) * p.in + r.cached * p.cached + outBilled(r) * p.out) / 1e6;
 
 // Nhãn "dùng làm gì" (khớp opts.use của askJson) và nhóm hiển thị.

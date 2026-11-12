@@ -65,7 +65,7 @@ describe("finishProblem", () => {
     vi.mocked(checkSteps).mockReset().mockResolvedValueOnce("Bước 2 sai").mockResolvedValueOnce("");
     vi.mocked(askJson).mockReset().mockResolvedValueOnce({ steps: ["Tiền giảm là 300000 x 0,15 = 45000.", "Phải trả 300000 - 45000 = 255000."] });
     expect(await finishProblem(cfg, base())).toMatchObject({ reviewed: true });
-    expect(askJson).toHaveBeenCalledTimes(2);
+    expect(askJson).toHaveBeenCalledTimes(3);
     vi.mocked(checkSteps).mockReset().mockResolvedValue("Bước 2 sai");
     vi.mocked(askJson).mockReset().mockResolvedValue({ steps: ["Tiền giảm là 300000 x 0,15 = 45000.", "Phải trả 300000 - 45000 = 255000."] });
     expect(await finishProblem(cfg, base())).toContain("chưa đạt");
@@ -109,7 +109,7 @@ describe("repairProblem + standardizeProblem", () => {
     expect(r.solution_steps.join(" ")).not.toContain("56.000.000");
     expect(r).toMatchObject({ common_errors: ["Quên trừ tiền giảm"], extension: "Giảm 20% thì sao?", skills: ["Tính phần trăm"], learning_objectives: ["Tính giá sau giảm"] });
     expect(r.hints.map((h) => h.text)).toEqual(["h1", "h2", "h3"]);
-    expect(askJson).toHaveBeenCalledTimes(3); // tạo lại + lời giải + dạng cần viết
+    expect(askJson).toHaveBeenCalledTimes(4); // tạo lại + lời giải + dạng cần viết + giàn đỡ
     expect(askText).toHaveBeenCalledTimes(1); // 1 phiếu giải độc lập
   });
   const derive = (v: string) => ({ data: [], answers: [{ name: "cost", value: v }], skills: ["a"], learning_objectives: ["b"], common_errors: ["c"], hints: ["h1", "h2", "h3"], extension: "e" });
@@ -133,7 +133,7 @@ describe("repairProblem + standardizeProblem", () => {
     const r = await standardizeProblem(cfg, base({ reviewed: true, answer_locked: true })) as Problem;
     expect(r.solution).toEqual({ cost: 255000 });
     expect(r.answer_locked).toBe(true);
-    expect(askJson).toHaveBeenCalledTimes(3); // tạo lại + lời giải + dạng cần viết
+    expect(askJson).toHaveBeenCalledTimes(4); // tạo lại + lời giải + dạng cần viết + giàn đỡ
     expect(crossCheck).not.toHaveBeenCalled();
   });
   it("unaccented: khối chữ không dấu bị bắt, có dấu thì qua", () => {

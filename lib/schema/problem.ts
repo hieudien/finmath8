@@ -15,6 +15,8 @@ export const problemSchema = z.object({
   solution_steps: z.array(z.string()).default([]), // lời giải từng bước bằng văn bản, để giáo viên xem
   step_goals: z.array(z.string()).default([]), // việc cần làm ở từng bước (học sinh thấy), AI viết sẵn, song song solution_steps; lệch số bước thì không dùng
   step_formats: z.array(z.string()).default([]), // dạng cần viết ở từng bước (vd "viết lại hệ với m = 1, mỗi phương trình có dấu ="), AI viết sẵn, song song solution_steps; lệch số bước thì không dùng
+  step_subs: z.array(z.array(z.string()).max(4)).default([]), // câu hỏi con chia nhỏ từng bước (gợi ý mức 2), AI viết sẵn, song song solution_steps; lệch số bước thì không dùng
+  step_analog: z.array(z.string()).default([]), // ví dụ tương tự với số khác hẳn cho từng bước (gợi ý mức 3), song song solution_steps
   step_examples: z.array(z.string()).default([]), // ví dụ cách viết (không lộ kết quả) hiện trong ô nhập, song song solution_steps
   step_hints: z.array(z.array(z.string()).max(3)).default([]), // gợi ý riêng từng bước (mức 1-3), song song solution_steps; lệch số bước thì không dùng
   step_checks: z.array(z.object({ result: z.string(), accepts: z.array(z.string()).default([]) })).default([]), // kết quả chuẩn từng bước (số hoặc biểu thức/chữ) để server chấm, song song solution_steps; lệch số bước thì không dùng

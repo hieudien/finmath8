@@ -26,12 +26,11 @@ async function useTeacherKey(email: string) {
   const { data: list } = await sb.auth.admin.listUsers({ perPage: 200 });
   const u = list.users.find((x) => x.email === email);
   if (!u) throw new Error("Không thấy giáo viên " + email);
-  const { data } = await sb.from("teacher_settings").select("provider,gemini_key_enc,openai_key_enc").eq("teacher_id", u.id).maybeSingle();
-  const s = data as { provider: Provider; gemini_key_enc: string | null; openai_key_enc: string | null } | null;
-  const enc = s && (s.provider === "openai" ? s.openai_key_enc : s.gemini_key_enc);
-  if (!s || !enc) throw new Error("Giáo viên chưa có API key");
-  AUTH = { provider: s.provider, key: decrypt(enc) };
-  console.log("Dùng key giáo viên, nhà cung cấp:", s.provider, "model:", PROVIDERS[s.provider].models[0]);
+  const { data } = await sb.from("teacher_settings").select("gemini_key_enc").eq("teacher_id", u.id).maybeSingle();
+  const enc = (data as { gemini_key_enc: string | null } | null)?.gemini_key_enc;
+  if (!enc) throw new Error("Giáo viên chưa có API key");
+  AUTH = { provider: "gemini", key: decrypt(enc) };
+  console.log("Dùng key giáo viên, model:", PROVIDERS.gemini.models[0]);
 }
 const R = Number(process.env.SOLVE_REPEAT ?? 3);
 const METHODS = (process.env.SOLVE_METHODS ?? "base,once,verify,vote").split(",");

@@ -1,6 +1,7 @@
 import { supabaseServer } from "@/lib/supabase/server";
 import { api, bad, requireUser } from "@/lib/auth";
 import { log } from "@/lib/log";
+import { toTen } from "@/lib/score";
 
 const cell = (v: unknown) => {
   const s = typeof v === "object" ? JSON.stringify(v) : String(v ?? "");
@@ -44,7 +45,7 @@ export const GET = api(async (req) => {
     const ev = new Map(e.map((x) => [x.session_id, x]));
     rows = s.map((x) => {
       const r = (ev.get(x.id) ?? {}) as Record<string, unknown>;
-      return { link: x.link_id, ma_hs: x.student_code, ten_hs: x.student_name, bai: x.problem_code, trang_thai: x.status, nhan_dien: r.identify, ke_hoach: r.plan, tinh_toan: r.calculate, giai_thich: r.explain, tong: r.total, dung: r.final_correct, goi_y_max: r.max_hint_level, giay: r.duration_s, hai_long: r.survey_likert, tu_tin: r.confidence };
+      return { link: x.link_id, ma_hs: x.student_code, ten_hs: x.student_name, bai: x.problem_code, trang_thai: x.status, nhan_dien: r.identify, ke_hoach: r.plan, tinh_toan: r.calculate, giai_thich: r.explain, tong: r.total, diem_10: toTen(Number(r.total)),dung: r.final_correct, goi_y_max: r.max_hint_level, giay: r.duration_s, hai_long: r.survey_likert, tu_tin: r.confidence };
     });
   } else if (kind === "chat") {
     const [ss, ms] = await Promise.all([

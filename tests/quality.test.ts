@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { problemSchema, type Problem } from "../lib/schema/problem";
 import { lintProblem } from "../lib/lint";
-import { checkpoints } from "../lib/chat/progress";
 
 const base = (over: Partial<Problem> = {}): Problem => problemSchema.parse({
   id: "T1", title: "Tiền", statement: "An có 300000 đồng, mua vở giá 10000 đồng mỗi quyển, giảm 15%.", data: { budget: 300000, discount: 0.15 },

@@ -5,9 +5,10 @@ import ChatLog from "@/components/ChatLog";
 import "katex/dist/katex.min.css";
 import { Badge, Empty, ScoreBadge, StatusBadge } from "@/components/ui";
 import { check } from "@/lib/db";
+import { avgTen } from "@/lib/score";
 import { sweep } from "@/lib/sweep";
 import { shortId } from "@/lib/sid";
-import { bits, compareStats, fmtTime, hardSteps, r1, sessionState, studentMsgs, who, type Ev, type Sess, type StepInfo, type Summary } from "@/lib/stats";
+import { bits, compareStats, fmtTime, hardSteps, sessionState, studentMsgs, who, type Ev, type Sess, type StepInfo, type Summary } from "@/lib/stats";
 
 const helpedN = (x: Sess) => (x.revealed ? bits(x.revealed) : 0); // số bước bot đã hiện lời giải vì học sinh kẹt: không tính là tự làm
 const Helped = ({ x }: { x: Sess }) => helpedN(x) > 0 ? <Badge tone="warn">Giải hộ {helpedN(x)} bước</Badge> : null;
@@ -59,7 +60,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
           <h1>{cur.label}</h1>
           <p className="text-text-muted">Mỗi phiên gắn với mã và tên học sinh tự nhập. Xem từng học sinh ở mục <Link href="/dashboard/students" className="text-primary underline">Học sinh</Link>.</p>
         </div>
-        <Kpis items={[["Lượt mở", m.visits], ["Phiên chat", m.sessions], ["Hoàn thành", `${m.completion}%`], ["Điểm TB / 12", m.enough ? m.totalAvg : "—"]]} />
+        <Kpis items={[["Lượt mở", m.visits], ["Phiên chat", m.sessions], ["Hoàn thành", `${m.completion}%`], ["Điểm TB / 10", m.enough ? avgTen(m.totalAvg) : "—"]]} />
         {!m.enough ? (
           <p className="rounded-lg border border-border bg-surface p-4">Chưa có phiên chat nào. Số liệu sẽ hiện khi học sinh bắt đầu làm bài.</p>
         ) : (
@@ -67,7 +68,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
             {/* Tạm ẩn 5 biểu đồ; bỏ comment để hiện lại:
             <Section title="Số phiên theo ngày"><LineBox data={m.daily} /></Section>
             <Section title="Điểm trung bình theo tiêu chí (0–3)"><BarBox data={m.rubric} max={3} /></Section>
-            <Section title="Phân bố tổng điểm (0–12)"><BarBox data={m.totalDist} /></Section>
+            <Section title="Phân bố tổng điểm (thang 10)"><BarBox data={bandsTen(m.totalDist)} /></Section>
             <Section title="Mức gợi ý cao nhất đã dùng"><BarBox data={m.hintDist} /></Section>
             <Section title="Lỗi thường gặp"><BarBox data={m.errors} horizontal /></Section>
             */}
@@ -149,13 +150,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
           <li key={l.id}>
             <a href={`/dashboard/stats?link=${l.id}`} className="flex min-h-11 flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-primary-soft">
               <span className="font-medium">{l.label} {l.tag && <span className="text-sm font-normal text-text-muted">· {TAG[l.tag]}</span>}</span>
-              <span className="tnum text-sm text-text-muted">{x?.visits ?? 0} lượt mở · {n} phiên · {n ? Math.round(((x?.done ?? 0) / n) * 100) : 0}% xong · {n ? `${r1(x?.total_avg ?? 0)}/12` : "chưa đủ dữ liệu"}</span>
+              <span className="tnum text-sm text-text-muted">{x?.visits ?? 0} lượt mở · {n} phiên · {n ? Math.round(((x?.done ?? 0) / n) * 100) : 0}% xong · {n ? `${avgTen(x?.total_avg ?? 0)}/10` : "chưa đủ dữ liệu"}</span>
             </a>
           </li>); })}
       </ul>
       {cmps.map(([title, ta, tb]) => { const c = compareStats(tags.get(ta), tags.get(tb)); return c && (
         <Section key={title} title={title}>
-          <p className="tnum">{TAG[ta]}: TB {c.meanA}, SD {c.sdA}, n={c.nA}. {TAG[tb]}: TB {c.meanB}, SD {c.sdB}, n={c.nB}. Thống kê t ≈ {c.t ?? "—"}.</p>
+          <p className="tnum">{TAG[ta]}: TB {avgTen(c.meanA)}, SD {avgTen(c.sdA)}, n={c.nA}. {TAG[tb]}: TB {avgTen(c.meanB)}, SD {avgTen(c.sdB)}, n={c.nB} (thang 10). Thống kê t ≈ {c.t ?? "—"}.</p>
           <p className="text-sm text-text-muted">t là ước lượng sơ bộ (hai mẫu độc lập). Mẫu nhỏ thì dùng Mann-Whitney khi báo cáo chính thức.</p>
         </Section>); })}
     </div>

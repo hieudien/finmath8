@@ -19,9 +19,9 @@ const GAP = 2300; // server chặn tin cách nhau dưới 2 giây trong cùng ph
 const rng = (() => { let s = SEED >>> 0 || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32); })();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type Scen = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I";
-const SCEN: Scen[] = ["A", "A", "B", "B", "C", "D", "E", "F", "G", "H"]; // SIM_ONLY=I chạy riêng kịch bản chạm trần số tin
-const NAME: Record<Scen, string> = { A: "làm đúng hết", B: "sai số rồi sửa", C: "mơ hồ", D: "đòi đáp án", E: "bấm gợi ý liên tục", F: "em chưa hiểu", G: "lạc đề", H: "bỏ dở", I: "chạm trần số tin" };
+type Scen = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H";
+const SCEN: Scen[] = ["A", "A", "B", "B", "C", "D", "E", "F", "G", "H"];
+const NAME: Record<Scen, string> = { A: "làm đúng hết", B: "sai số rồi sửa", C: "mơ hồ", D: "đòi đáp án", E: "bấm gợi ý liên tục", F: "em chưa hiểu", G: "lạc đề", H: "bỏ dở" };
 
 type Call = { action: string; text?: string; status: number; ms: number; reply?: string; done?: boolean; prog?: number; leak?: boolean; error?: string };
 type Result = { n: number; scen: Scen; problem: string; session?: string; calls: Call[]; checks: { name: string; pass: boolean }[]; totalMs: number };
@@ -33,7 +33,7 @@ async function main() {
   if (!link) throw new Error("Không thấy liên kết " + SLUG);
   if (process.env.SIM_ONLY && !(process.env.SIM_ONLY in NAME)) throw new Error("SIM_ONLY không hợp lệ: " + process.env.SIM_ONLY + " (chọn " + Object.keys(NAME).join(",") + ")");
   const probs = link.problems;
-  console.log(`Liên kết ${SLUG}: ${probs.length} đề (${probs.map((p) => p.id).join(", ")}), max_messages=${link.max_messages}`);
+  console.log(`Liên kết ${SLUG}: ${probs.length} đề (${probs.map((p) => p.id).join(", ")})`);
 
   const jobs = Array.from({ length: N }, (_, i) => ({ n: i + 1, scen: (process.env.SIM_ONLY as Scen | undefined) ?? SCEN[i % SCEN.length], p: probs[Math.floor(rng() * probs.length)] }));
   const results: Result[] = [];
@@ -42,7 +42,7 @@ async function main() {
     while (next < jobs.length) {
       const j = jobs[next++];
       await sleep(Math.floor(rng() * 1500));
-      const r = await runSession(j.n, j.scen, j.p, link).catch((e): Result => ({ n: j.n, scen: j.scen, problem: j.p.id, calls: [{ action: "crash", status: 0, ms: 0, error: String(e).slice(0, 200) }], checks: [{ name: "không crash", pass: false }], totalMs: 0 }));
+      const r = await runSession(j.n, j.scen, j.p).catch((e): Result => ({ n: j.n, scen: j.scen, problem: j.p.id, calls: [{ action: "crash", status: 0, ms: 0, error: String(e).slice(0, 200) }], checks: [{ name: "không crash", pass: false }], totalMs: 0 }));
       results.push(r);
       console.log(`#${r.n} ${r.scen} ${r.problem} ${r.checks.every((c) => c.pass) ? "OK" : "FAIL " + r.checks.filter((c) => !c.pass).map((c) => c.name).join("; ")} (${Math.round(r.totalMs / 1000)}s)`);
     }
@@ -50,7 +50,7 @@ async function main() {
   results.sort((a, b) => a.n - b.n);
   report(results);}
 
-async function runSession(n: number, scen: Scen, p: Problem, link: { max_messages: number }): Promise<Result> {
+async function runSession(n: number, scen: Scen, p: Problem): Promise<Result> {
   const anon = randomUUID();
   const calls: Call[] = [];
   const t00 = Date.now();
@@ -112,13 +112,6 @@ async function runSession(n: number, scen: Scen, p: Problem, link: { max_message
     check("lạc đề không tiến bước", prog(r) <= base);
     const r2 = await say(sid, "????");
     check("vô nghĩa không tiến bước", prog(r2) <= base);
-  } else if (scen === "I") {
-    // Nhắn "chưa rõ" liên tục cho tới khi server chốt bài (MAX_TURNS hoặc max_messages của liên kết): phải kết thúc bằng done:true, không bị chặn 429.
-    let fin = false, i = 0;
-    for (; i < link.max_messages + 2 && !fin; i++) { const r = await say(sid, `mình chưa rõ lần ${i + 1}`); check(`tin ${i + 1} không bị chặn 429`, r.status === 200); fin = r.j.done === true; if (r.status !== 200) break; }
-    check("bài tự kết thúc (done: true)", fin);
-    const after = await say(sid, "mình gửi thêm");
-    check("sau khi kết thúc trả 409, không 500", after.status === 409);
   } else if (scen === "H") {
     await say(sid, text(0));
   }

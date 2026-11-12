@@ -17,8 +17,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const { data } = await admin().from("public_links").select("id,teacher_id,label,active,expires_at,problems_snapshot,max_messages").eq("slug", slug).is("deleted_at", null).maybeSingle();
-  const l = data as { id: string; teacher_id: string; label: string; active: boolean; expires_at: string | null; problems_snapshot: unknown; max_messages: number } | null;
+  const { data } = await admin().from("public_links").select("id,teacher_id,label,active,expires_at,problems_snapshot").eq("slug", slug).is("deleted_at", null).maybeSingle();
+  const l = data as { id: string; teacher_id: string; label: string; active: boolean; expires_at: string | null; problems_snapshot: unknown } | null;
   const open = l && l.active && !(l.expires_at && new Date(l.expires_at) < new Date());
   if (!l || !open) {
     return (

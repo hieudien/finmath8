@@ -3,6 +3,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { check } from "@/lib/db";
 import { Empty } from "@/components/ui";
 import { CRITERIA } from "@/lib/students";
+import { avgTen } from "@/lib/score";
 import { r1, weakSteps, type StepInfo } from "@/lib/stats";
 
 type S = { student_code: string; names: string[]; sessions: number; evaluated: number; identify: number; plan: number; calculate: number; explain: number; total_avg: number; correct_pct: number; hint_avg: number; last_at: string; student_class: string | null };
@@ -37,7 +38,7 @@ export default async function Page() {
                   <span className="min-w-0"><span className="block font-medium">{s.names.join(" / ")} <span className="tnum font-normal text-text-muted">({s.student_class || s.student_code})</span></span>
                     <span className="block text-sm text-text-muted">{weak ? `Yếu nhất: ${weak}` : "Chưa có bài được chấm"} · lần cuối {fmt.format(new Date(s.last_at))}</span>
                     {h && <span className="block text-sm text-text-muted">Hay vướng: Bước {h.step} · {h.label}</span>}</span>
-                  <span className="tnum text-sm text-text-muted">{s.sessions} phiên · {s.evaluated ? `${r1(s.total_avg)}/12 · ${Math.round(s.correct_pct)}% đúng · ${r1(s.hint_avg)} gợi ý` : "—"}</span>
+                  <span className="tnum text-sm text-text-muted">{s.sessions} phiên · {s.evaluated ? `${avgTen(s.total_avg)}/10 · ${Math.round(s.correct_pct)}% đúng · ${r1(s.hint_avg)} gợi ý` : "—"}</span>
                 </Link>
               </li>
             );

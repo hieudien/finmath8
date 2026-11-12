@@ -50,7 +50,7 @@ export async function makeStepFormats(cfg: LlmCfg, p: Problem, steps = p.solutio
 export type Guides = { goals: string[]; hints: string[][]; checks: Problem["step_checks"]; traps: Problem["error_traps"] };
 
 // Ghi chỉ dẫn vào đề. Không có chỉ dẫn (g null) thì xóa hết: các phần song song với lời giải không được lệch số bước.
-export const withGuides = (p: Problem, g: Guides | null): Problem => ({ ...p, step_goals: g?.goals ?? [], step_hints: g?.hints ?? [], step_checks: g?.checks ?? [], error_traps: g?.traps ?? [], step_formats: [], step_examples: [] });
+export const withGuides = (p: Problem, g: Guides | null): Problem => ({ ...p, step_goals: g?.goals ?? [], step_hints: g?.hints ?? [], step_checks: g?.checks ?? [], error_traps: g?.traps ?? [], step_formats: [], step_examples: [], step_subs: [], step_analog: [] });
 
 // Kết quả chuẩn do AI viết phải có thật trong lời giải của bước đó, nếu không thì bỏ (AI bịa số).
 const inStep = (result: string, step: string) => {
@@ -59,7 +59,7 @@ const inStep = (result: string, step: string) => {
 };
 
 // Các số xuất hiện lần đầu ở bước i (không có trong đề, dữ kiện, các bước trước): chính là kết quả bước đó tạo ra, gợi ý không được nêu.
-const newNumbers = (steps: string[], i: number, p: Problem): string[] => {
+export const newNumbers = (steps: string[], i: number, p: Problem): string[] => {
   const seen = new Set<string>(numsIn(`${p.statement} ${JSON.stringify(p.data)} ${steps.slice(0, i).join(" ")}`));
   return [...new Set<string>(numsIn(stripStep(steps[i])))].filter((n) => !seen.has(n)).slice(0, 6);
 };

@@ -6,8 +6,8 @@ Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải q
 
 ## Cách hoạt động
 
-1. Giáo viên đăng ký, nhập API key của Google Gemini hoặc OpenAI trong Cài đặt (key được mã hóa AES-256-GCM, không trả về trình duyệt).
-2. Giáo viên tạo đề: soạn trực tiếp, chụp ảnh đề hoặc tạo hàng loạt từ tệp Word (tab "Tạo đề hàng loạt"). AI điền đáp án, lời giải, gợi ý và câu chào đầu tiên; giáo viên kiểm tra rồi lưu. Giáo viên bấm "Tạo chỉ dẫn từng bước" để AI viết việc cần làm và gợi ý cho từng bước.
+1. Giáo viên đăng ký, nhập API key của Google Gemini trong Cài đặt (key được mã hóa AES-256-GCM, không trả về trình duyệt).
+2. Giáo viên tạo đề: soạn trực tiếp, chụp ảnh đề hoặc tạo hàng loạt từ tệp Word (tab "Tạo đề hàng loạt"). AI điền đáp án, lời giải, gợi ý và câu chào đầu tiên; giáo viên kiểm tra rồi lưu. Giáo viên bấm "Chuẩn hóa đề" để AI viết lời giải (nếu thiếu), việc cần làm, 3 mức gợi ý, câu hỏi con và ví dụ tương tự cho từng bước.
 3. Giáo viên chọn một hoặc nhiều đề (đề cần có lời giải từng bước, thiếu thì học sinh chưa làm được), tạo liên kết công khai và gửi cho học sinh.
 4. Học sinh mở liên kết, nhập họ tên và lớp (không nhớ, mở lại là nhập lại), chọn đề, làm bài theo kiểu đã chọn, tự đánh giá mức hiểu bài và mức hài lòng cuối bài.
 5. Hệ thống chấm theo 4 tiêu chí (nhận diện, lập kế hoạch, tính toán, giải thích). Giáo viên xem thống kê theo liên kết, hồ sơ từng học sinh và nội dung hội thoại.
@@ -21,13 +21,13 @@ Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải q
 - Đề do AI tạo có cờ `reviewed = false`: phải mở đề, tick xác nhận đáp án đúng rồi lưu mới được đưa vào liên kết.
 - AI tạo lời giải từng bước và kiểm tra lời giải khớp đáp án.
 - Cách làm bài duy nhất là **Từng bước**: học sinh nộp một bước mỗi lần. Đề thiếu lời giải từng bước thì API trả lỗi "Bài này chưa sẵn sàng". Phiên cũ kiểu Chat hoặc Trắc nghiệm vẫn xem được trong lịch sử.
-- Chỉ dẫn từng bước do AI viết sẵn: việc cần làm, 3 mức gợi ý riêng từng bước (nút "Tạo chỉ dẫn từng bước" ở danh sách đề và trang từng đề).
-- Liên kết công khai: bật/tắt, hạn dùng, giới hạn số tin, nhãn nhóm (trước, sau, thực nghiệm, đối chứng).
+- Chỉ dẫn từng bước do AI viết sẵn khi chuẩn hóa đề: việc cần làm, 3 mức gợi ý riêng từng bước (mức 1 chỉ rõ vấn đề, mức 2 câu hỏi con `step_subs`, mức 3 ví dụ tương tự với số khác `step_analog`). Nút "Chuẩn hóa đề" ở trang từng đề, "Chuẩn hóa N đề" ở danh sách đề.
+- Liên kết công khai: bật/tắt, hạn dùng, nhãn nhóm (trước, sau, thực nghiệm, đối chứng).
 - Trang **Học sinh**: gom theo tên và lớp; điểm trung bình 4 tiêu chí, kỹ năng cần củng cố, lỗi hay mắc, kiến thức nền còn thiếu (khi được giải hộ), danh sách bài đã làm (kể cả bài bỏ dở) và nút **AI phân tích và đề xuất cải thiện**. Mở từng phiên (ở Thống kê hoặc hồ sơ học sinh) có nút **AI phân tích phiên này**: nhận xét điểm tốt, điểm yếu và việc nên làm, lưu lại để xem lại.
 - Thống kê theo liên kết: số phiên, tỉ lệ hoàn thành, điểm, mức gợi ý, thời gian, so sánh giữa các nhóm, xem hội thoại từng phiên. Xuất CSV (có mã và tên học sinh).
 - Bước học sinh hay gặp khó (bấm Gợi ý, hỏi, làm sai, được giải hộ; cột `chat_sessions.struggled`): hiện ở Thống kê (cả lớp), hồ sơ học sinh, dòng "Hay vướng" ở danh sách Học sinh; AI đề xuất cải thiện có thêm "Ôn tập theo bước".
 - Xóa mềm: xóa liên kết (`public_links.deleted_at`) và xóa học sinh (bảng `students`, `deleted_at`) chỉ ẩn khỏi giao diện; phiên, tin nhắn, điểm giữ nguyên. Học sinh vào lại bằng cùng tên và lớp thì hiện lại. Trigger ở DB chặn xóa cứng.
-- Nhật ký hoạt động chỉ thêm, không sửa; nằm trong Cài đặt, chỉ tải khi mở mục. Cài đặt còn có Nhật ký lỗi riêng và thống kê Chi phí AI (token theo nhà cung cấp, model, mục đích). Có hướng dẫn sử dụng cho giáo viên.
+- Nhật ký hoạt động chỉ thêm, không sửa; nằm trong Cài đặt, chỉ tải khi mở mục. Cài đặt còn có Nhật ký lỗi riêng, **Xác nhận đáp án hàng loạt** (so đáp án AI với đáp án tự giải rồi khóa), **Kiểm tra đề** (AI giải lại và rà phép tính, đề có vấn đề gắn cảnh báo) và **Chuẩn hóa tất cả đề**. Tick xác nhận đáp án khi sửa đề cũng khóa đáp án. Có hướng dẫn sử dụng cho giáo viên.
 
 **Học sinh**
 - Không cần tài khoản. Nhập họ tên và lớp (tối đa 10 ký tự); thông tin không lưu trong trình duyệt, mở liên kết hay tải lại là nhập lại; có nút Đổi thông tin. Server sinh khóa nội bộ `student_code` từ tên bỏ dấu + lớp (vd `NGUYENVANA.8A1`): cùng tên cùng lớp là một học sinh.
@@ -38,8 +38,11 @@ Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải q
 - Hết gợi ý mà vẫn kẹt (5 lượt kẹt) thì bot hiện lời giải bước đó; bước được giải hộ không được tính điểm.
 
 **Chat engine** ([lib/chat](lib/chat))
-- `steps.ts`: lượt làm bài từng bước (server tự xác minh bước có số, AI nhỏ chỉ viết nhận xét cho một bước). `engine.ts`: phần dùng chung (ghi tin của bot, chấm điểm cuối phiên). `prompt.ts`: kiểm tra lộ đáp án và prompt chấm điểm. `canned.ts`: câu cố định của bot (nhiều biến thể, không gọi AI) cho trường hợp học sinh nói không biết, nộp lại tin cũ, lạc đề, hết lượt hỏi. `assist.ts`: thang gợi ý, hiện lời giải khi kẹt, trần điểm theo phần tự làm.
+- `steps.ts`: lượt làm bài từng bước (server tự xác minh bước có số, AI nhỏ chỉ viết nhận xét cho một bước). `engine.ts`: phần dùng chung (ghi tin của bot, chấm điểm cuối phiên). `prompt.ts`: kiểm tra lộ đáp án và prompt chấm điểm. `canned.ts`: câu cố định của bot (nhiều biến thể, không gọi AI) cho trường hợp học sinh nói không biết, nộp lại tin cũ, lạc đề, hết lượt hỏi. `intent.ts`: đoán tin là câu hỏi hay bước giải (client và server dùng chung). `assist.ts`: thang gợi ý, hiện lời giải khi kẹt, trần điểm theo phần tự làm.
 - Tiến độ theo mốc lời giải; server tự xác minh mốc có số, mốc còn lại cần trích dẫn nguyên văn từ tin của học sinh.
+- Câu chép lại nguyên văn từ đề bị gỡ trước khi chấm; đáp án trơn mà chưa thấy cách làm các bước trước thì không ghi nhận; bước vừa ghi nhận bằng số được AI soát lại lập luận; học sinh nộp cả lời giải thì một lần gọi AI duyệt gộp các mốc không có số (server vẫn kiểm bằng chứng từng mốc).
+- Giao diện nhập có hai ô riêng: **Nộp bước** (viền xanh) và khay **Hỏi bài** (viền vàng, mở bằng nút Em chưa hiểu); gõ nhầm sẽ có gợi ý chuyển ô.
+- Gợi ý có thang 3 mức mỗi bước; hiện lời giải của bước thì học sinh phải tự gõ lại mới qua bước.
 - Công thức LaTeX trong tin nhắn được chuẩn hóa (ví dụ `\frac{1}{2}` thành 0.5) trước khi so với đáp án.
 - Chỉ kết thúc khi đủ mốc và học sinh đã trình bày cách làm. Lời chúc mừng hoặc lời kết sớm của AI bị thay bằng câu hỏi tiếp.
 - Chặn lộ đáp án và chặn bot tự giải hộ bước học sinh phải làm; chặn đổi vai và lấy prompt.
@@ -50,7 +53,7 @@ Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải q
 
 - Next.js 15 (App Router, Turbopack), React 19, TypeScript, Tailwind CSS 4
 - Supabase: Postgres, Auth, RLS
-- Google Gemini (`@google/genai`) hoặc OpenAI, dùng key của giáo viên
+- Google Gemini (`@google/genai`), dùng key của giáo viên
 - Zod, KaTeX, MathLive, Recharts, simple-statistics, Nodemailer (Gmail SMTP)
 - Vitest
 
@@ -70,10 +73,12 @@ lib/
   students.ts               hồ sơ học sinh
   llm.ts, models.ts         gọi AI (kể cả ảnh), danh sách model, tự đổi model
   step-guides.ts            AI viết chỉ dẫn và gợi ý từng bước
+  step-scaffold.ts          AI viết câu hỏi con và ví dụ tương tự cho từng bước (gợi ý mức 2 và 3)
+  import-batch.ts           đợt nạp đề hàng loạt từ tệp Word (bản nháp, xác nhận, lịch sử)
   batch.ts                  chạy hàng loạt theo lượt: tách đề thô, mã đề mới, song song có hạn giờ
   pii.ts, crypto.ts, log.ts lọc thông tin cá nhân, mã hóa key, nhật ký
 public/mathlive-fonts/      font của MathLive
-supabase/migrations/        001–020
+supabase/migrations/        001–025
 tests/                      Vitest
 ```
 
@@ -102,7 +107,7 @@ Tạo file `.env` (không commit) với các biến sau:
 
 ## Cơ sở dữ liệu
 
-Chạy các file trong `supabase/migrations/` theo thứ tự số (`001_init.sql` đến `023_student_class.sql`) trên project Supabase. File `011` thêm mã và tên học sinh vào `chat_sessions`, view `student_stats` và bảng `student_advice`. `012` thêm kiểu làm bài (`interaction_mode`, `mode`; giờ chỉ giữ cho dữ liệu cũ). `013` thêm `stall`, `revealed` và `gaps` (kiến thức nền còn thiếu). `014` thêm `wrong` (của kiểu Trắc nghiệm đã bỏ, chỉ giữ cho dữ liệu cũ). `015` thêm bảng `session_analysis` (nhận xét AI cho từng phiên). `016` thêm `struggled` (bước gặp khó), chuyển giáo viên đang dùng Chat sang Từng bước và đổi mặc định. `017` thêm `public_links.deleted_at` (xóa mềm), trigger chặn xóa cứng, gỡ job pg_cron xóa nhật ký quá 30 ngày. `018` thêm bảng `students` (xóa mềm) và viết lại view `student_stats`. `019` thêm hàm `ai_usage_summary` (tổng token AI cho Cài đặt). `020` thêm bảng nhật ký lỗi riêng, siêu dữ liệu từng tin của bot, lịch sử bản đề và dọn phiên bỏ dở. `021` thêm hàm `rename_problem` (đổi mã đề, cập nhật cả liên kết và phiên cũ trong một giao dịch). `022` thêm `chat_sessions.problem_snapshot` (mỗi phiên giữ bản đề lúc mở). `023` thêm `chat_sessions.student_class` và `students.class` (lớp của học sinh), view `student_stats` có thêm cột `student_class`.
+Chạy các file trong `supabase/migrations/` theo thứ tự số (`001_init.sql` đến `025_gemini_only.sql`) trên project Supabase. File `011` thêm mã và tên học sinh vào `chat_sessions`, view `student_stats` và bảng `student_advice`. `012` thêm kiểu làm bài (`interaction_mode`, `mode`; giờ chỉ giữ cho dữ liệu cũ). `013` thêm `stall`, `revealed` và `gaps` (kiến thức nền còn thiếu). `014` thêm `wrong` (của kiểu Trắc nghiệm đã bỏ, chỉ giữ cho dữ liệu cũ). `015` thêm bảng `session_analysis` (nhận xét AI cho từng phiên). `016` thêm `struggled` (bước gặp khó), chuyển giáo viên đang dùng Chat sang Từng bước và đổi mặc định. `017` thêm `public_links.deleted_at` (xóa mềm), trigger chặn xóa cứng, gỡ job pg_cron xóa nhật ký quá 30 ngày. `018` thêm bảng `students` (xóa mềm) và viết lại view `student_stats`. `019` thêm hàm `ai_usage_summary` (tổng token AI cho Cài đặt). `020` thêm bảng nhật ký lỗi riêng, siêu dữ liệu từng tin của bot, lịch sử bản đề và dọn phiên bỏ dở. `021` thêm hàm `rename_problem` (đổi mã đề, cập nhật cả liên kết và phiên cũ trong một giao dịch). `022` thêm `chat_sessions.problem_snapshot` (mỗi phiên giữ bản đề lúc mở). `023` thêm `chat_sessions.student_class` và `students.class` (lớp của học sinh), view `student_stats` có thêm cột `student_class`. `024` thêm bảng `import_batches` (mỗi đợt nạp đề Word là một dòng: bản nháp, xác nhận, lịch sử). `025` bỏ OpenAI: giáo viên đang chọn OpenAI chuyển về Gemini, xóa cột `openai_key_enc`, ràng buộc `provider` chỉ còn `gemini`.
 
 ## Triển khai
 

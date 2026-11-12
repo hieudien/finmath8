@@ -20,7 +20,7 @@ export function CreateLink({ problems }: { problems: P[] }) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     setBusy(true);
-    const { ok, data } = await post("/api/links", { action: "create", label: f.get("label"), tag: f.get("tag") || null, problemIds: sel, maxMessages: Number(f.get("max")) });
+    const { ok, data } = await post("/api/links", { action: "create", label: f.get("label"), tag: f.get("tag") || null, problemIds: sel });
     setBusy(false);
     if (!ok) return toast("danger", data.error ?? "Có lỗi.");
     setSel([]); (e.target as HTMLFormElement).reset(); setCreated(true); refresh();
@@ -66,7 +66,6 @@ export function CreateLink({ problems }: { problems: P[] }) {
             <option value="control">Nhóm đối chứng</option>
           </select>
         </div>
-        <Field label="Số tin tối đa mỗi phiên" name="max" type="number" inputMode="numeric" min={5} max={200} defaultValue={40} required />
       </div>
       <Button type="submit" disabled={!sel.length} pending={busy || rp ? "Đang tạo..." : undefined} className="self-start">Tạo liên kết công khai</Button>
     </form>

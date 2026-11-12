@@ -6,18 +6,20 @@ import { kindOf, reportError } from "@/lib/errors";
 import { PROVIDERS, TEMPERATURE, type Provider } from "@/lib/models";
 import { ttl } from "@/lib/ttl";
 
-type Row = { provider: Provider; gemini_key_enc: string | null; openai_key_enc: string | null };
+type Row = { gemini_key_enc: string | null };
 
 async function load(teacherId: string): Promise<LlmCfg | null> {
-  const { data } = await admin().from("teacher_settings").select("provider,gemini_key_enc,openai_key_enc").eq("teacher_id", teacherId).maybeSingle();
-  const s = data as Row | null;
-  const enc = s && (s.provider === "openai" ? s.openai_key_enc : s.gemini_key_enc);
-  if (!s || !enc) return null;
+  const { data, error } = await admin().from("teacher_settings").select("gemini_key_enc").eq("teacher_id", teacherId).maybeSingle();
+  // Lỗi đọc DB (vd lệch schema) không được coi là "chưa có key": báo lỗi thật để không đánh lừa giáo viên.
+  if (error) throw new Error(`Không đọc được cài đặt AI: ${error.message}`);
+  const enc = (data as Row | null)?.gemini_key_enc;
+  if (!enc) return null;
+  const provider: Provider = "gemini";
   return {
-    provider: s.provider,
+    provider,
     teacherId,
     key: decrypt(enc),
-    model: PROVIDERS[s.provider].models[0], // model cố định trong code, cột model trong DB không còn dùng
+    model: PROVIDERS[provider].models[0], // model cố định trong code, cột model trong DB không còn dùng
     temperature: TEMPERATURE,
     // Đổi model vì lỗi: ghi cả vào nhật ký lỗi (kèm loại lỗi) để thống kê quota, quá tải, model hỏng. Lỗi cuối cùng không cứu được do nơi gọi ghi.
     onFallback: (from, to, reason) => {

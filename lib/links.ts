@@ -3,7 +3,7 @@ import { parseProblems, type Problem } from "@/lib/schema/problem";
 import { missingInfo } from "@/lib/ready";
 import { ttl } from "@/lib/ttl";
 
-export type Link = { id: string; teacher_id: string; active: boolean; expires_at: string | null; max_messages: number; problems: Problem[] };
+export type Link = { id: string; teacher_id: string; active: boolean; expires_at: string | null; problems: Problem[] };
 
 type Row = { code: string; content: unknown };
 

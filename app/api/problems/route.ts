@@ -120,7 +120,7 @@ export const POST = api(async (req, tr) => {
       if (!Object.keys(prob.solution).length) return bad("Đề chưa có đáp án để xác nhận.");
       return (await commit(b.id, version, { ...prob, answer_locked: true, reviewed: true, check_note: "" }, { answer: "lock" })) ?? Response.json({ ok: true });
     }
-    const next: Problem = { ...prob, solution: b.solution, answer_locked: true, check_note: "", solution_steps: [], step_goals: [], step_hints: [], step_checks: [], error_traps: [], step_formats: [], step_examples: [] };
+    const next: Problem = { ...prob, solution: b.solution, answer_locked: true, check_note: "", solution_steps: [], step_goals: [], step_hints: [], step_checks: [], error_traps: [], step_formats: [], step_examples: [], step_subs: [], step_analog: [] };
     return (await commit(b.id, version, next, { answer: "set" })) ?? Response.json({ ok: true });
   }
 
@@ -255,7 +255,7 @@ export const POST = api(async (req, tr) => {
           const raw = await askJson(cfg, NORMALIZE_SYSTEM + gradeRule(batch.grade), [{ role: "user", text: it.statement }], problemSchema, { think: true, use: "normalize" });
           const out = walk({ ...raw, grade: batch.grade, statement: it.statement }) as Problem; // lớp do giáo viên chọn, đề bài là bản giáo viên đã duyệt
           out.id = "BT00"; out.reviewed = false; out.check_note = "";
-          out.solution_steps = []; out.step_goals = []; out.step_hints = []; out.step_checks = []; out.error_traps = []; out.step_formats = []; out.step_examples = []; // do pha finish viết khớp đáp án
+          out.solution_steps = []; out.step_goals = []; out.step_hints = []; out.step_checks = []; out.error_traps = []; out.step_formats = []; out.step_examples = []; out.step_subs = []; out.step_analog = []; // do pha finish viết khớp đáp án
           if (Object.keys(it.answers).length) { out.solution = it.answers as Problem["solution"]; } // đáp số từ tệp chỉ để AI bám theo, không khóa: giáo viên tự xác nhận sau khi lưu
           out.answer_locked = false;
           patch.set(i, { status: "drafted", reason: "", draft: out });

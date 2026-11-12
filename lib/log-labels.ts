@@ -1,9 +1,10 @@
 // Cách hiển thị từng hoạt động trong nhật ký (Cài đặt): tên, nhóm, mức quan trọng và câu mô tả viết từ meta.
+import { toTen } from "@/lib/score";
 export type Meta = Record<string, unknown>;
 type Info = { label: string; group: string; warn?: boolean; text?: (m: Meta) => string };
 
 const MODE: Record<string, string> = { chat: "Chat", steps: "Từng bước", quiz: "Trắc nghiệm" };
-const PROVIDER: Record<string, string> = { gemini: "Google Gemini", openai: "OpenAI" };
+const PROVIDER: Record<string, string> = { gemini: "Google Gemini" };
 const s = (v: unknown) => (v == null ? "" : String(v));
 
 const RULE: Record<string, string> = { anon: "Gửi quá nhanh (theo trình duyệt)", ip: "Cả mạng gửi quá nhiều", start_ip: "Mở quá nhiều bài cùng lúc", link_day: "Liên kết đạt trần lượt dùng trong ngày", anon_day: "Một em làm quá nhiều bài trong ngày", max_messages: "Đủ số tin tối đa của bài", too_fast: "Gửi tin liên tiếp dưới 2 giây" };
@@ -18,7 +19,7 @@ export const LOG: Record<string, Info> = {
   logout: { label: "Đăng xuất", group: ACC },
   password_reset_requested: { label: "Yêu cầu đặt lại mật khẩu", group: ACC },
   password_reset: { label: "Đặt lại mật khẩu", group: ACC },
-  settings_changed: { label: "Đổi cài đặt", group: ACC, text: (m) => { const c = (m.changed ?? {}) as Record<string, { from?: string; to?: string }>; const ch = (k: string, names: Record<string, string>) => `${names[s(c[k].from)] ?? (s(c[k].from) || "chưa đặt")} sang ${names[s(c[k].to)] ?? s(c[k].to)}`; return [m.provider && `Nhà cung cấp ${PROVIDER[s(m.provider)] ?? s(m.provider)}${c.provider ? ` (${ch("provider", PROVIDER)})` : ""}`, m.mode && `kiểu ${MODE[s(m.mode)] ?? s(m.mode)}${c.mode ? ` (${ch("mode", MODE)})` : ""}`, m.key_changed && "có đổi API key"].filter(Boolean).join(", "); } },
+  settings_changed: { label: "Đổi cài đặt", group: ACC, text: (m) => { const c = (m.changed ?? {}) as Record<string, { from?: string; to?: string }>; const ch = (k: string, names: Record<string, string>) => `${names[s(c[k].from)] ?? (s(c[k].from) || "chưa đặt")} sang ${names[s(c[k].to)] ?? s(c[k].to)}`; return [m.provider && `Nhà cung cấp ${PROVIDER[s(m.provider)] ?? s(m.provider)}`, m.mode && `kiểu ${MODE[s(m.mode)] ?? s(m.mode)}${c.mode ? ` (${ch("mode", MODE)})` : ""}`, m.key_changed && "có đổi API key"].filter(Boolean).join(", "); } },
   export: { label: "Tải dữ liệu", group: ACC, text: (m) => `Tải CSV${m.kind ? ` (${s(m.kind)})` : ""}${m.rows != null ? `, ${s(m.rows)} dòng` : ""}` },
   student_deleted: { label: "Xóa học sinh", group: ACC, text: (m) => (m.code ? `${m.name ? `${s(m.name)} ` : ""}(${s(m.code)}), bài làm vẫn được giữ` : "") },
   student_advice: { label: "AI đề xuất cải thiện cho học sinh", group: ACC, text: (m) => (m.code ? `Học sinh ${s(m.code)}` : "") },
@@ -43,7 +44,7 @@ export const LOG: Record<string, Info> = {
   chat_session_ended: { label: "Học sinh kết thúc bài", group: STU },
   survey_submitted: { label: "Học sinh tự đánh giá", group: STU, text: (m) => `Hiểu bài ${s(m.confidence)}/5, hài lòng ${s(m.likert)}/5` },
   session_analysis: { label: "AI phân tích một phiên", group: STU, text: (m) => (m.problem ? `Đề ${s(m.problem)}` : "") },
-  eval_done: { label: "Chấm điểm xong", group: STU, text: (m) => `${s(m.total)}/12${Number(m.revealed) ? `, ${s(m.revealed)} bước được giải hộ` : ""}` },
+  eval_done: { label: "Chấm điểm xong", group: STU, text: (m) => `${toTen(Number(m.total))}/10${Number(m.revealed) ? `, ${s(m.revealed)} bước được giải hộ` : ""}` },
   student_distress: { label: "Học sinh có dấu hiệu cần người lớn hỗ trợ", group: STU, warn: true },
   answer_leak_blocked: { label: "Chặn lộ đáp án", group: STU, warn: true, text: () => "Chatbot định nêu đáp án, hệ thống đã thay bằng câu hỏi tiếp" },
   session_capped: { label: "Chốt bài do quá số lượt", group: STU, warn: true, text: (m) => (m.done != null ? `Đã qua ${s(m.done)} bước` : "") },

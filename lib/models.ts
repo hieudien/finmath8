@@ -1,4 +1,4 @@
-export type Provider = "gemini" | "openai";
+export type Provider = "gemini";
 
 export type ProviderInfo = {
   label: string;
@@ -28,16 +28,5 @@ export const PROVIDERS: Record<Provider, ProviderInfo> = {
     ],
     keyNote: "Gói miễn phí giới hạn số lượt gọi mỗi ngày cho từng model. Cả lớp dùng chung thì nên bật thanh toán (billing) cho project.",
     models: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash"],
-  },
-  openai: {
-    label: "OpenAI (ChatGPT)",
-    keyUrl: "https://platform.openai.com/api-keys",
-    keySteps: [
-      "Mở OpenAI Platform và đăng nhập (tài khoản API khác tài khoản ChatGPT Plus).",
-      "Vào Billing, nạp trước một ít tiền (API không chạy khi chưa có số dư).",
-      "Vào API keys, bấm \"Create new secret key\", chép key (bắt đầu bằng sk-...). Key chỉ hiện một lần.",
-    ],
-    keyNote: "OpenAI tính tiền theo lượng dùng, không có gói miễn phí cố định. Nên đặt hạn mức chi tiêu hàng tháng trong phần Billing.",
-    models: ["gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra"],
   },
 };

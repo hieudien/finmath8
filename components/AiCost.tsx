@@ -39,7 +39,7 @@ export default function AiCost({ rows, range, problems, sessions }: { rows: Usag
     const [label, group] = purposeInfo(r.use);
     const k = r.use || "?";
     const t = by.get(k) ?? { label, group, calls: 0, tokens: 0, vnd: 0 };
-    t.calls += r.calls; t.tokens += r.input + r.output + (r.provider === "gemini" ? r.thoughts : 0); t.vnd += vnd(r);
+    t.calls += r.calls; t.tokens += r.input + r.output + r.thoughts; t.vnd += vnd(r);
     by.set(k, t);
   }
   const list = [...by.values()].sort((a, b) => b.vnd - a.vnd);

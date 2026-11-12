@@ -99,6 +99,15 @@ export const STEP_LEAK = [
   "Bước này chưa khớp lắm. Bạn thử rà lại phép tính nhé.",
 ] as const;
 
+// Học sinh làm cách khác lời giải mẫu, các dòng vừa viết đều đúng nhưng bài chưa xong: khẳng định đúng hướng, không đẩy về bước của đường chuẩn.
+export const ALT_OK = [
+  "Các dòng bạn vừa viết đều đúng và đang đi đúng hướng. Bạn viết tiếp nhé.",
+  "Cách làm của bạn đúng hướng, mình chưa thấy chỗ sai nào. Bạn viết tiếp bước sau nhé.",
+  "Phần bạn viết là đúng, cách làm này hợp lý. Bạn tiếp tục nhé.",
+  "Mình thấy các bước bạn viết đúng. Bạn cứ đi tiếp theo cách của mình nhé.",
+  "Đoạn này bạn làm đúng và đi đúng hướng. Bạn viết tiếp để hoàn thành bài nhé.",
+] as const;
+
 export const RETRY = [
   "Bạn thử lại nhé.",
   "Bạn thử làm lại xem sao nhé.",
@@ -106,14 +115,6 @@ export const RETRY = [
   "Bạn xem lại rồi thử lại nhé.",
   "Bạn thử viết lại bước này nhé.",
 ] as const;
-
-export const capped = (done: number, n: number) => pick([
-  `Mình dừng bài ở đây nhé, bài này khá dài. Bạn đã xong ${done}/${n} bước.`,
-  `Mình xin dừng bài tại đây, bài này khá dài. Bạn đã hoàn thành ${done}/${n} bước.`,
-  `Bài này dài rồi nên mình dừng ở đây nhé. Bạn đã làm xong ${done}/${n} bước.`,
-  `Đến đây mình dừng bài nhé, bài khá dài rồi. Bạn đã xong ${done}/${n} bước.`,
-  `Mình dừng bài ở đây nha, bài này khá dài. Bạn xong được ${done}/${n} bước.`,
-]);
 
 // k = số thứ tự bước (từ 1), t = lời giải của bước đó.
 export const reveal = (k: number, n: number, t: string) => pick([

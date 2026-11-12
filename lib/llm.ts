@@ -12,7 +12,7 @@ export type LlmCfg = {
   onFallback?: (from: string, to: string, reason: string) => void; // để ghi nhật ký khi tự đổi model
   onUsage?: (u: Usage) => void; // mỗi lượt gọi thành công: số token để đo chi phí và kiểm tra cache
   signal?: AbortSignal; // askJson đặt khi hủy lượt gọi chậm, khỏi bị tính tiền thêm
-  seed?: number; // Gemini: cùng seed + cùng input thì (gần như) cùng câu trả lời. Không bảo đảm tuyệt đối. OpenAI chưa dùng.
+  seed?: number; // Gemini: cùng seed + cùng input thì (gần như) cùng câu trả lời. Không bảo đảm tuyệt đối.
   teacherId?: string; // giáo viên sở hữu key: để nơi nuốt lỗi AI vẫn ghi được vào nhật ký lỗi của giáo viên đó
   use?: string; // nhãn "dùng làm gì" của lượt gọi, ghi vào nhật ký để thống kê token
 };
@@ -41,37 +41,13 @@ async function callGemini(cfg: LlmCfg, system: string, turns: Turn[], schema?: z
   return res.text ?? "";
 }
 
-// ponytail: không gửi temperature cho OpenAI (nhiều model suy luận chỉ nhận mặc định). Thêm khi cần chỉnh.
-async function callOpenAI(cfg: LlmCfg, system: string, turns: Turn[], json = true): Promise<string> {
-  const body: Record<string, unknown> = {
-    model: cfg.model,
-    messages: [{ role: "system", content: system }, ...turns.map((t) => ({ role: t.role === "model" ? "assistant" : "user", content: t.image ? [{ type: "text", text: t.text }, { type: "image_url", image_url: { url: `data:${t.image.mime};base64,${t.image.b64}` } }] : t.text }))],
-  };
-  if (json) body.response_format = { type: "json_object" }; // yêu cầu prompt có chữ "JSON": mọi prompt của app đều có
-  const r = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: { authorization: `Bearer ${cfg.key}`, "content-type": "application/json" },
-    body: JSON.stringify(body),
-    signal: cfg.signal,
-  });
-  if (!r.ok) {
-    const t = await r.text();
-    if (json && r.status === 400 && /response_format|json_object/i.test(t)) return callOpenAI(cfg, system, turns, false); // model không hỗ trợ JSON mode: dựa vào prompt
-    throw new Error(`OpenAI ${r.status}: ${t.slice(0, 300)}`);
-  }
-  const j = (await r.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number }; completion_tokens_details?: { reasoning_tokens?: number } } };
-  const u = j.usage;
-  if (u) cfg.onUsage?.({ provider: "openai", model: cfg.model, input: u.prompt_tokens ?? 0, cached: u.prompt_tokens_details?.cached_tokens ?? 0, output: u.completion_tokens ?? 0, thoughts: u.completion_tokens_details?.reasoning_tokens ?? 0, use: cfg.use });
-  return j.choices?.[0]?.message?.content ?? "";
-}
-
 // Model nào vừa báo hết quota thì nhớ lại một lúc để các lượt sau bỏ qua ngay, khỏi gọi lại vô ích.
 // ponytail: bộ nhớ của 1 instance. Dùng bảng DB/Redis nếu chạy nhiều instance.
 const dead = new Map<string, number>();
 const deadKey = (c: LlmCfg, model: string) => `${c.provider}:${c.key.slice(-8)}:${model}`;
-const isQuota = (e: unknown) => /PerDay|insufficient_quota|RESOURCE_EXHAUSTED|429|no longer available|404/i.test(String(e));
+const isQuota = (e: unknown) => /PerDay|RESOURCE_EXHAUSTED|429|no longer available|404/i.test(String(e));
 const isOverload = (e: unknown) => /\b50\d\b|UNAVAILABLE|overload|high demand|AI_SLOW/i.test(String(e));
-const isLongQuota = (e: unknown) => /PerDay|insufficient_quota|no longer available|404/i.test(String(e));
+const isLongQuota = (e: unknown) => /PerDay|no longer available|404/i.test(String(e));
 
 // Hết quota (hoặc model không còn) thì tự thử model kế tiếp của cùng nhà cung cấp, tối đa 4 model.
 export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string, turns: Turn[], schema: T, opts: { think?: boolean | "low"; maxTokens?: number; deadlineMs?: number; attemptMs?: number; use?: string; temperature?: number; seed?: number } = {}): Promise<z.infer<T>> {
@@ -141,7 +117,7 @@ export async function askText(cfg0: LlmCfg, system: string, turns: Turn[], opts:
 async function askOneText(cfg: LlmCfg, system: string, turns: Turn[]): Promise<string> {
   const t0 = Date.now();
   const c = { ...cfg, onUsage: cfg.onUsage && ((u: Usage) => cfg.onUsage!({ ...u, ms: Date.now() - t0 })) };
-  return withRetry(() => (c.provider === "openai" ? callOpenAI(c, system, turns, false) : callGemini(c, system, turns, undefined, true)));
+  return withRetry(() => callGemini(c, system, turns, undefined, true));
 }
 
 async function askOne<T extends z.ZodType>(cfg: LlmCfg, system: string, turns: Turn[], schema: T): Promise<z.infer<T>> {
@@ -150,7 +126,7 @@ async function askOne<T extends z.ZodType>(cfg: LlmCfg, system: string, turns: T
     const t = lastErr ? [...turns, { role: "user" as const, text: `JSON trước không hợp lệ (${lastErr}). Trả lại JSON đúng định dạng.` }] : turns;
     const t0 = Date.now();
     const c = { ...cfg, onUsage: cfg.onUsage && ((u: Usage) => cfg.onUsage!({ ...u, ms: Date.now() - t0 })) }; // ms: thời gian chờ AI của lượt gọi này
-    const text = await withRetry(() => (c.provider === "openai" ? callOpenAI(c, system, t) : callGemini(c, system, t, schema)));
+    const text = await withRetry(() => callGemini(c, system, t, schema));
     try {
       const parsed = schema.safeParse(JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, "")));
       if (parsed.success) return parsed.data;
@@ -164,17 +140,14 @@ async function askOne<T extends z.ZodType>(cfg: LlmCfg, system: string, turns: T
 
 // Kiểm tra key và model bằng cách tra thông tin model: không tốn lượt gọi sinh nội dung.
 export async function checkKey(provider: Provider, key: string, model: string) {
-  const r =
-    provider === "openai"
-      ? await fetch(`https://api.openai.com/v1/models/${encodeURIComponent(model)}`, { headers: { authorization: `Bearer ${key}` } })
-      : await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}`, { headers: { "x-goog-api-key": key } });
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}`, { headers: { "x-goog-api-key": key } });
   if (r.ok) return;
-  if (r.status === 401 || r.status === 403 || (provider === "gemini" && r.status === 400)) throw new Error("key");
+  if (r.status === 401 || r.status === 403 || r.status === 400) throw new Error("key");
   if (r.status === 404) throw new Error("model");
   throw new Error("other " + r.status);
 }
 
-// Hết quota theo ngày (PerDay) hoặc hết tiền (insufficient_quota) thì không thử lại: chờ cũng vô ích.
+// Hết quota theo ngày (PerDay) thì không thử lại: chờ cũng vô ích.
 // 503 và 429 tạm thời: thử lại 2 lần, cách nhau 4–8 giây.
 async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   for (let i = 0; ; i++) {
@@ -183,7 +156,7 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
     } catch (e) {
       const s = String(e);
       // 429 / hết quota: không chờ, askJson đổi sang model khác ngay. Chỉ thử lại lỗi tạm thời (5xx, quá tải, mạng).
-      if (i >= 1 || /PerDay|insufficient_quota|429|RESOURCE_EXHAUSTED/.test(s) || !/\b50\d\b|UNAVAILABLE|overload|fetch failed/i.test(s)) throw e;
+      if (i >= 1 || /PerDay|429|RESOURCE_EXHAUSTED/.test(s) || !/\b50\d\b|UNAVAILABLE|overload|fetch failed/i.test(s)) throw e;
       await new Promise((r) => setTimeout(r, 1500)); // thử lại đúng 1 lần, rồi askJson đổi model
     }
   }

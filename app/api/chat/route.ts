@@ -1,16 +1,13 @@
 import { check } from "@/lib/db";
 import { createHash, randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
-import { after } from "next/server";
 import { sweep } from "@/lib/sweep";
 import { z } from "zod";
 import { admin } from "@/lib/supabase/admin";
 import { llmCfg } from "@/lib/teacher";
 import { getLink } from "@/lib/links";
-import { botMsg, finish, type Session, type Tm } from "@/lib/chat/engine";
-import { checkpoints, countDone } from "@/lib/chat/progress";
-import { capped as cappedLine } from "@/lib/chat/canned";
-import { progress, stepAsk, stepHint, stepsOpening, stepTurn } from "@/lib/chat/steps";
+import { finish, type Session, type Tm } from "@/lib/chat/engine";
+import { stepAsk, stepHint, stepsOpening, stepTurn } from "@/lib/chat/steps";
 import { parseProblems, type Problem } from "@/lib/schema/problem";
 import { log } from "@/lib/log";
 import { failResponse, reportError, swallow, watchdog, type Trace } from "@/lib/errors";
@@ -156,20 +153,9 @@ async function handle(req: Request, tr: Trace) {
     }
     if (sess.status !== "active") return err("Bài này đã kết thúc.", 409);
     if (b.action === "hint") return Response.json(await stepHint(cfg, sess, prob, link.teacher_id));
-    // Một lần đọc (ở trên) cho cả giới hạn số tin, chống gửi dồn và ngữ cảnh của lượt này.
+    // Một lần đọc (ở trên) cho cả chống gửi dồn và ngữ cảnh của lượt này.
     const all = (msgs ?? []) as { role: "student" | "bot"; content: string; hint_level: number | null; ts: string }[];
     const said = all.filter((m) => m.role === "student");
-    if (said.length >= link.max_messages) {
-      // Đủ số tin tối đa của liên kết: học sinh không có nút Kết thúc, nên server tự chốt và chấm bài (như khi chạm MAX_TURNS), giao diện chuyển sang khảo sát.
-      const cps = checkpoints(prob), done = countDone(sess.progress ?? 0);
-      const reply = cappedLine(done, cps.length);
-      await Promise.all([
-        botMsg(sess.id, { content: reply, step: sess.step, hint_level: sess.hint_level, kind: "capped" }).then(check),
-        log({ actor: "system", action: "session_capped", teacherId: link.teacher_id, anonId: anon, linkId: link.id, meta: { done, rule: "max_messages" } }),
-      ]);
-      after(() => finish(cfg, sess, prob, link.teacher_id).catch((e) => reportError(e, "chấm điểm (finish)", { teacherId: link.teacher_id, linkId: link.id, anonId: anon, actor: "system" })));
-      return Response.json({ reply, step: sess.step, done: true, progress: progress(prob, cps, sess.progress ?? 0) });
-    }
     // Chống gửi dồn: cách tin trước ít nhất 2 giây trong cùng phiên.
     const last = said.at(-1);
     if (last && Date.now() - new Date(last.ts).getTime() < 2000) return denied("too_fast", b.slug, anon, "Bạn gửi nhanh quá. Chờ một chút rồi gửi lại nhé.", link);

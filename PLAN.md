@@ -66,7 +66,7 @@ Chỉ append (RLS cấm update/delete). GV xem log của mình + lọc theo acti
 
 ### 2.10 Thống kê `/dashboard/stats` (+ theo link)
 - Theo từng link: lượt vào, phiên bắt đầu, phiên hoàn thành, tỉ lệ hoàn thành, tin trung bình/phiên, thời gian trung bình, lượt/ngày (line chart).
-- Chất lượng HS (ẩn danh, tổng hợp): điểm rubric TB 4 tiêu chí (radar/bar), phân bố tổng điểm 0–12 (histogram), tỉ lệ đúng cuối, phân bố mức gợi ý tối đa, top lỗi thường gặp (khớp `common_errors`), bước Polya HS hay kẹt.
+- Chất lượng HS (ẩn danh, tổng hợp): điểm rubric TB 4 tiêu chí (radar/bar), phân bố tổng điểm (DB lưu 0–12, hiển thị thang 10 làm tròn 0,5, gom 5 khoảng), tỉ lệ đúng cuối, phân bố mức gợi ý tối đa, top lỗi thường gặp (khớp `common_errors`), bước Polya HS hay kẹt.
 - Bảng phiên: "HS #n" + điểm + gợi ý + thời lượng; bấm xem transcript (đã lọc PII).
 - So sánh các link/đề cạnh nhau. Xuất CSV (không chứa định danh).
 - Dùng SQL view/RPC, RLS theo owner.

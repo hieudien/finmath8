@@ -5,6 +5,7 @@ import { sweep } from "@/lib/sweep";
 import Link from "next/link";
 import { fmtTime, hardSteps, r1, sessionState, studentMsgs, who, type StepInfo } from "@/lib/stats";
 import { MathText } from "@/components/MathText";
+import { avgTen } from "@/lib/score";
 
 type L = { id: string; label: string; active: boolean };
 type Sess = { id: string; link_id: string; seq: number; status: string; started_at: string; problem_code: string; student_code: string | null; student_name: string | null; student_class: string | null };
@@ -25,7 +26,7 @@ export default async function Page() {
   ]);
   res.forEach(check);
   const [{ data: s }, { count: np }, { data: ln }, { data: ss }, { data: ov }, { data: er }] = res as unknown as [
-    { data: { provider: string; gemini_key_enc: string | null; openai_key_enc: string | null} | null }, { count: number | null }, { data: L[] | null }, { data: Sess[] | null }, { data: Ov | null }, { data: { name: string; value: number }[] | null },
+    { data: { gemini_key_enc: string | null } | null }, { count: number | null }, { data: L[] | null }, { data: Sess[] | null }, { data: Ov | null }, { data: { name: string; value: number }[] | null },
   ];
   const links = ln ?? [];
   const recent = ss ?? [];
@@ -37,15 +38,15 @@ export default async function Page() {
   ]);
   const info = new Map<string, StepInfo>(((pr.data ?? []) as { code: string; title: string | null; steps: string[] | null; goals: string[] | null }[]).map((x) => [x.code, { title: x.title ?? x.code, steps: x.steps ?? [], goals: x.goals?.length === x.steps?.length ? x.goals ?? [] : [] }]));
   const hard = hardSteps((hs.data ?? []) as { id: string; problem_code: string; student_code: string | null; student_name: string | null; struggled: number }[], info).slice(0, 5); // lỗi đọc thì bỏ khối này, không làm hỏng trang
-  const hasKey = !!(s && (s.provider === "openai" ? s.openai_key_enc : s.gemini_key_enc));
+  const hasKey = !!s?.gemini_key_enc;
   const steps = [
-    { done: hasKey, text: "Chọn nhà cung cấp AI (Gemini hoặc ChatGPT) và nhập API key", href: "/dashboard/settings", cta: "Mở cài đặt" },
+    { done: hasKey, text: "Nhập API key Google Gemini", href: "/dashboard/settings", cta: "Mở cài đặt" },
     { done: (np ?? 0) > 0, text: "Nạp đề bài (JSON hoặc văn bản)", href: "/dashboard/problems", cta: "Nạp đề" },
     { done: links.length > 0, text: "Tạo liên kết cho học sinh", href: "/dashboard/links", cta: "Tạo liên kết" },
   ];
   const next = steps.find((x) => !x.done);
   const o: Ov = ov ?? { sessions: 0, done: 0, evals: 0, total_avg: 0, correct_pct: 0, duration_s: 0, hint_avg: 0 };
-  const m = { sessions: o.sessions, completion: o.sessions ? Math.round((o.done / o.sessions) * 100) : 0, totalAvg: r1(o.total_avg), correctPct: Math.round(o.correct_pct), durationMin: r1(o.duration_s / 60), hintAvg: r1(o.hint_avg), errors: er ?? [] };
+  const m = { sessions: o.sessions, completion: o.sessions ? Math.round((o.done / o.sessions) * 100) : 0, totalAvg: avgTen(o.total_avg), correctPct: Math.round(o.correct_pct), durationMin: r1(o.duration_s / 60), hintAvg: r1(o.hint_avg), errors: er ?? [] };
   const label = new Map(links.map((l) => [l.id, l.label]));
   const kpis: [string, string | number][] = [
     ["Đề bài", np ?? 0],
@@ -128,7 +129,7 @@ export default async function Page() {
             <section className="flex flex-col gap-2 border-t border-border pt-4" aria-labelledby="sum">
               <h2 id="sum">Kết quả chung</h2>
               <dl className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                {([["Điểm TB / 12", m.totalAvg], ["Đúng kết luận", `${m.correctPct}%`], ["Thời gian TB (phút)", m.durationMin], ["Lần tăng gợi ý TB", m.hintAvg]] as [string, string | number][]).map(([k, v]) => (
+                {([["Điểm TB / 10", m.totalAvg], ["Đúng kết luận", `${m.correctPct}%`], ["Thời gian TB (phút)", m.durationMin], ["Lần tăng gợi ý TB", m.hintAvg]] as [string, string | number][]).map(([k, v]) => (
                   <div key={k}><dt className="text-sm text-text-muted">{k}</dt><dd className="tnum text-2xl font-bold">{v}</dd></div>
                 ))}
               </dl>

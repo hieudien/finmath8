@@ -1,58 +1,58 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { askJson } from "../lib/llm";
 import { friendly } from "../lib/errors";
 
-const ok = (text: string) => new Response(JSON.stringify({ choices: [{ message: { content: text } }] }), { status: 200 });
-const quota = () => new Response(JSON.stringify({ error: { code: "insufficient_quota", message: "You exceeded your current quota" } }), { status: 429 });
-const schema = z.object({ a: z.number() });
+// Giả lập SDK Gemini: mỗi lượt gọi ghi lại model, hành vi theo từng model do test đặt.
+const used: string[] = [];
+let behave: (model: string) => Promise<{ text: string }> = async () => ({ text: '{"a":1}' });
+vi.mock("@google/genai", () => ({
+  ThinkingLevel: { LOW: "LOW", MINIMAL: "MINIMAL" },
+  GoogleGenAI: class {
+    models = { generateContent: async ({ model }: { model: string }) => { used.push(model); return behave(model); } };
+  },
+}));
 
-afterEach(() => vi.unstubAllGlobals());
+import { askJson } from "../lib/llm";
+
+const quota = () => Promise.reject(new Error('429 RESOURCE_EXHAUSTED PerDay: You exceeded your current quota'));
+const schema = z.object({ a: z.number() });
+const FIRST = "gemini-3.5-flash-lite", SECOND = "gemini-3.1-flash-lite";
+
+beforeEach(() => { used.length = 0; });
 
 describe("tự đổi model khi hết quota", () => {
   it("đổi sang model kế tiếp, nhớ model đã hết", async () => {
-    const used: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (_u: string, init: RequestInit) => {
-      const model = JSON.parse(String(init.body)).model as string;
-      used.push(model);
-      return model === "gpt-6-luna" ? quota() : ok('{"a":1}');
-    }));
+    behave = async (m) => (m === FIRST ? quota() : { text: '{"a":1}' });
     const events: string[] = [];
-    const cfg = { provider: "openai" as const, key: "sk-test-aaaa1111", model: "gpt-6-luna", temperature: 0.3, onFallback: (f: string, t: string) => events.push(`${f}>${t}`) };
+    const cfg = { provider: "gemini" as const, key: "AIza-test-aaaa1111", model: FIRST, temperature: 0.3, onFallback: (f: string, t: string) => events.push(`${f}>${t}`) };
     expect(await askJson(cfg, "JSON", [{ role: "user", text: "x" }], schema)).toEqual({ a: 1 });
-    expect(used).toEqual(["gpt-6-luna", "gpt-6.1-terra"]);
-    expect(events).toEqual(["gpt-6-luna>gpt-6.1-terra"]);
+    expect(used).toEqual([FIRST, SECOND]);
+    expect(events).toEqual([`${FIRST}>${SECOND}`]);
     used.length = 0;
     await askJson(cfg, "JSON", [{ role: "user", text: "x" }], schema);
-    expect(used).toEqual(["gpt-6.1-terra"]); // luna bị bỏ qua
+    expect(used).toEqual([SECOND]); // model đầu bị bỏ qua
   });
 
   it("model chậm quá attemptMs thì đổi sang model kế", async () => {
-    const used: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (_u: string, init: RequestInit) => {
-      const model = JSON.parse(String(init.body)).model as string;
-      used.push(model);
-      return model === "gpt-6-luna" ? new Promise<Response>(() => {}) : ok('{"a":2}'); // luna treo mãi
-    }));
-    const cfg = { provider: "openai" as const, key: "sk-test-cccc3333", model: "gpt-6-luna", temperature: 0.3 };
+    behave = (m) => (m === FIRST ? new Promise(() => {}) : Promise.resolve({ text: '{"a":2}' })); // model đầu treo mãi
+    const cfg = { provider: "gemini" as const, key: "AIza-test-cccc3333", model: FIRST, temperature: 0.3 };
     expect(await askJson(cfg, "JSON", [{ role: "user", text: "x" }], schema, { attemptMs: 50, deadlineMs: 5000 })).toEqual({ a: 2 });
-    expect(used).toEqual(["gpt-6-luna", "gpt-6.1-terra"]);
+    expect(used).toEqual([FIRST, SECOND]);
   });
 
   it("lỗi khác (key sai) thì không đổi model", async () => {
-    const f = vi.fn(async () => new Response("bad key", { status: 401 }));
-    vi.stubGlobal("fetch", f);
-    const cfg = { provider: "openai" as const, key: "sk-test-bbbb2222", model: "gpt-6-luna", temperature: 0.3 };
+    behave = () => Promise.reject(new Error("401 API key not valid"));
+    const cfg = { provider: "gemini" as const, key: "AIza-test-bbbb2222", model: FIRST, temperature: 0.3 };
     await expect(askJson(cfg, "JSON", [{ role: "user", text: "x" }], schema)).rejects.toThrow(/401/);
-    expect(f).toHaveBeenCalledTimes(1);
+    expect(used).toEqual([FIRST]);
   });
 });
 
 describe("lỗi thân thiện", () => {
   it("phân loại", () => {
-    expect(friendly(new Error("429 insufficient_quota"), "teacher").message).toMatch(/hạn mức/);
+    expect(friendly(new Error("429 RESOURCE_EXHAUSTED"), "teacher").message).toMatch(/hạn mức/);
     expect(friendly(new Error("429 PerDay"), "student").message).toMatch(/báo giáo viên/);
-    expect(friendly(new Error("OpenAI 401 Incorrect API key"), "teacher").message).toMatch(/Cài đặt/);
+    expect(friendly(new Error("400 API key not valid"), "teacher").message).toMatch(/Cài đặt/);
     expect(friendly(new Error("503 UNAVAILABLE"), "student").known).toBe(true);
     expect(friendly(new Error("TypeError: x is undefined"), "teacher").known).toBe(false);
   });

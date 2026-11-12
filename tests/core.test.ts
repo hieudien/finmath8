@@ -267,7 +267,6 @@ describe("readiness", () => {
 });
 
 describe("kieu tuong tac", () => {
-  const p = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
   it("markByNumbers: dung thu tu, nhay coc khong ghi nhan, gop buoc", () => {
     const cp = (id: number, must: string[]) => ({ id, label: "", anchors: must, must });
     const cps = [cp(0, ["8"]), cp(1, ["4"]), cp(2, [])];
@@ -419,7 +418,7 @@ describe("nhat ky loi va hoat dong", () => {
   it("mo ta hoat dong moi", () => {
     expect(describe_("rate_limited", { rule: "too_fast" })).toMatch(/2 giây/);
     expect(describe_("link_closed", { reason: "expired" })).toMatch(/hết hạn/);
-    expect(describe_("settings_changed", { provider: "openai", changed: { provider: { from: "gemini", to: "openai" } } })).toMatch(/Google Gemini sang OpenAI/);
+    expect(describe_("settings_changed", { key_changed: true })).toMatch(/đổi API key/);
   });
 });
 

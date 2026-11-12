@@ -23,7 +23,7 @@ vi.mock("@/lib/chat/engine", async (orig) => ({
 }));
 
 import { askJson } from "../lib/llm";
-import { stepTurn } from "../lib/chat/steps";
+import { stepHint, stepTurn } from "../lib/chat/steps";
 import { problemSchema } from "../lib/schema/problem";
 import type { Session, Msg } from "../lib/chat/engine";
 
@@ -95,7 +95,9 @@ describe("stepTurn: bậc thang kẹt và near", () => {
     ai({ verdict: "sai", scenario: "sai_phuong_phap", reply: "Cách này chưa phù hợp" });
     const r = await run("3 x 4", sess(exhausted));
     expect(r.reply).toMatch(/lời giải bước 1\/3/);
-    expect(lastUpdate()?.progress).toBe(1);
+    expect(r.reply).toMatch(/gõ lại/); // hiện lời giải nhưng chưa tính xong: học sinh phải tự gõ lại
+    expect(lastUpdate()?.progress).toBe(0);
+    expect((lastUpdate() as { revealed?: number }).revealed).toBe(1);
   });
   it("gần đúng quá 6 lần ở một bước thì cũng tính kẹt (có trần)", async () => {
     ai({ verdict: "thiếu", scenario: "dung_huong_thieu", reply: "Bạn mới viết một vế" });
@@ -111,5 +113,229 @@ describe("stepTurn: qua bước", () => {
     const r = await run("A = 3 + 4 = 7");
     expect(lastUpdate()?.progress).toBe(1);
     expect(r.reply).toMatch(/Bước 2\/3/);
+  });
+});
+
+describe("stepTurn: học sinh giỏi nộp gộp nhiều bước", () => {
+  it("lời giải có kết quả của bước 1 và 2: ghi nhận cả hai trong một lượt, chỉ gọi một lần soát lỗi bằng model rẻ", async () => {
+    vi.mocked(askJson).mockResolvedValue({ steps: [] } as never);
+    const r = await run("$A = 3 + 4 = 7$ và $B = 7 \times 2 = 14$");
+    expect(vi.mocked(askJson)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(askJson).mock.calls[0][0].model).toBe("gemini-3.5-flash-lite");
+    expect(lastUpdate()?.progress).toBe(0b011);
+    expect(r.reply).toMatch(/ghi nhận các bước 1, 2/);
+    expect(r.reply).toMatch(/Bước 3\/3/);
+  });
+  it("đáp án trơn (chỉ kết quả cuối): không ghi nhận, bắt viết cách làm", async () => {
+    ai({ verdict: "chưa làm", scenario: "chua_lam" });
+    const r = await run("C = 15");
+    expect(lastUpdate()?.progress).toBe(0);
+    expect(r.reply).toMatch(/chưa thấy cách làm/);
+  });
+  it("cả lời giải có bước không có số: một lần gọi AI duyệt gộp, bằng chứng thật thì ghi nhận hết", async () => {
+    const p2 = problemSchema.parse({
+      id: "T2", title: "t", statement: "Tính C với số 3 và 4.", solution: { c: 15 },
+      solution_steps: ["Gọi $n$ là số cần tìm.", "Tính $B = 7 \times 2 = 14$.", "Vậy $C = 14 + 1 = 15$."],
+      step_checks: [{ result: "", accepts: [] }, { result: "14", accepts: [] }, { result: "15", accepts: [] }],
+      hints: [1, 2, 3].map((level) => ({ level, text: "g" })),
+    });
+    vi.mocked(askJson).mockResolvedValue({ steps: [{ step: 1, verdict: "đủ", evidence: "Gọi $n$ là số cần tìm." }] } as never);
+    const r = await stepTurn(cfg, sess(), p2, "Gọi $n$ là số cần tìm.\n$B = 7 \times 2 = 14$.\nVậy $C = 14 + 1 = 15$.", "t1", []);
+    expect(vi.mocked(askJson)).toHaveBeenCalledTimes(2); // duyệt gộp + soát lỗi các bước số
+    expect(lastUpdate()?.progress).toBe(0b111);
+    expect(r.done).toBe(true);
+  });
+});
+
+describe("stepTurn: kiểm tra kỹ từng bước", () => {
+  it("tầng 0: phép so sánh đảo chiều bị chặn, các dòng đúng vẫn được ghi nhận", async () => {
+    vi.mocked(askJson).mockResolvedValue({ steps: [] } as never);
+    const r = await run("A = 3 + 4 = 7\nB = 7 x 2 = 14\n14 > 15");
+    expect(lastUpdate()?.progress).toBe(0b011);
+    expect(r.reply).toContain('"14 > 15" chưa đúng');
+  });
+  it("tầng 0: phép tính sai số học không qua bước, không gọi AI", async () => {
+    const r = await run("A = 3 + 4 = 8");
+    expect(vi.mocked(askJson)).not.toHaveBeenCalled();
+    expect(lastUpdate()?.progress).toBe(0);
+    expect(r.reply).toContain("chưa đúng");
+  });
+  it("soát lỗi: model rẻ báo sai, model chính xác nhận thì bác bước, giữ các bước trước", async () => {
+    vi.mocked(askJson).mockResolvedValue({ steps: [{ step: 2, verdict: "sai" }] } as never);
+    const r = await run("A = 3 + 4 = 7\nB = 7 x 2 = 14");
+    expect(vi.mocked(askJson)).toHaveBeenCalledTimes(2);
+    expect(lastUpdate()?.progress).toBe(0b001);
+    expect(r.reply).toMatch(/bước 2\/3 có chỗ chưa đúng/);
+  });
+  it("soát lỗi: model rẻ báo sai nhưng model chính không đồng ý thì giữ nguyên", async () => {
+    vi.mocked(askJson).mockResolvedValueOnce({ steps: [{ step: 2, verdict: "sai" }] } as never).mockResolvedValueOnce({ steps: [] } as never);
+    await run("A = 3 + 4 = 7\nB = 7 x 2 = 14");
+    expect(lastUpdate()?.progress).toBe(0b011);
+  });
+  it("soát lỗi: AI lỗi thì không bác (server đã kiểm số)", async () => {
+    vi.mocked(askJson).mockRejectedValue(new Error("AI_SLOW"));
+    await run("A = 3 + 4 = 7");
+    expect(lastUpdate()?.progress).toBe(1);
+  });
+});
+
+// Hồi quy phiên TC01: bước kết luận chỉ có dạng chữ ("cửa hàng B").
+describe("stepTurn: bước kết luận bằng chữ", () => {
+  const shop = problemSchema.parse({
+    id: "T3", title: "Chọn cửa hàng", statement: "An mua 30 quyển vở. Cửa hàng A giảm 15%, cửa hàng B giảm 10%. Nên mua ở cửa hàng nào?",
+    solution: { a: 275000, b: 270000, best: "B" },
+    solution_steps: ["Cửa hàng A phải trả 275000 đồng.", "Cửa hàng B phải trả 270000 đồng.", "Vì số tiền ở B nhỏ hơn nên chọn cửa hàng B."],
+    step_goals: ["Tính tiền ở A", "Tính tiền ở B", "So sánh để kết luận"],
+    step_hints: [["a", "b", "c"], ["a", "b", "c"], ["a", "b", "c"]],
+    step_checks: [{ result: "275000", accepts: [] }, { result: "270000", accepts: [] }, { result: "cửa hàng B", accepts: [] }],
+    hints: [1, 2, 3].map((level) => ({ level, text: "g" })),
+  });
+  const go = (text: string, s = sess()) => stepTurn(cfg, s, shop, text, "t1", []);
+  it("nộp gộp, kết luận viết kiểu \"mua ở B\": AI duyệt gộp, ghi nhận cả 3 bước", async () => {
+    vi.mocked(askJson).mockResolvedValue({ steps: [{ step: 3, verdict: "đủ", evidence: "mua ở B rẻ hơn do 270000 < 275000" }] } as never);
+    const r = await go("tiền ở A là 275000\ntiền ở B là 270000\nmua ở B rẻ hơn do 270000 < 275000");
+    expect(lastUpdate()?.progress).toBe(0b111);
+    expect(r.done).toBe(true);
+  });
+  it("mốc kết luận có cả số lẫn chữ (trùng số bước trước, như TC01): vẫn được AI duyệt gộp", async () => {
+    const tc = problemSchema.parse({
+      id: "T4", title: "Chọn cửa hàng", statement: "An mua 30 quyển vở. Cửa hàng A giảm 15%, cửa hàng B giảm 10%. Nên mua ở cửa hàng nào?",
+      solution: { a: 275000, b: 270000, best: "B" },
+      solution_steps: ["Cửa hàng A phải trả 275000 đồng.", "Cửa hàng B phải trả 270000 đồng.", "Vì 270000 < 275000 nên chọn cửa hàng B."],
+      step_goals: ["Tính tiền ở A", "Tính tiền ở B", "So sánh để kết luận"],
+      step_hints: [["a", "b", "c"], ["a", "b", "c"], ["a", "b", "c"]],
+      step_checks: [{ result: "275000", accepts: [] }, { result: "270000", accepts: [] }, { result: "cửa hàng B", accepts: [] }],
+      hints: [1, 2, 3].map((level) => ({ level, text: "g" })),
+    });
+    vi.mocked(askJson).mockResolvedValue({ steps: [{ step: 3, verdict: "đủ", evidence: "mua ở B rẻ hơn do 270000 < 275000" }] } as never);
+    const r = await stepTurn(cfg, sess(), tc, "tiền ở A là 275000\ntiền ở B là 270000\nmua ở B rẻ hơn do 270000 < 275000", "t1", []);
+    expect(lastUpdate()?.progress).toBe(0b111);
+    expect(r.done).toBe(true);
+  });
+  it("hồi quy ade0cf51: kết luận so sánh đảo chiều, AI lỡ duyệt đủ: vẫn không ghi nhận bước kết luận", async () => {
+    const tc = problemSchema.parse({
+      id: "T5", title: "Chọn cửa hàng", statement: "An mua 30 quyển vở. Cửa hàng A giảm 15%, cửa hàng B giảm 10%. Nên mua ở cửa hàng nào?",
+      solution: { a: 275000, b: 270000, best: "B" },
+      solution_steps: ["Cửa hàng A phải trả 275000 đồng.", "Cửa hàng B phải trả 270000 đồng.", "Vì 270000 < 275000 nên chọn cửa hàng B."],
+      step_goals: ["Tính tiền ở A", "Tính tiền ở B", "So sánh để kết luận"],
+      step_hints: [["a", "b", "c"], ["a", "b", "c"], ["a", "b", "c"]],
+      step_checks: [{ result: "275000", accepts: [] }, { result: "270000", accepts: [] }, { result: "cửa hàng B", accepts: [] }],
+      hints: [1, 2, 3].map((level) => ({ level, text: "g" })),
+    });
+    vi.mocked(askJson).mockResolvedValue({ steps: [{ step: 3, verdict: "đủ", evidence: "mua ở B rẻ hơn do 270000 > 275000" }] } as never);
+    const r = await stepTurn(cfg, sess(), tc, "tiền ở A là 275000\ntiền ở B là 270000\nmua ở B rẻ hơn do 270000 > 275000", "t1", []);
+    expect(lastUpdate()?.progress).toBe(0b011);
+    expect(r.done).toBe(false);
+    expect(r.reply).toContain('"270000 > 275000" chưa đúng');
+  });
+  it("dán nguyên đề (có chữ \"cửa hàng B\"): không ghi nhận bước kết luận, không gọi AI", async () => {
+    const r = await go("An mua 30 quyển vở. Cửa hàng A giảm 15%, cửa hàng B giảm 10%. Nên mua ở cửa hàng nào?", sess({ progress: 0b011 }));
+    expect(vi.mocked(askJson)).not.toHaveBeenCalled();
+    expect(lastUpdate()?.progress).toBe(0b011);
+    expect(r.done).toBe(false);
+    expect(r.reply).toMatch(/chép lại đề/);
+  });
+  it("dán trang giao diện chứa đề kèm khung chat: không qua bước", async () => {
+    ai({ verdict: "chưa làm", scenario: "chua_lam" });
+    const r = await go("MathStep AI\nĐề bài\nAn mua 30 quyển vở. Cửa hàng A giảm 15%, cửa hàng B giảm 10%. Nên mua ở cửa hàng nào?\nChatbot:", sess({ progress: 0b011 }));
+    expect(lastUpdate()?.progress).toBe(0b011);
+    expect(r.done).toBe(false);
+  });
+});
+
+describe("stepTurn: bước đã hiện lời giải phải gõ lại", () => {
+  it("gõ lại đúng kết quả bước: ghi nhận và sang bước kế, giữ cờ đã giải hộ", async () => {
+    const r = await run("$A = 3 + 4 = 7$", sess({ revealed: 1, hint_level: 3 }));
+    expect(lastUpdate()?.progress).toBe(1);
+    expect((lastUpdate() as { revealed?: number }).revealed).toBe(1);
+    expect(r.reply).toMatch(/Bước 2\/3/);
+  });
+  it("chưa gõ lại đúng: nhắc gõ lại, không hiện thêm lời giải hay tự qua bước", async () => {
+    ai({ verdict: "sai", scenario: "sai_so", reply: "Bạn viết chưa khớp" });
+    const r = await run("không biết", sess({ revealed: 1, hint_level: 3, stall: 4 }));
+    expect(lastUpdate()?.progress).toBe(0);
+    expect(r.reply).toMatch(/gõ lại lời giải bước 1\/3/);
+  });
+  it("không còn chốt phiên theo số lượt: nộp lượt thứ 30 vẫn tiếp tục", async () => {
+    ai({ verdict: "sai", scenario: "sai_so", reply: "Bạn viết chưa khớp" });
+    const all: Msg[] = Array.from({ length: 30 }, () => ({ role: "student" as const, content: "3 + 5", hint_level: null }));
+    const r = await run("3 + 6", sess(), all);
+    expect(r.done).toBe(false);
+  });
+});
+
+describe("stepHint: thang gợi ý chỉ rõ, chia nhỏ, ví dụ tương tự", () => {
+  const withScaffold = { ...prob, step_subs: [["Đề cho những số nào?", "Hai số đó cộng hay nhân?"], [], []], step_analog: ["Ví dụ: có 5 và 6 thì tổng là 11. Bạn làm tương tự với số của đề nhé.", "", ""] };
+  const hint = (level: number) => stepHint(cfg, sess({ hint_level: level }), withScaffold, "t1");
+  it("mức 1 dùng gợi ý chỉ rõ vấn đề của bước", async () => { expect((await hint(0)).reply).toBe("Nhìn hai số đề cho."); });
+  it("mức 2 chia nhỏ thành câu hỏi con", async () => { expect((await hint(1)).reply).toMatch(/chia nhỏ.*\(1\) Đề cho những số nào\? \(2\) Hai số đó/); });
+  it("mức 3 đưa ví dụ tương tự số khác", async () => { expect((await hint(2)).reply).toMatch(/ví dụ tương tự.*5 và 6/); });
+  it("bước chưa có giàn đỡ (đề cũ): rơi về gợi ý có sẵn cùng mức", async () => {
+    const r = await stepHint(cfg, sess({ hint_level: 1 }), { ...prob, step_subs: [], step_analog: [] }, "t1");
+    expect(r.reply).toBe("Dùng phép cộng.");
+  });
+});
+
+// Cách làm KHÁC lời giải mẫu (giai đoạn 1 và 2): AI phán, server giữ cổng.
+describe("stepTurn: cách làm khác đúng", () => {
+  const alt = (o: { errors?: string[]; on_track?: boolean; complete?: boolean }, cheap = o) => {
+    vi.mocked(askJson).mockImplementation((async (c: { model: string }, sys: string) => {
+      if (sys.includes("soát CÁCH LÀM")) { const x = c.model === "gemini-3.5-flash" ? o : cheap; return { errors: [], on_track: false, complete: false, ...x }; }
+      return { verdict: "sai", scenario: "sai_so", reply: "Bạn viết chưa khớp", evidence: "" };
+    }) as never);
+  };
+  const prev: Msg[] = [{ role: "student", content: "2 x (3 + 4) = 14", hint_level: null }];
+  const altCalls = () => vi.mocked(askJson).mock.calls.filter((c) => (c[1] as string).includes("soát CÁCH LÀM"));
+  it("cách khác đúng và đủ (hai model đồng ý, có nêu đáp án cuối): ghi nhận mọi bước, xong bài", async () => {
+    alt({ complete: true, on_track: true });
+    const r = await run("14 + 1 = 15", sess(), prev);
+    expect(lastUpdate()?.progress).toBe(0b111);
+    expect(r.done).toBe(true);
+    expect(altCalls()).toHaveLength(2); // model chính, rồi model rẻ xác nhận
+  });
+  it("đúng hướng nhưng chưa xong: khẳng định, không đẩy về bước chuẩn, không tính kẹt", async () => {
+    alt({ on_track: true, complete: false });
+    const r = await run("2 x 3 + 2 x 4 = 14", sess({ stall: 2 }), []);
+    expect(lastUpdate()?.progress).toBe(0);
+    expect(lastUpdate()?.stall).toBe(2);
+    expect(r.reply).toMatch(/đúng/);
+    expect(r.reply).not.toMatch(/Bạn cần hoàn thành bước/);
+  });
+  it("AI chỉ ra dòng sai (trích đúng từ tin): nêu đúng dòng đó, không ghi nhận", async () => {
+    alt({ errors: ["lấy 3 nhân 4"] });
+    const r = await run("lấy 3 nhân 4 là 12 rồi cộng 1", sess(), []);
+    expect(r.reply).toContain('"lấy 3 nhân 4" chưa đúng');
+    expect(lastUpdate()?.progress).toBe(0);
+  });
+  it("model rẻ không đồng ý: không khen, rơi về phản hồi thường", async () => {
+    alt({ on_track: true, complete: true }, { on_track: false, complete: false });
+    const r = await run("14 + 1 = 15", sess(), prev);
+    expect(lastUpdate()?.progress).toBe(0);
+    expect(r.reply).not.toMatch(/đúng hướng|đều đúng/);
+  });
+  it("chỉ nêu kết quả trơn dù AI nói đủ: không qua cổng (cần phép biến đổi)", async () => {
+    alt({ on_track: true, complete: true });
+    const r = await run("C = 15", sess(), []);
+    expect(lastUpdate()?.progress).toBe(0);
+    expect(r.done).toBe(false);
+  });
+  it("đang đi theo cách khác (lời bot trước khẳng định đúng hướng): dòng kết luận xét theo cả bài, không qua lượt chấm một bước", async () => {
+    alt({ complete: true, on_track: true });
+    const all2: Msg[] = [...prev, { role: "bot", content: "Phần bạn viết là đúng, cách làm này hợp lý. Bạn tiếp tục nhé.", hint_level: 0 }];
+    const r = await run("Vậy C = 15", sess(), all2);
+    expect(lastUpdate()?.progress).toBe(0b111);
+    expect(r.done).toBe(true);
+    expect(vi.mocked(askJson).mock.calls.some((c) => (c[1] as string).includes("nhận xét TỪNG BƯỚC"))).toBe(false);
+  });
+  it("model rẻ không xác nhận lỗi AI chính báo: không bác oan học sinh", async () => {
+    alt({ errors: ["lấy 3 nhân 4"] }, { errors: [], on_track: false, complete: false });
+    const r = await run("lấy 3 nhân 4 là 12 rồi cộng 1", sess(), []);
+    expect(r.reply).not.toContain("chưa đúng");
+  });
+  it("AI lỗi: giữ hành vi cũ", async () => {
+    vi.mocked(askJson).mockImplementation((async (_c: unknown, sys: string) => { if (sys.includes("soát CÁCH LÀM")) throw new Error("AI_SLOW"); return { verdict: "sai", scenario: "sai_so", reply: "Bạn viết chưa khớp", evidence: "" }; }) as never);
+    const r = await run("14 + 1 = 15", sess(), prev);
+    expect(lastUpdate()?.progress).toBe(0);
+    expect(r.done).toBe(false);
   });
 });

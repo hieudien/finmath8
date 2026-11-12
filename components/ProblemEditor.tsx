@@ -128,7 +128,7 @@ export default function ProblemEditor({ initial, newCode, rowId, inPanel = false
       hints: hints.map((text, i) => ({ level: i + 1, text: text.trim() })), extension: extension.trim(), reviewed: true,
       check_note: "", // giáo viên đã duyệt: bỏ cảnh báo kiểm chéo (bấm Kiểm tra đáp án để chạy lại)
       // Sửa lời giải thì kết quả chuẩn và lỗi gắn theo số bước cũ không còn đúng: bỏ để AI tạo lại cùng chỉ dẫn.
-      ...(lines(steps).join("\n") !== (built ?? p)?.solution_steps.join("\n") && { step_checks: [], error_traps: [], step_formats: [], step_examples: [] }),
+      ...(lines(steps).join("\n") !== (built ?? p)?.solution_steps.join("\n") && { step_checks: [], error_traps: [], step_formats: [], step_examples: [], step_subs: [], step_analog: [] }),
     };
   }
 

@@ -16,7 +16,6 @@ const body = z.discriminatedUnion("action", [
     label: z.string().trim().min(1, "Nhập tên liên kết."),
     tag: z.enum(["pre", "post", "experiment", "control"]).nullable().default(null),
     problemIds: z.array(z.string().uuid()).min(1, "Chọn ít nhất 1 đề."),
-    maxMessages: z.number().int().min(5).max(200).default(40),
   }),
   z.object({ action: z.literal("toggle"), id: z.string().uuid(), active: z.boolean() }),
   z.object({ action: z.literal("delete"), id: z.string().uuid() }),
@@ -42,7 +41,7 @@ export const POST = api(async (req) => {
     const lack = snap.flatMap((c) => { const m = missingInfo(c); return m.length ? [`${(c as { id?: string }).id ?? "?"} (thiếu ${m.join(", ")})`] : []; });
     if (lack.length) return bad(`Có đề chưa đủ thông tin cho cả chat và từng bước: ${lack.join("; ")}. Vào Đề bài, bấm "Chuẩn hóa đề" cho đề đó rồi tạo lại.`);
     const { data: row, error } = await db.from("public_links").insert({
-      teacher_id: u.id, slug: slug(), label: b.label, tag: b.tag, problems_snapshot: snap, max_messages: b.maxMessages,
+      teacher_id: u.id, slug: slug(), label: b.label, tag: b.tag, problems_snapshot: snap,
     } as never).select("id,slug").single();
     if (error || !row) return bad("Không tạo được liên kết.", 500);
     const r = row as { id: string; slug: string };

@@ -3,6 +3,7 @@ import { askJson, type LlmCfg } from "@/lib/llm";
 import { missingAnswers, nums } from "@/lib/answer-check";
 import { hasGuides } from "@/lib/chat/goals";
 import { makeStepFormats, makeStepGuides, withGuides } from "@/lib/step-guides";
+import { makeStepScaffold } from "@/lib/step-scaffold";
 import { lintProblem } from "@/lib/lint";
 import { aboveGrade, gradeRule } from "@/lib/grade";
 import { checkSteps, crossCheck, substituteState } from "@/lib/verify-solution";
@@ -189,6 +190,11 @@ export async function finishProblem(cfg: LlmCfg, p0: Problem, trusted = false, r
   if (q.step_formats.length !== q.solution_steps.length) {
     const f = await makeStepFormats(cfg, q).catch(swallow("tạo dạng cần viết từng bước", { teacherId: cfg.teacherId, actor: "teacher" }));
     if (f) q = { ...q, step_formats: f.formats, step_examples: f.examples };
+  }
+  // Giàn đỡ cho học sinh kẹt: câu hỏi con + ví dụ tương tự. Lỗi AI thì bỏ qua (thang gợi ý rơi về gợi ý có sẵn).
+  if (q.step_subs.length !== q.solution_steps.length || q.step_analog.length !== q.solution_steps.length) {
+    const sc = await makeStepScaffold(cfg, q).catch(swallow("tạo giàn đỡ từng bước", { teacherId: cfg.teacherId, actor: "teacher" }));
+    if (sc) q = { ...q, step_subs: sc.subs, step_analog: sc.analogs };
   }
   const left = lintProblem(q);
   if (left.length || q.step_checks.length !== q.solution_steps.length) return `AI chưa làm đề này đạt chuẩn: ${left.join(" ") || "chưa viết được chỉ dẫn từng bước."}`;

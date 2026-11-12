@@ -9,7 +9,7 @@ import { shortId } from "@/lib/sid";
 type P = { id: string; title: string; statement: string; greeting: string; total: number; goal: string; example: string };
 type M = { role: "student" | "bot"; text: string };
 type Prog = { done: number; total: number; next?: number; goal?: string; example?: string };
-type R = { sessionId?: string; reply?: string; step?: number; done?: boolean; progress?: Prog };
+type R = { sessionId?: string; reply?: string; step?: number; done?: boolean; progress?: Prog; misrouted?: boolean };
 
 export default function Chat({ slug, label, problems }: { slug: string; label: string; problems: P[] }) {
   const [prob, setProb] = useState<P | null>(null);
@@ -22,7 +22,8 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   const [sure, setSure] = useState(false); // đã tự đánh giá mức hiểu bài
   const [text, setText] = useState("");
   const [prog, setProg] = useState<Prog | null>(null);
-  const [asking, setAsking] = useState(false); // ô đang dùng để hỏi "Em chưa hiểu"
+  const [askOpen, setAskOpen] = useState(false); // khay "Hỏi bài" (ô gõ riêng, tách khỏi ô nộp bước)
+  const [askText, setAskText] = useState("");
   const [wrong, setWrong] = useState(0); // số lần nộp liên tiếp chưa qua bước, từ 2 thì nhắc bấm Gợi ý
   const [showStmt, setShowStmt] = useState(false); // mobile: đề thu gọn 1 dòng, bấm mở bottom sheet; desktop: đề luôn hiện đủ ở cột trái
   const [who, setWho] = useState<{ name: string; cls: string } | null>(null); // thông tin học sinh, chỉ giữ trong trang này; vào lại link hoặc tải lại là nhập lại
@@ -67,7 +68,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
 
   async function start(p: P) {
     const my = ++tok.current;
-    setProb(p); setBusy(false); setErr(""); setAsking(false); setWrong(0); setProg({ done: 0, total: p.total, next: 1, goal: p.goal, example: p.example });
+    setProb(p); setBusy(false); setErr(""); setAskOpen(false); setAskText(""); setWrong(0); setProg({ done: 0, total: p.total, next: 1, goal: p.goal, example: p.example });
     setMsgs([{ role: "bot", text: p.greeting }]); // hiện lời chào ngay; server tạo phiên song song, có sid thì mở ô nhập
     const { ok, data } = await post<R>("/api/chat", { action: "start", slug, problemCode: p.id, studentName: who?.name, studentClass: who?.cls });
     if (my !== tok.current) return;
@@ -93,25 +94,26 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
 
   function changeWho() {
     started.current = false; tok.current++;
-    setWho(null); setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setSure(false); setErr(""); setProg(null); setAsking(false); setWrong(0);
+    setWho(null); setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setSure(false); setErr(""); setProg(null); setAskOpen(false); setAskText(""); setWrong(0);
   }
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    const t = text.trim();
+  // Nộp bước giải (ô chính) hoặc gửi câu hỏi (khay Hỏi bài): hai ô gõ riêng, cùng đường gửi.
+  async function submit(raw: string, ask: boolean) {
+    const t = raw.trim();
     if (!t || !sid || busy) return;
-    setText(""); setErr(""); setBusy(true);
-    setMsgs((m) => [...m, { role: "student", text: t }]);
-    const ask = asking;
+    (ask ? setAskText : setText)(""); setErr(""); setBusy(true);
+    setMsgs((m) => [...m, { role: "student", text: ask ? `❓ ${t}` : t }]);
     const { ok, data } = await post<R>("/api/chat", { action: "message", slug, sessionId: sid, text: t, ...(ask && { ask: true }) });
     setBusy(false);
-    if (!ok) { setMsgs((m) => m.slice(0, -1)); setText(t); return setErr(data.error ?? "Có lỗi. Bạn thử gửi lại nhé."); } // trả tin về ô nhập để không mất
+    if (!ok) { setMsgs((m) => m.slice(0, -1)); (ask ? setAskText : setText)(t); return setErr(data.error ?? "Có lỗi. Bạn thử gửi lại nhé."); } // trả tin về ô nhập để không mất
     setMsgs((m) => [...m, { role: "bot", text: data.reply ?? "" }]);
-    if (ask) setAsking(false);
+    if (ask) { setAskOpen(false); if (data.misrouted) setText(t); } // gửi nhầm bước vào khay hỏi: chuyển nguyên văn sang ô Nộp bước, bấm Nộp bước là xong
     else if (data.progress) setWrong(data.progress.done > (prog?.done ?? 0) ? 0 : (w) => w + 1);
     if (data.progress) setProg(data.progress);
     if (data.done) setDone(true);
   }
+  const send = (e: React.FormEvent) => { e.preventDefault(); return submit(text, false); };
+  const sendAsk = (e: React.FormEvent) => { e.preventDefault(); return submit(askText, true); };
 
   // Nút Gợi ý: gợi ý có sẵn của đề, không gọi AI.
   async function hint() {
@@ -128,7 +130,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   // Quay lại danh sách đề. Phiên đang làm dở để nguyên ("Bỏ dở"), giống khi học sinh đóng tab.
   function back() {
     tok.current++;
-    setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setSure(false); setText(""); setErr(""); setBusy(false); setShowStmt(false); setProg(null); setAsking(false); setWrong(0);
+    setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setSure(false); setText(""); setErr(""); setBusy(false); setShowStmt(false); setProg(null); setAskOpen(false); setAskText(""); setWrong(0);
   }
 
   async function rateSure(n: number) {
@@ -247,7 +249,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
             )}
           </div>
         ) : (
-          <StepInput text={text} setText={setText} busy={busy} ready={!!sid} onSend={send} onHint={hint} progress={prog} asking={asking} setAsking={setAsking} stuck={wrong >= 2} box={box} compact={kb} />
+          <StepInput text={text} setText={setText} busy={busy} ready={!!sid} onSend={send} onHint={hint} progress={prog} askOpen={askOpen} setAskOpen={setAskOpen} askText={askText} setAskText={setAskText} onAsk={sendAsk} stuck={wrong >= 2} box={box} compact={kb} />
         )}
       </footer>
       </div>

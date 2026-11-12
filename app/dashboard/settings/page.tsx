@@ -1,6 +1,5 @@
 import { supabaseServer, currentUser } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/crypto";
-import { type Provider } from "@/lib/models";
 import SettingsForm from "@/components/SettingsForm";
 import ActivityLog from "@/components/ActivityLog";
 import ErrorLog from "@/components/ErrorLog";
@@ -12,7 +11,7 @@ import { substituteState } from "@/lib/verify-solution";
 import { cannotLock } from "@/lib/ready";
 import { answersInline } from "@/lib/answers";
 
-type Row = { provider: Provider; gemini_key_enc: string | null; openai_key_enc: string | null };
+type Row = { gemini_key_enc: string | null };
 
 const tail = (enc: string | null | undefined) => {
   try { return enc ? decrypt(enc).slice(-4) : null; } catch { return null; }
@@ -32,10 +31,7 @@ export default async function Page() {
   return (
     <div className="flex flex-col gap-6">
       <h1>Cài đặt</h1>
-      <SettingsForm
-        provider={s?.provider ?? "gemini"}
-        last4={{ gemini: tail(s?.gemini_key_enc), openai: tail(s?.openai_key_enc) }}
-      />
+      <SettingsForm last4={tail(s?.gemini_key_enc)} />
       <ConfirmAnswers rows={answers} />
       <AuditAll />
       <NormalizeAll />

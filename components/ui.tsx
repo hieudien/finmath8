@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { reportClient } from "@/components/ClientErrors";
+import { toTen } from "@/lib/score";
 import { useEffect, useId, useState, useSyncExternalStore, useTransition, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 
 const BTN = "inline-flex min-h-11 items-center justify-center gap-2 rounded-sm px-4 text-base font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
@@ -61,8 +62,8 @@ export function Badge({ tone = "neutral", mono, children }: { tone?: keyof typeo
 const STATE_TONE: Record<string, keyof typeof BADGE> = { "Chưa trả lời": "warn", "Đúng": "success", "Chưa đúng": "danger", "Hoàn thành": "success", "Đang làm": "info" };
 export const StatusBadge = ({ text }: { text: string }) => <Badge tone={STATE_TONE[text] ?? "neutral"}>{text}</Badge>;
 
-// Điểm /12 tô màu theo mức: từ 9 trở lên xanh, từ 5 vàng, dưới 5 đỏ.
-export const ScoreBadge = ({ total }: { total: number }) => <Badge tone={total >= 9 ? "success" : total >= 5 ? "warn" : "danger"}>{total}/12</Badge>;
+// Điểm quy đổi thang 10 (DB lưu 0–12), tô màu: từ 7,5 xanh, từ 4 vàng, dưới 4 đỏ.
+export const ScoreBadge = ({ total }: { total: number }) => { const t = toTen(total); return <Badge tone={t >= 7.5 ? "success" : t >= 4 ? "warn" : "danger"}>{t}/10</Badge>; };
 
 export function Button({ variant = "primary", pending, block = true, children, className = "", ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof VARIANT; pending?: string; block?: boolean }) {
   return (
