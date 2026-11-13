@@ -4,11 +4,13 @@ import { problemSchema, type Problem } from "../lib/schema/problem";
 
 vi.mock("../lib/llm", () => ({ askJson: vi.fn(), askText: vi.fn() }));
 vi.mock("../lib/verify-solution", () => ({ crossCheck: vi.fn(), checkSteps: vi.fn(async () => ""), substituteState: vi.fn(() => ({ state: "skip", msg: "" })) }));
-vi.mock("../lib/step-guides", async (orig) => ({ ...(await orig<typeof import("../lib/step-guides")>()), makeStepGuides: vi.fn() }));
+vi.mock("../lib/step-all", () => ({ guidesFor: vi.fn() })); // chỉ dẫn do một lượt gộp viết; test giả lập kết quả của nó
 import { finishProblem, standardizeProblem, unaccented } from "../lib/fill";
 import { repairProblem } from "../lib/repair";
 import { checkSteps, crossCheck } from "../lib/verify-solution";
-import { makeStepGuides } from "../lib/step-guides";
+import { guidesFor } from "../lib/step-all";
+import { withGuides, type Guides } from "../lib/step-guides";
+const asP = (g: Guides) => async (_c: unknown, p: Problem) => withGuides(p, g);
 
 const cfg = { provider: "gemini", model: "m", key: "k" } as never;
 const base = (over: Partial<Problem> = {}): Problem => problemSchema.parse({
@@ -41,7 +43,7 @@ describe("pool", () => {
 describe("finishProblem", () => {
   it("đề AI mới: kiểm chéo khớp, viết chỉ dẫn, đặt đã duyệt", async () => {
     vi.mocked(crossCheck).mockResolvedValue("");
-    vi.mocked(makeStepGuides).mockResolvedValue(guides);
+    vi.mocked(guidesFor).mockImplementation(asP(guides));
     const r = await finishProblem(cfg, base());
     expect(typeof r).toBe("object");
     expect(r).toMatchObject({ reviewed: true, check_note: "", step_goals: guides.goals });
@@ -53,15 +55,15 @@ describe("finishProblem", () => {
   it("chỉ dẫn lộ kết quả: viết lại; vẫn lộ thì lỗi", async () => {
     vi.mocked(crossCheck).mockResolvedValue("");
     const leak = { ...guides, goals: ["Tính tiền giảm, ra 45000", "Tính số tiền phải trả"] };
-    vi.mocked(makeStepGuides).mockReset().mockResolvedValueOnce(leak).mockResolvedValueOnce(guides);
+    vi.mocked(guidesFor).mockReset().mockImplementationOnce(asP(leak)).mockImplementationOnce(asP(guides));
     expect(await finishProblem(cfg, base())).toMatchObject({ reviewed: true });
-    vi.mocked(makeStepGuides).mockReset().mockResolvedValue(leak);
+    vi.mocked(guidesFor).mockReset().mockImplementation(asP(leak));
     expect(await finishProblem(cfg, base())).toContain("chưa làm đề này đạt chuẩn");
   });
   it("lời giải có phép tính sai: viết lại một lần; vẫn sai thì lỗi", async () => {
     const { askJson } = await import("../lib/llm");
     vi.mocked(crossCheck).mockResolvedValue("");
-    vi.mocked(makeStepGuides).mockReset().mockResolvedValue(guides);
+    vi.mocked(guidesFor).mockReset().mockImplementation(asP(guides));
     vi.mocked(checkSteps).mockReset().mockResolvedValueOnce("Bước 2 sai").mockResolvedValueOnce("");
     vi.mocked(askJson).mockReset().mockResolvedValueOnce({ steps: ["Tiền giảm là 300000 x 0,15 = 45000.", "Phải trả 300000 - 45000 = 255000."] });
     expect(await finishProblem(cfg, base())).toMatchObject({ reviewed: true });
@@ -73,7 +75,7 @@ describe("finishProblem", () => {
   });
   it("đề giáo viên đã duyệt: không kiểm chéo lại", async () => {
     vi.mocked(crossCheck).mockClear();
-    vi.mocked(makeStepGuides).mockReset().mockResolvedValue(guides);
+    vi.mocked(guidesFor).mockReset().mockImplementation(asP(guides));
     await finishProblem(cfg, base({ reviewed: true }));
     expect(crossCheck).not.toHaveBeenCalled();
   });
@@ -98,7 +100,7 @@ describe("repairProblem + standardizeProblem", () => {
   it("standardizeProblem: lấy statement làm gốc, thay data, đáp án, lời giải cũ (đề lệch như TC05)", async () => {
     const { askJson, askText } = await import("../lib/llm");
     vi.mocked(crossCheck).mockResolvedValue("");
-    vi.mocked(makeStepGuides).mockReset().mockResolvedValue(guides);
+    vi.mocked(guidesFor).mockReset().mockImplementation(asP(guides));
     vi.mocked(askText).mockReset().mockResolvedValueOnce(tag("255000")); // phiếu 2 trùng phiếu 1: đủ, không giải lượt thứ ba
     vi.mocked(askJson).mockReset()
       .mockResolvedValueOnce({ data: [{ name: "budget", value: "300000" }, { name: "rate", value: "0.15" }], answers: [{ name: "cost", value: "255000" }], skills: ["Tính phần trăm"], learning_objectives: ["Tính giá sau giảm"], common_errors: ["Quên trừ tiền giảm"], hints: ["h1", "h2", "h3"], extension: "Giảm 20% thì sao?" })

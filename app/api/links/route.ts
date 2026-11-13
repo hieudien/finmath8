@@ -3,7 +3,8 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { admin } from "@/lib/supabase/admin";
 import { api, bad, requireUser } from "@/lib/auth";
-import { llmCfg } from "@/lib/teacher";
+import { llmCfg, teacherMode } from "@/lib/teacher";
+import { MODES, type WorkMode } from "@/lib/modes";
 import { getLink } from "@/lib/links";
 import { missingInfo } from "@/lib/ready";
 import { log } from "@/lib/log";
@@ -16,6 +17,7 @@ const body = z.discriminatedUnion("action", [
     label: z.string().trim().min(1, "Nhập tên liên kết."),
     tag: z.enum(["pre", "post", "experiment", "control"]).nullable().default(null),
     problemIds: z.array(z.string().uuid()).min(1, "Chọn ít nhất 1 đề."),
+    mode: z.enum(Object.keys(MODES) as [WorkMode, ...WorkMode[]]).optional(), // chế độ làm bài của liên kết, cố định sau khi tạo; bỏ trống thì lấy mặc định ở Cài đặt
   }),
   z.object({ action: z.literal("toggle"), id: z.string().uuid(), active: z.boolean() }),
   z.object({ action: z.literal("delete"), id: z.string().uuid() }),
@@ -37,15 +39,16 @@ export const POST = api(async (req) => {
     const unconfirmed = snap.filter((c) => (c as { answer_locked?: boolean }).answer_locked !== true).map((c) => (c as { id?: string }).id ?? "?");
     if (unconfirmed.length) return bad(`Đề ${unconfirmed.join(", ")} chưa xác nhận đáp án. Mở đề, kiểm tra rồi khóa đáp án trước khi tạo liên kết.`);
     if (snap.some((c) => (c as { reviewed?: boolean }).reviewed === false)) return bad("Có đề AI tạo chưa duyệt. Mở đề, kiểm tra rồi lưu trước khi tạo liên kết.");
-    // Đề phải đủ cho cả chat và từng bước: giáo viên đổi kiểu sau này thì liên kết cũ vẫn chạy được.
+    // Đề phải đủ thông tin để làm theo bước (cả chat từng bước lẫn worksheet đều dùng chung lời giải, chỉ dẫn và gợi ý từng bước).
     const lack = snap.flatMap((c) => { const m = missingInfo(c); return m.length ? [`${(c as { id?: string }).id ?? "?"} (thiếu ${m.join(", ")})`] : []; });
-    if (lack.length) return bad(`Có đề chưa đủ thông tin cho cả chat và từng bước: ${lack.join("; ")}. Vào Đề bài, bấm "Chuẩn hóa đề" cho đề đó rồi tạo lại.`);
+    if (lack.length) return bad(`Có đề chưa đủ thông tin để làm theo bước:${lack.join("; ")}. Vào Đề bài, bấm "Chuẩn hóa đề" cho đề đó rồi tạo lại.`);
+    const mode = b.mode ?? await teacherMode(u.id);
     const { data: row, error } = await db.from("public_links").insert({
-      teacher_id: u.id, slug: slug(), label: b.label, tag: b.tag, problems_snapshot: snap,
+      teacher_id: u.id, slug: slug(), label: b.label, tag: b.tag, mode, problems_snapshot: snap,
     } as never).select("id,slug").single();
     if (error || !row) return bad("Không tạo được liên kết.", 500);
     const r = row as { id: string; slug: string };
-    await log({ actor: "teacher", action: "link_created", teacherId: u.id, linkId: r.id, meta: { label: b.label, problems: snap.length } });
+    await log({ actor: "teacher", action: "link_created", teacherId: u.id, linkId: r.id, meta: { label: b.label, problems: snap.length, mode } });
     return Response.json({ ok: true, slug: r.slug });
   }
 

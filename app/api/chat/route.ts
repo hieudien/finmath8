@@ -6,6 +6,7 @@ import { z } from "zod";
 import { admin } from "@/lib/supabase/admin";
 import { llmCfg } from "@/lib/teacher";
 import { getLink } from "@/lib/links";
+import { modeMismatch } from "@/lib/modes";
 import { finish, type Session, type Tm } from "@/lib/chat/engine";
 import { progress, stepAsk, stepHint, stepsOpening, stepTurn } from "@/lib/chat/steps";
 import { checkpoints } from "@/lib/chat/progress";
@@ -81,12 +82,13 @@ async function handle(req: Request, tr: Trace) {
     return err("Liên kết này đã đóng. Hỏi giáo viên của em.", 404);
   }
   tr.teacherId = link.teacher_id; tr.linkId = link.id;
+  if (modeMismatch(link, "steps")) return err("Liên kết này dùng kiểu làm bài khác. Tải lại trang.", 409);
   const problems = link.problems;
 
   // Làm tiếp bài dở: khớp theo tên + lớp (không cần cùng trình duyệt), phiên "active" hoặc "abandoned" đều làm tiếp được.
   if (b.action === "resume_check" || b.action === "resume" || b.action === "abandon") {
     const code = studentKey(b.studentName.replace(/\s+/g, " "), b.studentClass.replace(/\s+/g, "").toUpperCase());
-    const q = db.from("chat_sessions").select("id,problem_code,problem_snapshot,progress,step,status,started_at").eq("link_id", link.id).eq("student_code", code).in("status", ["active", "abandoned"]).eq("restarted", false);
+    const q = db.from("chat_sessions").select("id,problem_code,problem_snapshot,progress,step,status,started_at").eq("link_id", link.id).eq("student_code", code).neq("mode", "worksheet").in("status", ["active", "abandoned"]).eq("restarted", false);
     if (b.action === "resume_check") {
       // Phiên mới nhất có tin của học sinh (phiên mở rồi bỏ, chưa nộp gì thì không có gì để làm tiếp); xem tối đa 5 phiên gần nhất.
       const { data } = await q.eq("problem_code", b.problemCode).order("started_at", { ascending: false }).limit(5);

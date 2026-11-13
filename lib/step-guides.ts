@@ -8,12 +8,24 @@ import { reportError } from "@/lib/errors";
 import { walk } from "@/lib/latex-fix";
 import type { Problem } from "@/lib/schema/problem";
 
-const GUIDE_RULES = `- goal: MỘT câu ngắn nêu MỤC ĐÍCH cần đạt (động từ đích + đại lượng). KHÔNG nêu kết quả; KHÔNG nêu cách làm hay thao tác kèm số ("nhân với 2", "cộng vế với vế"); không chép câu của lời giải. Không mở đầu bằng động từ thao tác (Nhân, Cộng, Trừ, Thế, Rút, Quy đồng, Khai triển, Chia); dùng Biến đổi, Khử, Lập, Tìm, Tính, Kết luận, Viết lại. Đúng: "Biến đổi để hệ số của x ở hai phương trình bằng nhau"; sai: "Nhân phương trình thứ nhất với 2". Dữ kiện đề đã cho (giá trị tham số, tên ẩn, tên hệ, ý a/b) thì nêu cụ thể: "Thay m = 1 vào hệ (I)", không viết "thay giá trị của tham số vào hệ".
+// Chuỗi tiếng Việt bị viết KHÔNG DẤU (model hay trượt ở ví dụ ngắn, vd "thay m = 2 vao he"). Xét theo TỪ nguyên (không cắt mảnh chữ trong từ có dấu), bỏ công thức $...$ và lệnh LaTeX.
+// Không dấu nếu: có từ vỡ dấu quen thuộc (vao, phuong, trinh, duoc, nghiem, ngoac, vuong); hoặc cả chuỗi không có chữ có dấu nào mà có từ 3 từ ASCII (từ 2 chữ cái trở lên) trở lên,
+// hoặc có nhan/tru/cong đứng trong chuỗi không dấu. "suy ra", "chia", "a khác 0" và công thức thì không bị bắt vì vốn đúng chính tả.
+const VI_MARK = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i;
+export const noAccent = (s: string): boolean => {
+  const t = s.replace(/\$[^$]*\$/g, " ").replace(/\\[a-zA-Z]+/g, " ");
+  const toks = t.split(/\s+/).map((w) => w.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "")).filter(Boolean);
+  if (toks.some((w) => /^(vao|phuong|trinh|duoc|nghiem|ngoac|vuong)$/i.test(w))) return true;
+  if (VI_MARK.test(t)) return false;
+  const ascii = toks.filter((w) => /^[A-Za-z][a-z]+$/.test(w)); // từ thường (đầu câu được viết hoa); tên điểm, đoạn viết hoa như AB, BC không tính
+  return ascii.length >= 3 || (ascii.length >= 1 && toks.some((w) => /^(nhan|tru|cong)$/i.test(w)));
+};
+export const GUIDE_RULES = `- goal: MỘT câu ngắn nêu MỤC ĐÍCH cần đạt (động từ đích + đại lượng). KHÔNG nêu kết quả; KHÔNG nêu cách làm hay thao tác kèm số ("nhân với 2", "cộng vế với vế"); không chép câu của lời giải. Không mở đầu bằng động từ thao tác (Nhân, Cộng, Trừ, Thế, Rút, Quy đồng, Khai triển, Chia); dùng Biến đổi, Khử, Lập, Tìm, Tính, Kết luận, Viết lại. Đúng: "Biến đổi để hệ số của x ở hai phương trình bằng nhau"; sai: "Nhân phương trình thứ nhất với 2". Dữ kiện đề đã cho (giá trị tham số, tên ẩn, tên hệ, ý a/b) thì nêu cụ thể: "Thay m = 1 vào hệ (I)", không viết "thay giá trị của tham số vào hệ".
 - hints: 3 mức, mỗi mức 1 câu, mỗi mức có thông tin MỚI, không câu rỗng ("thực hiện phép tính"). Mức 1: định hướng (nhìn vào đâu). Mức 2: cách làm (công thức hay phép nào). Mức 3: nói BẰNG LỜI phép biến đổi hoặc quy tắc và lý do (vd "nhân hai vế của một phương trình với một số để hệ số của x bằng nhau"), KHÔNG viết sẵn biểu thức đã thay số, KHÔNG nêu kết quả. Cách làm cụ thể chỉ ở mức 2–3.
 - result: kết quả chuẩn của bước, chép đúng từ lời giải. Số: số thuần, không dấu ngăn nghìn, thập phân dùng dấu chấm ("45000", "0.15"); biểu thức hoặc chữ: ngắn ("x=2", "vô nghiệm"). Bước chỉ nêu cách làm: "".
 - accepts: tối đa 3 cách viết khác CÙNG giá trị với result mà học sinh có thể viết (ví dụ "15" khi result là "0.15"; "x = 2" khi result "x=2"). Thường để [].
 - traps: 0–2 sai lầm CỤ THỂ hay gặp ở bước (theo "Sai lầm thường gặp"): wrong = kết quả SAI (số thuần hoặc biểu thức ngắn, KHÁC result); why = MỘT câu nói lỗi ở đâu và bảo kiểm lại, KHÔNG nêu kết quả đúng.`;
-const TAIL = `Không nêu kết quả của chính bước trong goal, hints, why. Xưng "mình", gọi học sinh là "bạn". Công thức trong $...$ LaTeX. Trong JSON, mỗi dấu \\ của LaTeX viết gấp đôi (\\\\frac, \\\\times, \\\\begin).`;
+export const TAIL = `Không nêu kết quả của chính bước trong goal, hints, why. Xưng "mình", gọi học sinh là "bạn". Công thức trong $...$ LaTeX. Trong JSON, mỗi dấu \\ của LaTeX viết gấp đôi (\\\\frac, \\\\times, \\\\begin).`;
 
 const SYSTEM = `Viết CHỈ DẪN từng bước lời giải Toán cho học sinh đang làm bước đó. Mỗi bước gồm:\n${GUIDE_RULES}\n${TAIL}`;
 
@@ -42,8 +54,7 @@ export async function makeStepFormats(cfg: LlmCfg, p: Problem, steps = p.solutio
   if (!x || x.steps.length !== steps.length) return null;
   const given = [p.data, p.statement];
   const ok = (s: string) => (s && !leaks(s, p.solution, given, steps) ? s.trim() : "");
-  // Ví dụ viết tiếng Việt không dấu (ba từ ASCII liền nhau trở lên, khác với ký hiệu toán một chữ cái) thì bỏ.
-  const noAccent = (s: string) => /[a-z]{2,}(?:s+[a-z]{2,}){2,}/i.test(s);
+  // Ví dụ viết tiếng Việt không dấu (xem noAccent) thì bỏ.
   return { formats: x.steps.map((s) => ok(s.format)), examples: x.steps.map((s) => (noAccent(s.example) ? "" : ok(s.example))) };
 }
 

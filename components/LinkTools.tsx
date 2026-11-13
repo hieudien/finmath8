@@ -4,10 +4,11 @@ import Link from "next/link";
 import { Alert, Badge, Button, Confirm, CopyButton, Field, post, toast, useRefresh } from "@/components/ui";
 
 import { ExplainButton } from "@/components/ProblemViewTools";
+import { MODES, type WorkMode } from "@/lib/modes";
 
 type P = { id: string; code: string; title: string; missing: string[]; unconfirmed: boolean };
 
-export function CreateLink({ problems: initial }: { problems: P[] }) {
+export function CreateLink({ problems: initial, defaultMode }: { problems: P[]; defaultMode: WorkMode }) {
   const [rp, refresh] = useRefresh();
   // Giữ danh sách đề trong state để chuẩn hóa xong chỉ cập nhật đúng đề đó, không tải lại cả trang.
   const [problems, setProblems] = useState(initial);
@@ -28,7 +29,7 @@ export function CreateLink({ problems: initial }: { problems: P[] }) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     setBusy(true);
-    const { ok, data } = await post("/api/links", { action: "create", label: f.get("label"), tag: f.get("tag") || null, problemIds: sel });
+    const { ok, data } = await post("/api/links", { action: "create", label: f.get("label"), tag: f.get("tag") || null, mode: f.get("mode"), problemIds: sel });
     setBusy(false);
     if (!ok) return toast("danger", data.error ?? "Có lỗi.");
     setSel([]); (e.target as HTMLFormElement).reset(); setCreated(true); refresh();
@@ -43,6 +44,19 @@ export function CreateLink({ problems: initial }: { problems: P[] }) {
         <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Đóng</Button>
       </div>
       <Field label="Tên liên kết" name="label" required placeholder="Ví dụ: Lớp 8A, tiết 12" hint="Chỉ giáo viên thấy tên này." />
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-1 font-medium">Kiểu làm bài của liên kết này</legend>
+        {(Object.keys(MODES) as WorkMode[]).map((k) => (
+          <label key={k} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-sm border border-border px-3 py-2 has-[:checked]:border-primary has-[:checked]:bg-primary-soft">
+            <input type="radio" name="mode" value={k} defaultChecked={k === defaultMode} className="mt-1 size-4 shrink-0" />
+            <span className="flex flex-col">
+              <span className="font-medium">{MODES[k].label}</span>
+              <span className="text-sm text-text-muted">{MODES[k].hint}</span>
+            </span>
+          </label>
+        ))}
+        <p className="text-sm text-text-muted">Chọn một lần khi tạo, không đổi được sau đó. Muốn đổi kiểu thì tạo liên kết mới.</p>
+      </fieldset>
       <fieldset className="flex flex-col gap-1">
         <legend className="mb-1 font-medium">Chọn đề cho học sinh</legend>
         {problems.map((p) => (
@@ -56,7 +70,7 @@ export function CreateLink({ problems: initial }: { problems: P[] }) {
             )}
             {p.missing.length > 0 && (
               <div className="ml-8 flex flex-col gap-2">
-                <Alert tone="warning">Chưa tạo liên kết được với đề này: thiếu {p.missing.join(", ")}. Đề cần đủ để dùng cho cả chat và từng bước.</Alert>
+                <Alert tone="warning">Chưa tạo liên kết được với đề này: thiếu {p.missing.join(", ")}. Đề cần đủ thông tin để học sinh làm theo từng bước.</Alert>
                 <ExplainButton id={p.id} onDone={() => reload(p.id)} />
               </div>
             )}

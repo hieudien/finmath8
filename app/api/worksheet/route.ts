@@ -5,6 +5,7 @@ import { check } from "@/lib/db";
 import { admin } from "@/lib/supabase/admin";
 import { llmCfg } from "@/lib/teacher";
 import { getLink } from "@/lib/links";
+import { modeMismatch } from "@/lib/modes";
 import { parseProblems, type Problem } from "@/lib/schema/problem";
 import { checkpoints } from "@/lib/chat/progress";
 import { sweep } from "@/lib/sweep";
@@ -92,6 +93,7 @@ async function handle(req: Request, tr: Trace) {
     return err("Liên kết này đã đóng. Hỏi giáo viên của em.", 404);
   }
   tr.teacherId = link.teacher_id; tr.linkId = link.id;
+  if (modeMismatch(link, MODE)) return err("Liên kết này dùng kiểu làm bài khác. Tải lại trang.", 409);
   const L = { actor: "student" as const, teacherId: link.teacher_id, anonId: anon, linkId: link.id };
 
   const pickProb = (s: { problem_snapshot?: unknown; problem_code: string }) => (s.problem_snapshot ? parseProblems([s.problem_snapshot]).ok[0] : undefined) ?? (link.problems.find((x) => x.id === s.problem_code) as Problem | undefined);

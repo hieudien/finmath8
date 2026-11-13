@@ -2,8 +2,9 @@ import { admin } from "@/lib/supabase/admin";
 import { parseProblems, type Problem } from "@/lib/schema/problem";
 import { missingInfo } from "@/lib/ready";
 import { ttl } from "@/lib/ttl";
+import { isMode, type WorkMode } from "@/lib/modes";
 
-export type Link = { id: string; teacher_id: string; active: boolean; expires_at: string | null; problems: Problem[] };
+export type Link = { id: string; teacher_id: string; active: boolean; expires_at: string | null; mode: WorkMode; problems: Problem[] };
 
 type Row = { code: string; content: unknown };
 
@@ -29,5 +30,5 @@ export async function liveProblems(teacherId: string, snapshot: unknown): Promis
 export const getLink = ttl(30_000, async (slug: string): Promise<Link | null> => {
   const { data: l } = await admin().from("public_links").select("*").eq("slug", slug).is("deleted_at", null).maybeSingle();
   const r = l as (Omit<Link, "problems"> & { problems_snapshot: unknown }) | null;
-  return r && { ...r, problems: await liveProblems(r.teacher_id, r.problems_snapshot) };
+  return r && { ...r, mode: isMode(r.mode) ? r.mode : "steps", problems: await liveProblems(r.teacher_id, r.problems_snapshot) };
 });

@@ -19,7 +19,7 @@ Chỉ trả JSON {"steps": [{"subs": [string], "analog": string}]} đúng một 
 const out = z.object({ steps: z.array(z.object({ subs: z.array(z.string().min(3)).max(4).default([]), analog: z.string().default("") })) });
 
 // Số của đề (từ 2 chữ số trở lên hoặc có phần thập phân) không được xuất hiện trong ví dụ tương tự: tránh ví dụ giải hộ bài thật.
-const usesProblemNumbers = (analog: string, p: Problem, steps: string[], i: number) => {
+export const usesProblemNumbers = (analog: string, p: Problem, steps: string[], i: number) => {
   const given: string[] = numsIn(`${p.statement} ${JSON.stringify(p.data)} ${JSON.stringify(p.solution)}`).filter((n) => n.length >= 2 || n.includes("."));
   return [...given, ...newNumbers(steps, i, p)].some((n) => hasNum(analog, n));
 };

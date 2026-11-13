@@ -2,7 +2,8 @@ import { z } from "zod";
 import { askJson, type LlmCfg } from "@/lib/llm";
 import { missingAnswers, nums } from "@/lib/answer-check";
 import { hasGuides } from "@/lib/chat/goals";
-import { makeStepFormats, makeStepGuides, withGuides } from "@/lib/step-guides";
+import { makeStepFormats, withGuides } from "@/lib/step-guides";
+import { guidesFor } from "@/lib/step-all";
 import { makeStepScaffold } from "@/lib/step-scaffold";
 import { lintProblem } from "@/lib/lint";
 import { aboveGrade, gradeRule } from "@/lib/grade";
@@ -64,9 +65,9 @@ export async function fillMissing(cfg: LlmCfg, p: Problem, ref = ""): Promise<Pr
     q = withGuides({ ...q, solution_steps: s }, null);
   }
   if (!hasGuides(q)) {
-    const g = await makeStepGuides(cfg, q);
-    if (!g) return "AI chưa viết được chỉ dẫn cho từng bước. Bấm thử lại.";
-    q = withGuides(q, g);
+    const r = await guidesFor(cfg, q);
+    if (!r) return "AI chưa viết được chỉ dẫn cho từng bước. Bấm thử lại.";
+    q = r;
   }
   return q;
 }
@@ -184,9 +185,9 @@ export async function finishProblem(cfg: LlmCfg, p0: Problem, trusted = false, r
   }
   // Chỉ dẫn lộ kết quả hoặc lệch số bước: viết lại, tối đa 2 lần.
   for (let t = 0; t < 2 && stale(q); t++) {
-    const g = await makeStepGuides(cfg, q);
-    if (!g) break;
-    q = withGuides(q, g);
+    const r = await guidesFor(cfg, q);
+    if (!r) break;
+    q = r;
   }
   // Dạng cần viết + ví dụ từng bước: bổ sung nếu thiếu. Lỗi AI thì bỏ qua (bot vẫn chạy bằng mục tiêu của bước).
   if (q.step_formats.length !== q.solution_steps.length) {
