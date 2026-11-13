@@ -15,14 +15,20 @@ export default function FormulaDialog({ initial = "", onInsert, onClose }: { ini
       MathfieldElement.fontsDirectory = "/mathlive-fonts"; // chép từ node_modules/mathlive/fonts vào public/
       MathfieldElement.soundsDirectory = null;
       // Toán cấp 2: chỉ giữ số, phép tính, phân số, mũ, căn, so sánh. Không tích phân, giới hạn, chữ Hy Lạp, ma trận.
-      const k = (latex: string, insert = latex): { latex: string; insert: string } => ({ latex, insert });
+      // 4 khu cách nhau bằng phím trống: biến + so sánh | số | phép tính | cấu trúc (mỗi khu một sắc nền, xem globals.css)
+      const k = (latex: string, cls: string, insert = latex) => ({ latex, insert, class: cls });
+      const cmp = (l: string, i = l) => k(l, "zn-cmp", i);
+      const op = (l: string, i = l) => k(l, "zn-op", i);
+      const st = (l: string, i = l) => k(l, "zn-st", i);
+      const gap = { class: "separator w5" };
+      const gap2 = { class: "separator w20" };
       window.mathVirtualKeyboard.layouts = [{
         label: "Toán", tooltip: "Bàn phím toán cấp 2",
         rows: [
-          ["x", "y", "a", "b", "[7]", "[8]", "[9]", "[/]", k("\\frac{#@}{#?}"), k("\\sqrt{#?}")],
-          ["<", ">", k("\\le"), k("\\ge"), "[4]", "[5]", "[6]", "[*]", k("#@^2"), k("#@^{#?}")],
-          [k("\\ne"), k("="), k("\\pi"), k("^\\circ"), "[1]", "[2]", "[3]", "[-]", k("("), k(")")],
-          ["[left]", "[right]", "[0]", "[.]", k("\\%"), "[+]", k("\\begin{cases}#?\\\\#?\\end{cases}"), "[backspace]"],
+          [cmp("x"), cmp("y"), cmp("a"), cmp("b"), gap, "[7]", "[8]", "[9]", gap, op("+"), op("-"), gap, st("\\frac{#@}{#?}"), st("\\sqrt{#?}")],
+          [cmp("<"), cmp(">"), cmp("\\le"), cmp("\\ge"), gap, "[4]", "[5]", "[6]", gap, op("\\times"), op("\\div"), gap, st("#@^2"), st("#@^{#?}")],
+          [cmp("\\ne"), cmp("="), cmp("\\pi"), cmp("^\\circ"), gap, "[1]", "[2]", "[3]", gap, op("("), op(")"), gap, { label: "hệ PT", insert: "\\begin{cases}#?\\\\#?\\end{cases}", class: "zn-st small w20", tooltip: "Hệ phương trình" }],
+          ["[left]", "[right]", cmp("\\%"), cmp(","), gap, "[0]", "[.]", "[backspace]", gap, gap2, gap, gap2],
         ],
       }];
       const mf = new MathfieldElement();

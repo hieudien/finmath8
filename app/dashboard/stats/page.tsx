@@ -132,7 +132,6 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
               <div className="flex flex-col gap-2">
                 {s.map((x) => { const ev = evBy.get(x.id); return <ChatLog key={x.id} id={x.id} head={{ sid: shortId(x.id), time: fmtTime(x.started_at), who: who(x), problem: x.problem_code, total: ev?.total, state: stateOf(x), helped: helpedN(x) }} />; })}
               </div>
-              <a href="/api/export?kind=chat" className="inline-flex min-h-11 items-center self-start rounded-sm border border-border-strong bg-surface px-4 font-medium hover:bg-primary-soft">Tải toàn bộ hội thoại (CSV)</a>
             </Section>
           </>
         )}
@@ -144,7 +143,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3"><h1>Thống kê</h1><a href="/api/export?kind=stats" className="inline-flex min-h-11 items-center rounded-sm border border-border-strong bg-surface px-4 font-medium hover:bg-primary-soft">Tải CSV</a></div>
+      <h1>Thống kê</h1>
       <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
         {links.map((l) => { const x = stats.get(l.id); const n = x?.sessions ?? 0; return (
           <li key={l.id}>

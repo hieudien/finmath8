@@ -2,6 +2,9 @@ import { after } from "next/server";
 import { admin } from "@/lib/supabase/admin";
 import { liveProblems } from "@/lib/links";
 import Chat from "@/components/Chat";
+import Worksheet from "@/components/Worksheet";
+import { teacherMode } from "@/lib/teacher";
+import { wsView } from "@/lib/worksheet/view";
 import Brand from "@/components/Brand";
 import { stepCue, stepExample, stepsGreeting } from "@/lib/chat/goals";
 import { checkpoints } from "@/lib/chat/progress";
@@ -31,7 +34,14 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   }
   const linkId = l.id;
   after(async () => { await admin().rpc("bump_visit", { p_link: linkId } as never); }); // không chặn việc hiển thị trang
+  const [live, mode] = await Promise.all([liveProblems(l.teacher_id, l.problems_snapshot), teacherMode(l.teacher_id)]);
+  // Chế độ "làm theo bước rồi nộp cả bài": luồng riêng (components/Worksheet.tsx, /api/worksheet), không dùng chat. Đề chưa có lời giải từng bước thì không đưa vào.
+  if (mode === "worksheet") {
+    const ready = live.filter((p) => p.solution_steps.length > 0).map(wsView);
+    if (!ready.length) return <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col gap-4 px-4 py-8"><Brand tagline /><h1>{l.label}</h1><p className="text-text-muted">Liên kết này chưa có bài sẵn sàng. Hỏi giáo viên của em.</p></main>;
+    return <Worksheet slug={slug} label={l.label} problems={ready} />;
+  }
   // greeting: lời chào cố định hiện ngay khi bấm chọn bài; total = số bước để hiện "Bước k/n".
-  const problems = (await liveProblems(l.teacher_id, l.problems_snapshot)).map((p) => ({ id: p.id, title: p.title, statement: p.statement ?? "", total: checkpoints(p).length, goal: stepCue(p, 0), example: stepExample(p, 0), greeting: stepsGreeting(p) }));
+  const problems = live.map((p) => ({ id: p.id, title: p.title, statement: p.statement ?? "", total: checkpoints(p).length, goal: stepCue(p, 0), example: stepExample(p, 0), greeting: stepsGreeting(p) }));
   return <Chat slug={slug} label={l.label} problems={problems} />;
 }

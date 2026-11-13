@@ -119,7 +119,7 @@ export default async function Page() {
               )}
               {m.errors.length > 0 && (
                 <section className="flex flex-col gap-2" aria-labelledby="errs">
-                  <h2 id="errs">Lỗi học sinh hay gặp</h2>
+                  <div className="flex min-h-11 items-center"><h2 id="errs">Lỗi học sinh hay gặp</h2></div>
                   <ul className="list-disc rounded-lg border border-border bg-surface py-3 pl-9 pr-4">{m.errors.map((e) => <li key={e.name}><MathText text={e.name} /> <span className="tnum text-text-muted">({e.value})</span></li>)}</ul>
                 </section>
               )}

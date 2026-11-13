@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Empty, LinkButton, toast } from "@/components/ui";
+import { Empty, toast } from "@/components/ui";
 import { describe, GROUPS, LOG, labelOf, type Meta } from "@/lib/log-labels";
 
 type Row = { id: number; ts: string; actor_type: string; action: string; meta: Meta; link: string | null; student: string | null };
@@ -54,7 +54,6 @@ export default function ActivityLog() {
               ))}
             </select>
           </div>
-          <LinkButton variant="secondary" href="/api/export?kind=logs">Tải CSV</LinkButton>
         </div>
         {!rows && !err && <p className="text-sm text-text-muted">Đang tải…</p>}
         {rows?.length === 0 && <Empty text="Chưa có hoạt động nào khớp." />}

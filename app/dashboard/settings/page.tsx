@@ -1,6 +1,8 @@
 import { supabaseServer, currentUser } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/crypto";
 import SettingsForm from "@/components/SettingsForm";
+import ModeForm from "@/components/ModeForm";
+import { isMode } from "@/lib/modes";
 import ActivityLog from "@/components/ActivityLog";
 import ErrorLog from "@/components/ErrorLog";
 import AuditAll from "@/components/AuditAll";
@@ -11,7 +13,7 @@ import { substituteState } from "@/lib/verify-solution";
 import { cannotLock } from "@/lib/ready";
 import { answersInline } from "@/lib/answers";
 
-type Row = { gemini_key_enc: string | null };
+type Row = { gemini_key_enc: string | null; interaction_mode?: string | null };
 
 const tail = (enc: string | null | undefined) => {
   try { return enc ? decrypt(enc).slice(-4) : null; } catch { return null; }
@@ -32,6 +34,7 @@ export default async function Page() {
     <div className="flex flex-col gap-6">
       <h1>Cài đặt</h1>
       <SettingsForm last4={tail(s?.gemini_key_enc)} />
+      <ModeForm mode={isMode(s?.interaction_mode) ? s.interaction_mode : "steps"} />
       <ConfirmAnswers rows={answers} />
       <AuditAll />
       <NormalizeAll />

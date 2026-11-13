@@ -4,6 +4,7 @@ import type { LlmCfg } from "@/lib/llm";
 import { log } from "@/lib/log";
 import { kindOf, reportError } from "@/lib/errors";
 import { PROVIDERS, TEMPERATURE, type Provider } from "@/lib/models";
+import { isMode, type WorkMode } from "@/lib/modes";
 import { ttl } from "@/lib/ttl";
 
 type Row = { gemini_key_enc: string | null };
@@ -32,3 +33,10 @@ async function load(teacherId: string): Promise<LlmCfg | null> {
 
 // Cache 30 giây: mỗi tin nhắn chat không phải đọc DB và giải mã key lại. Lưu cài đặt thì gọi llmCfg.drop(id).
 export const llmCfg = ttl(30_000, load);
+
+// Chế độ làm bài giáo viên chọn (mặc định chat từng bước). Lưu cài đặt thì gọi teacherMode.drop(id).
+export const teacherMode = ttl(30_000, async (teacherId: string): Promise<WorkMode> => {
+  const { data } = await admin().from("teacher_settings").select("interaction_mode").eq("teacher_id", teacherId).maybeSingle();
+  const m = (data as { interaction_mode: string | null } | null)?.interaction_mode;
+  return isMode(m) ? m : "steps";
+});

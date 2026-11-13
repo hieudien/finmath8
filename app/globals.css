@@ -117,3 +117,14 @@ h3 { font-size: 1.125rem; font-weight: 600; }
 
 /* Hộp công thức: ẩn nút menu 3 gạch của MathLive (học sinh chỉ cần bàn phím ảo) */
 math-field::part(menu-toggle) { display: none; }
+
+/* Bàn phím công thức: mỗi khu một sắc nền nhẹ (biến/so sánh, phép tính, cấu trúc); khu số giữ nền mặc định.
+   MathLive đọc biến nội bộ --_keycap-background nên phải gán đè biến này trên từng phím. */
+.MLK__keycap.zn-cmp { --_keycap-background: #dbe8fa; --_keycap-background-hover: #c9dcf6; }
+.MLK__keycap.zn-op { --_keycap-background: #fbe3c8; --_keycap-background-hover: #f7d4ad; }
+.MLK__keycap.zn-st { --_keycap-background: #d4ecdb; --_keycap-background-hover: #c0e3ca; }
+@media (prefers-color-scheme: dark) {
+  .MLK__keycap.zn-cmp { --_keycap-background: #263a57; --_keycap-background-hover: #2f4668; }
+  .MLK__keycap.zn-op { --_keycap-background: #4d3720; --_keycap-background-hover: #5e4326; }
+  .MLK__keycap.zn-st { --_keycap-background: #223f2c; --_keycap-background-hover: #2b5038; }
+}

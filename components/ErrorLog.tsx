@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Empty, LinkButton, toast } from "@/components/ui";
+import { Empty, toast } from "@/components/ui";
 import { group, hour } from "@/components/ActivityLog";
 import { ERR_KIND } from "@/lib/log-labels";
 
@@ -45,7 +45,6 @@ export default function ErrorLog() {
             </div>
             <button type="submit" className="min-h-11 rounded-sm border border-border-strong px-4 font-medium hover:bg-primary-soft">Tìm</button>
           </div>
-          <LinkButton variant="secondary" href="/api/export?kind=errors">Tải CSV</LinkButton>
         </form>
         {!rows && !err && <p className="text-sm text-text-muted">Đang tải…</p>}
         {rows?.length === 0 && <Empty text="Không có lỗi nào khớp. Đó là tin tốt." />}

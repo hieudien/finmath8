@@ -25,7 +25,7 @@ const FEATURES = [
   ["Bước học sinh hay gặp khó", "Thấy ngay bước nào cả lớp hay vướng và bước nào từng em hay vướng, kèm gợi ý ôn tập theo bước."],
   ["Thống kê theo liên kết", "Số phiên, tỉ lệ hoàn thành, điểm trung bình, mức gợi ý, so sánh giữa các nhóm."],
   ["Xóa an toàn", "Xóa liên kết hay học sinh chỉ là ẩn đi. Bài làm, tin nhắn và điểm vẫn được giữ."],
-  ["Xem lại hội thoại", "Đọc từng phiên chat, xuất CSV để phân tích tiếp."],
+  ["Xem lại hội thoại", "Đọc từng phiên chat để xem học sinh làm bài thế nào."],
   ["Chống lộ đáp án", "Server kiểm tra từng lượt: bot không nêu kết quả, không xác nhận đáp án sai. Tin chỉ chép lại đề, hay đáp án trơn không có cách làm, không được tính."],
   ["Riêng tư có kiểm soát", "Tự che số điện thoại, email trong tin nhắn. API key mã hóa AES-256-GCM."],
 ];
@@ -46,29 +46,29 @@ function Chat() {
   );
 }
 
-const card = "rounded-lg border border-border bg-surface p-5 shadow-1";
+const card = "rounded-lg border border-border bg-surface p-4 shadow-1 sm:p-5";
 
 export default function Home() {
   return (
-    <div className="mx-auto flex min-h-[100dvh] max-w-5xl flex-col px-4">
-      <header className="flex items-center justify-between py-4">
-        <Brand tagline />
-        <nav className="flex gap-1" aria-label="Tài khoản">
-          <LinkButton href="/login" variant="ghost">Đăng nhập</LinkButton>
-          <LinkButton href="/register" variant="secondary">Đăng ký</LinkButton>
+    <div className="mx-auto flex min-h-[100dvh] max-w-5xl flex-col overflow-x-clip px-4">
+      <header className="flex items-center justify-between gap-2 py-3 sm:py-4">
+        <Brand tagline taglineFromSm />
+        <nav className="flex shrink-0 gap-1" aria-label="Tài khoản">
+          <LinkButton href="/login" variant="ghost" className="whitespace-nowrap px-3 max-[419px]:hidden">Đăng nhập</LinkButton>
+          <LinkButton href="/register" variant="secondary" className="whitespace-nowrap px-3">Đăng ký</LinkButton>
         </nav>
       </header>
 
-      <main className="flex flex-col gap-16 py-6">
-        <section className="grid items-center gap-8 rounded-lg bg-primary-soft p-6 md:grid-cols-2 md:p-10">
+      <main className="flex flex-col gap-10 py-4 md:gap-16 md:py-6">
+        <section className="grid items-center gap-6 rounded-lg bg-primary-soft p-5 md:grid-cols-2 md:gap-8 md:p-10">
           <div className="flex flex-col gap-4">
             <h1>Học sinh tự giải Toán, từng bước một</h1>
-            <p className="text-lg text-text-muted">
+            <p className="text-base text-text-muted md:text-lg">
               MathStep AI không đưa đáp án. Chatbot hỏi từng bước theo cách giải của Polya và tăng gợi ý khi học sinh kẹt. Thầy cô theo dõi điểm mạnh, điểm yếu của từng em.
             </p>
-            <div className="flex flex-wrap gap-2">
-              <LinkButton href="/register">Tạo tài khoản giáo viên</LinkButton>
-              <LinkButton href="/login" variant="secondary">Đăng nhập</LinkButton>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <LinkButton href="/register" className="w-full sm:w-auto">Tạo tài khoản giáo viên</LinkButton>
+              <LinkButton href="/login" variant="secondary" className="w-full sm:w-auto">Đăng nhập</LinkButton>
             </div>
             <p className="text-sm text-text-muted">Cho mọi lớp và mọi dạng đề: giải phương trình, hình học, tỉ lệ, bài toán thực tế.</p>
           </div>
@@ -79,8 +79,8 @@ export default function Home() {
           <ul className="grid gap-3 sm:grid-cols-3">
             {NUMS.map(([n, t]) => (
               <li key={n} className={`${card} flex items-center gap-4`}>
-                <span className="tnum text-4xl font-bold text-primary">{n}</span>
-                <span className="text-text-muted">{t}</span>
+                <span className="tnum w-10 shrink-0 text-center text-3xl font-bold text-primary sm:text-4xl">{n}</span>
+                <span className="min-w-0 text-text-muted">{t}</span>
               </li>
             ))}
           </ul>
@@ -93,7 +93,7 @@ export default function Home() {
               {TEACHER.map(([t, d], i) => (
                 <li key={t} className={`${card} flex gap-3`}>
                   <span aria-hidden="true" className="tnum grid size-8 shrink-0 place-items-center rounded-full bg-primary font-bold text-on-primary">{i + 1}</span>
-                  <span><strong className="block font-medium">{t}</strong><span className="text-text-muted">{d}</span></span>
+                  <span className="min-w-0"><strong className="block font-medium">{t}</strong><span className="text-text-muted">{d}</span></span>
                 </li>
               ))}
             </ol>
@@ -104,7 +104,7 @@ export default function Home() {
               {STUDENT.map(([t, d], i) => (
                 <li key={t} className={`${card} flex gap-3`}>
                   <span aria-hidden="true" className="tnum grid size-8 shrink-0 place-items-center rounded-full bg-primary-soft font-bold text-primary">{i + 1}</span>
-                  <span><strong className="block font-medium">{t}</strong><span className="text-text-muted">{d}</span></span>
+                  <span className="min-w-0"><strong className="block font-medium">{t}</strong><span className="text-text-muted">{d}</span></span>
                 </li>
               ))}
             </ol>
@@ -113,7 +113,7 @@ export default function Home() {
 
         <section className="flex flex-col gap-4" aria-labelledby="tk">
           <h2 id="tk">Theo dõi học sinh và lớp học</h2>
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map(([t, d]) => (
               <li key={t} className={`${card} transition-shadow hover:shadow-2`}>
                 <h3 className="mb-1 text-base font-bold">{t}</h3>
@@ -126,10 +126,10 @@ export default function Home() {
           </p>
         </section>
 
-        <section className="flex flex-col items-start gap-3 rounded-lg bg-primary p-6 text-on-primary md:p-10" aria-labelledby="cta">
+        <section className="flex flex-col items-stretch gap-3 rounded-lg bg-primary p-5 text-on-primary sm:items-start md:p-10" aria-labelledby="cta">
           <h2 id="cta" className="text-on-primary">Thử với một đề trong vài phút</h2>
           <p className="max-w-prose">Đăng ký, nhập API key, dùng ngay đề mẫu tài chính có sẵn hoặc tạo đề của riêng thầy cô, rồi gửi liên kết cho lớp.</p>
-          <LinkButton href="/register" variant="secondary">Bắt đầu ngay</LinkButton>
+          <LinkButton href="/register" variant="secondary" className="w-full sm:w-auto">Bắt đầu ngay</LinkButton>
         </section>
       </main>
 

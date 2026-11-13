@@ -3,7 +3,7 @@ import { toTen } from "@/lib/score";
 export type Meta = Record<string, unknown>;
 type Info = { label: string; group: string; warn?: boolean; text?: (m: Meta) => string };
 
-const MODE: Record<string, string> = { chat: "Chat", steps: "Từng bước", quiz: "Trắc nghiệm" };
+const MODE: Record<string, string> = { chat: "Chat", steps: "Từng bước", quiz: "Trắc nghiệm", worksheet: "Làm theo bước rồi nộp cả bài" };
 const PROVIDER: Record<string, string> = { gemini: "Google Gemini" };
 const s = (v: unknown) => (v == null ? "" : String(v));
 
@@ -51,6 +51,10 @@ export const LOG: Record<string, Info> = {
   rate_limited: { label: "Học sinh bị chặn do gửi quá nhiều", group: STU, warn: true, text: (m) => RULE[s(m.rule)] ?? s(m.rule) },
   link_closed: { label: "Học sinh vào liên kết đã đóng", group: STU, text: (m) => (m.reason === "expired" ? "Liên kết đã hết hạn" : "Liên kết đang tắt") },
   session_off_topic_closed: { label: "Chốt bài do lạc đề liên tục", group: STU, warn: true },
+  ws_hint: { label: "Học sinh mở gợi ý", group: STU, text: (m) => `Bước ${s(m.step)}, gợi ý ${s(m.level)}` },
+  ws_reveal: { label: "Học sinh xem đáp án một bước", group: STU, warn: true, text: (m) => `Bước ${s(m.step)} (không tính điểm)` },
+  ws_submit: { label: "Học sinh nộp bài", group: STU, text: (m) => `Lần ${s(m.attempt)}: đúng ${s(m.right)}/${s(m.total)} bước` },
+  ws_ask: { label: "Học sinh hỏi về một bước", group: STU, text: (m) => `Bước ${s(m.step)}` },
 
   model_fallback: { label: "Tự đổi model AI", group: SYS, text: (m) => `Từ ${s(m.from)} sang ${s(m.to)}${m.reason ? ` (${s(m.reason)})` : ""}` },
   error: { label: "Lỗi hệ thống", group: SYS, warn: true, text: (m) => `Mã lỗi ${s(m.ref)}: gửi mã này cho admin` },

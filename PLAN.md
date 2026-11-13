@@ -61,15 +61,14 @@ Hero, 3 bước (nạp đề → tạo link → xem thống kê), quy trình Pol
 
 ### 2.9 Log hoạt động (Cài đặt, mục "Nhật ký hoạt động")
 Bảng `activity_logs(id, ts, actor_type teacher|student|system, teacher_id null, anon_id null, link_id null, action, meta jsonb)`.
-Actions: `register, login, login_failed, logout, password_reset, settings_changed, problem_created/updated/deleted/normalized, link_created/toggled/deleted, chat_session_started, chat_message (student|bot), chat_session_ended, eval_done, export`.
-Chỉ append (RLS cấm update/delete). GV xem log của mình + lọc theo action/link/ngày + xuất CSV. Tin nhắn chat đầy đủ nằm ở `messages`, log chỉ giữ tham chiếu + độ dài.
+Actions: `register, login, login_failed, logout, password_reset, settings_changed, problem_created/updated/deleted/normalized, link_created/toggled/deleted, chat_session_started, chat_message (student|bot), chat_session_ended, eval_done` (trước đây có `export`, đã bỏ tính năng tải CSV).
+Chỉ append (RLS cấm update/delete). GV xem log của mình + lọc theo action/link/ngày. Tin nhắn chat đầy đủ nằm ở `messages`, log chỉ giữ tham chiếu + độ dài.
 
 ### 2.10 Thống kê `/dashboard/stats` (+ theo link)
 - Theo từng link: lượt vào, phiên bắt đầu, phiên hoàn thành, tỉ lệ hoàn thành, tin trung bình/phiên, thời gian trung bình, lượt/ngày (line chart).
 - Chất lượng HS (ẩn danh, tổng hợp): điểm rubric TB 4 tiêu chí (radar/bar), phân bố tổng điểm (DB lưu 0–12, hiển thị thang 10 làm tròn 0,5, gom 5 khoảng), tỉ lệ đúng cuối, phân bố mức gợi ý tối đa, top lỗi thường gặp (khớp `common_errors`), bước Polya HS hay kẹt.
 - Bảng phiên: "HS #n" + điểm + gợi ý + thời lượng; bấm xem transcript (đã lọc PII).
-- So sánh các link/đề cạnh nhau. Xuất CSV (không chứa định danh).
-- Dùng SQL view/RPC, RLS theo owner.
+- So sánh các link/đề cạnh nhau.- Dùng SQL view/RPC, RLS theo owner.
 
 ### 2.11 Tính năng thêm từ tài liệu (làm luôn)
 1. **Ngân hàng 8 đề mẫu** seed (TC01 đầy đủ; TC02–08 khung) + nút "Nhân bản đề mẫu".
@@ -79,7 +78,7 @@ Chỉ append (RLS cấm update/delete). GV xem log của mình + lọc theo acti
 5. **Phiếu khảo sát nhanh** cuối phiên (Likert 1–5: "chatbot giúp tôi giải bài tốt hơn", ẩn danh) → hiện trong thống kê.
 6. **Pre/post test**: gắn nhãn link `pre`/`post`/`experiment`/`control`; trang so sánh TB, SD, t-test/Mann-Whitney (thư viện `simple-statistics`), biểu đồ tiến bộ.
 7. **Sơ đồ luồng** (mục 8) hiển thị ở landing/guide.
-8. **Xuất/sao lưu**: JSON đề, CSV log/thống kê (mục 7 checklist "sao lưu log").
+8. ~~Xuất/sao lưu CSV~~ (đã bỏ tính năng tải CSV).
 9. **Vai trò admin** (env `ADMIN_EMAILS`): xem tổng usage toàn hệ thống.
 
 ## 3. Schema Supabase (migration `001_init.sql`)
