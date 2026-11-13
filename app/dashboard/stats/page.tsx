@@ -129,7 +129,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
             </Section>
             <Section title="Hội thoại của học sinh">
               <p className="text-sm text-text-muted">Tin nhắn đã được che số điện thoại và email. Bấm vào từng học sinh để xem.</p>
-              <div className="flex flex-col gap-2">
+              <div className="flex max-h-[70dvh] flex-col gap-2 overflow-y-auto pr-1">
                 {s.map((x) => { const ev = evBy.get(x.id); return <ChatLog key={x.id} id={x.id} head={{ sid: shortId(x.id), time: fmtTime(x.started_at), who: who(x), problem: x.problem_code, total: ev?.total, state: stateOf(x), helped: helpedN(x) }} />; })}
               </div>
             </Section>

@@ -24,16 +24,17 @@ const arr = <T>(x: T | T[] | null | undefined): T[] => (x == null ? [] : Array.i
 const top = (m: Map<string, number>) => [...m].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
 
 // RLS của supabaseServer giới hạn: giáo viên chỉ đọc được học sinh của mình.
-export async function loadStudent(sb: Sb, code: string): Promise<Profile | null> {
-  const [st, s, p] = await Promise.all([
-    sb.from("students").select("name,class").eq("code", code).maybeSingle(), // RLS: chỉ học sinh của giáo viên này và chưa xóa
-
-    sb.from("chat_sessions").select("id,problem_code,status,started_at,student_name,revealed,struggled,session_evals(identify,plan,calculate,explain,total,final_correct,hint_count,errors,gaps)").eq("student_code", code).order("started_at", { ascending: false }).limit(200),
-    sb.from("problems").select("code,title:content->>title,skills:content->skills,steps:content->solution_steps,goals:content->step_goals").is("deleted_at", null), // chỉ lấy tiêu đề và kỹ năng, không tải cả đề
-  ]);
+// tid: dùng khi đọc bằng client service-role (trang công khai cho phụ huynh, không có RLS): lọc tường minh theo giáo viên.
+export async function loadStudent(sb: Sb, code: string, tid?: string): Promise<Profile | null> {
+  const SES = "id,problem_code,status,started_at,student_name,revealed,struggled,session_evals(identify,plan,calculate,explain,total,final_correct,hint_count,errors,gaps)";
+  let q1 = sb.from("students").select("name,class").eq("code", code); // RLS: chỉ học sinh của giáo viên này và chưa xóa
+  let q2 = sb.from("chat_sessions").select(tid ? SES + ",public_links!inner(teacher_id)" : SES).eq("student_code", code);
+  let q3 = sb.from("problems").select("code,title:content->>title,skills:content->skills,steps:content->solution_steps,goals:content->step_goals").is("deleted_at", null); // chỉ lấy tiêu đề và kỹ năng, không tải cả đề
+  if (tid) { q1 = q1.eq("teacher_id", tid).is("deleted_at", null); q2 = q2.eq("public_links.teacher_id", tid); q3 = q3.eq("teacher_id", tid); }
+  const [st, s, p] = await Promise.all([q1.maybeSingle(), q2.order("started_at", { ascending: false }).limit(200), q3]);
   if (s.error) throw new Error("Lỗi cơ sở dữ liệu: " + s.error.message);
   type SR = { id: string; problem_code: string; status: string; started_at: string; student_name: string | null; revealed: number; struggled: number; session_evals: Attempt["ev"] | Attempt["ev"][] | null };
-  const rows = (s.data ?? []) as SR[];
+  const rows = (s.data ?? []) as unknown as SR[];
   if (st.error) throw new Error("Lỗi cơ sở dữ liệu: " + st.error.message);
   if (!st.data) return null; // học sinh không có hoặc đã xóa; còn học sinh mà hết phiên (liên kết đã xóa) thì vẫn trả hồ sơ rỗng
   const stName = (st.data as { name: string | null; class: string | null }).name, stClass = (st.data as { class: string | null }).class;

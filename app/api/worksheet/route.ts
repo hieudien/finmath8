@@ -250,7 +250,7 @@ async function handle(req: Request, tr: Trace) {
   const right = bitsOf(progress, n).length;
   const wrongBits = results.filter((r) => !r.ok && !r.unjudged).reduce((m, r) => m | 1 << r.step, 0);
 
-  const summary = `Lần ${attempt}: đúng ${right}/${n} bước.${results.filter((r) => !r.ok).map((r) => ` Bước ${r.step + 1}: ${r.note}`).join("")}`;
+  const summary = `Lần ${attempt}: đúng ${right}/${n} bước.${results.filter((r) => !r.ok).map((r) => `\nBước ${r.step + 1}: ${r.note}`).join("")}`; // mỗi bước sai một dòng, hiển thị ở nhật ký nhờ whitespace-pre-wrap
   const text = whole ? `Nộp lần ${attempt} (cả bài)\n${wholeClean}` : [`Nộp lần ${attempt}`, ...answers.map((a, i) => `Bước ${i + 1}${locked >> i & 1 ? " (đã đúng)" : ""}: ${a}`)].join("\n");
   check(await db.from("messages").insert([
     { session_id: sess.id, role: "student", content: text, meta: { ws: whole ? { attempt, style: "whole", whole: wholeClean } : { attempt, style: "steps", answers } } },

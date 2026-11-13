@@ -5,6 +5,7 @@ import { loadStudent } from "@/lib/students";
 import { fmtTime, r1, sessionState, studentMsgs } from "@/lib/stats";
 import { shortId } from "@/lib/sid";
 import AdviceButton from "@/components/AdviceButton";
+import ShareButton from "@/components/ShareButton";
 import StudentDelete from "@/components/StudentDelete";
 import ChatLog from "@/components/ChatLog";
 import { Badge } from "@/components/ui";
@@ -41,7 +42,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <Link href="/dashboard/students" className="inline-flex min-h-11 items-center text-sm text-primary underline">Tất cả học sinh</Link>
         <h1>{prof.names.join(" / ") || "Học sinh"} <span className="tnum text-text-muted">({prof.cls || prof.code})</span></h1>
         <p className="text-text-muted">{prof.attempts.length} phiên, {prof.evaluated} phiên đã chấm.</p>
-        <StudentDelete code={prof.code} />
+        <div className="flex flex-wrap items-start gap-2"><ShareButton code={prof.code} /><StudentDelete code={prof.code} /></div>
       </div>
 
       <Section title="Điểm trung bình theo tiêu chí (thang 0–3)">
@@ -94,7 +95,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       </Section>
 
       <Section title="Các bài đã làm">
-        <ul className="flex flex-col gap-2">
+        <ul className="flex max-h-[70dvh] flex-col gap-2 overflow-y-auto pr-1">
           {shown.map((a) => (
             <li key={a.id} className="flex flex-col gap-2">
               <ChatLog id={a.id} open={a.id === phien} note={notes.get(a.id)} head={{ sid: shortId(a.id), time: fmtTime(a.started_at), problem: a.title, total: a.ev?.total, state: sessionState(a, a.ev, msgs.get(a.id)), helped: a.revealed }} />

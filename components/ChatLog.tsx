@@ -65,7 +65,7 @@ export default function ChatLog({ id, head, open, note }: { id: string; head: He
           {prob.statement && <div className="mt-1 max-h-48 overflow-y-auto"><MathText text={prob.statement} /></div>}
         </div>
       )}
-      <ul className="mb-3 flex max-h-[60dvh] flex-col gap-2 overflow-y-auto pr-1">
+      <ul className="mb-3 flex max-h-[50dvh] flex-col gap-2 overflow-y-auto pr-1">
         {items?.map((m, i) => (
           <li key={i} className={`max-w-[90%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm ${m.role === "bot" ? "self-start border border-border" : "self-end bg-primary-soft"}`}>
             <span className="block text-xs text-text-muted">{m.role === "bot" ? "Chatbot" : "Học sinh"} · {m.time}</span>

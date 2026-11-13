@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { randomBytes } from "node:crypto";
 import { toTen } from "@/lib/score";
 import { admin } from "@/lib/supabase/admin";
 import { supabaseServer } from "@/lib/supabase/server";
@@ -14,6 +15,7 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("advise"), code: z.string().regex(/^[A-Z0-9._-]{1,80}$/) }),
   z.object({ action: z.literal("analyze_session"), id: UUID }),
   z.object({ action: z.literal("delete"), code: z.string().regex(/^[A-Z0-9._-]{1,80}$/) }),
+  z.object({ action: z.enum(["share_get", "share_create", "share_revoke"]), code: z.string().regex(/^[A-Z0-9._-]{1,80}$/) }),
 ]);
 const sessionOut = z.object({ summary: z.string().min(1), strengths: z.array(z.string()).max(5), weaknesses: z.array(z.string()).max(5), next_steps: z.array(z.string()).max(5) });
 
@@ -63,6 +65,26 @@ export const POST = api(async (req) => {
     if (!(data as unknown[] | null)?.length) return bad("Không tìm thấy học sinh này.", 404);
     await log({ actor: "teacher", action: "student_deleted", teacherId: u.id, meta: { code: p.data.code, name: (data as { name: string | null }[])[0].name } });
     return Response.json({ ok: true });
+  }
+  if (p.data.action === "share_get" || p.data.action === "share_create" || p.data.action === "share_revoke") {
+    // Liên kết công khai cho phụ huynh: mỗi học sinh một liên kết đang dùng, thu hồi bằng revoked_at.
+    const code = p.data.code, db = admin();
+    const { data: st } = await db.from("students").select("code").eq("teacher_id", u.id).eq("code", code).is("deleted_at", null).maybeSingle();
+    if (!st) return bad("Không tìm thấy học sinh này.", 404);
+    const live = async () => ((await db.from("student_shares").select("token").eq("teacher_id", u.id).eq("student_code", code).is("revoked_at", null).maybeSingle()).data as { token: string } | null)?.token ?? null;
+    if (p.data.action === "share_get") return Response.json({ token: await live() });
+    if (p.data.action === "share_revoke") {
+      check(await db.from("student_shares").update({ revoked_at: new Date().toISOString() } as never).eq("teacher_id", u.id).eq("student_code", code).is("revoked_at", null));
+      await log({ actor: "teacher", action: "student_share_revoked", teacherId: u.id, meta: { code } });
+      return Response.json({ token: null });
+    }
+    const had = await live();
+    if (had) return Response.json({ token: had });
+    const token = randomBytes(16).toString("base64url");
+    const { error } = await db.from("student_shares").insert({ token, teacher_id: u.id, student_code: code } as never);
+    if (error) { const again = await live(); if (again) return Response.json({ token: again }); check({ error }); } // hai lần bấm cùng lúc: dùng liên kết vừa tạo
+    await log({ actor: "teacher", action: "student_share_created", teacherId: u.id, meta: { code } });
+    return Response.json({ token });
   }
   const cfg = await llmCfg(u.id);
   if (!cfg) return bad("Chưa có API key. Vào Cài đặt để nhập.");

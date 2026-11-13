@@ -22,6 +22,8 @@ export const LOG: Record<string, Info> = {
   settings_changed: { label: "Đổi cài đặt", group: ACC, text: (m) => { const c = (m.changed ?? {}) as Record<string, { from?: string; to?: string }>; const ch = (k: string, names: Record<string, string>) => `${names[s(c[k].from)] ?? (s(c[k].from) || "chưa đặt")} sang ${names[s(c[k].to)] ?? s(c[k].to)}`; return [m.provider && `Nhà cung cấp ${PROVIDER[s(m.provider)] ?? s(m.provider)}`, m.mode && `kiểu ${MODE[s(m.mode)] ?? s(m.mode)}${c.mode ? ` (${ch("mode", MODE)})` : ""}`, m.key_changed && "có đổi API key"].filter(Boolean).join(", "); } },
   export: { label: "Tải dữ liệu", group: ACC, text: (m) => `Tải CSV${m.kind ? ` (${s(m.kind)})` : ""}${m.rows != null ? `, ${s(m.rows)} dòng` : ""}` },
   student_deleted: { label: "Xóa học sinh", group: ACC, text: (m) => (m.code ? `${m.name ? `${s(m.name)} ` : ""}(${s(m.code)}), bài làm vẫn được giữ` : "") },
+  student_share_created: { label: "Tạo liên kết cho phụ huynh", group: ACC, text: (m) => (m.code ? `Học sinh ${s(m.code)}` : "") },
+  student_share_revoked: { label: "Thu hồi liên kết phụ huynh", group: ACC, text: (m) => (m.code ? `Học sinh ${s(m.code)}` : "") },
   student_advice: { label: "AI đề xuất cải thiện cho học sinh", group: ACC, text: (m) => (m.code ? `Học sinh ${s(m.code)}` : "") },
 
   problem_created: { label: "Nạp đề", group: PROB, text: (m) => (m.code ? `Đề ${s(m.code)}` : "") },
