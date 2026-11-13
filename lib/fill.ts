@@ -22,9 +22,13 @@ export const SOLUTION_SYSTEM = `Giải bài Toán rồi trả đáp án chuẩn.
 // Lời giải chi tiết đã qua bước giải riêng, đưa cho makeSteps làm tham khảo để các bước viết gọn không đổi kết quả.
 export const referenceNote = (steps: string[]) => (steps.length ? `Lời giải tham khảo đã kiểm tra (viết gọn lại thành 3–8 bước, GIỮ ĐÚNG các kết quả):\n${steps.join("\n")}` : "");
 
+const MAKE_STEPS = `Viết lời giải 3–8 bước cho bài Toán. Mỗi bước là MỘT phần tử riêng của "steps" (không gộp, không xuống dòng trong chuỗi, không ghi "Bước N"), 1–2 câu đủ chủ vị, kết thúc bằng dấu chấm; nhiều ý trong một bước ngăn bằng dấu chấm phẩy. Nêu phép tính và kết quả trung gian CỤ THỂ mà học sinh tự làm được (không chép lại dữ kiện đề). Bước cuối là kết luận. Lời giải PHẢI ra đúng "solution".
+Đề nhiều ý a), b): lần lượt từng ý; bước đầu của ý a) mở đầu "a) ", ý b) mở đầu "b) " (tương tự c), d)). Bước cuối MỖI ý kết luận bằng công thức, ví dụ "Vậy $m = -6$ thì hệ có nghiệm duy nhất thỏa mãn đề."; không kết luận chung chung.
+Trong JSON, mỗi dấu \\ của LaTeX viết gấp đôi (\\\\frac, \\\\times, \\\\begin).${FORMAT_RULE} Không xuống dòng trong chuỗi JSON.`;
+
 // Viết lời giải từng bước khớp đáp án đã có. Trả mảng bước, hoặc chuỗi lỗi để báo giáo viên.
 export async function makeSteps(cfg: LlmCfg, p: Problem, note = "", deadlineMs?: number): Promise<string[] | string> {
-  const out = await askJson(cfg, 'Viết lời giải từng bước (3–8 bước) cho bài Toán. Mỗi bước 1–2 câu đủ chủ vị, kết thúc bằng dấu chấm, liệt kê nhiều ý trong một bước thì ngăn bằng dấu chấm phẩy, nêu rõ phép tính và kết quả trung gian CỤ THỂ (mỗi bước phải là một phép tính hay kết luận học sinh tự làm được, không viết bước chỉ chép lại dữ kiện đề), bước cuối là kết luận. Đề nhiều ý a), b): lời giải đi lần lượt từng ý. BẮT BUỘC: bước đầu tiên của ý a) mở đầu bằng "a) ", bước đầu tiên của ý b) mở đầu bằng "b) " (tương tự c), d)). Bước cuối của MỖI ý là một câu kết luận nêu rõ kết quả bằng công thức, ví dụ "Vậy $m = -6$ thì hệ có nghiệm duy nhất thỏa mãn đề.", không viết kết luận chung chung kiểu "kết luận giá trị của m thỏa mãn". Mỗi bước là một phần tử riêng của mảng "steps": tuyệt đối không gộp nhiều bước vào một chuỗi và không dùng ký tự xuống dòng trong chuỗi. Mỗi bước là MỘT phần tử riêng của mảng, không ghi "Bước N" đầu câu (giao diện tự đánh số). Lời giải PHẢI ra đúng đáp án đã cho trong "solution". Chỉ trả JSON {"steps": [string]}. Trong JSON, mỗi dấu \\ của LaTeX phải viết gấp đôi (\\\\frac, \\\\times, \\\\begin), nếu không sẽ thành ký tự điều khiển.' + FORMAT_RULE + FORMAT_JSON + gradeRule(p.grade), [{ role: "user", text: `${p.statement}
+  const out = await askJson(cfg, MAKE_STEPS + gradeRule(p.grade), [{ role: "user", text: `${p.statement}
 Dữ liệu: ${JSON.stringify(p.data)}
 Đáp án: ${JSON.stringify(p.solution)}${note ? `\n${note}` : ""}` }], z.object({ steps: z.array(z.string().min(3)).min(2).max(8) }), { think: "low", use: "solution_steps", deadlineMs });
   // Mọi số lớn trong đáp án phải xuất hiện trong lời giải, nếu không thì không dùng (AI giải lệch đáp án).
@@ -67,14 +71,12 @@ export async function fillMissing(cfg: LlmCfg, p: Problem, ref = ""): Promise<Pr
   return q;
 }
 
-const deriveSystem = (keep: boolean) => `Đọc đề Toán, rút dữ kiện, ${keep ? "" : "tính đáp án chuẩn "}và viết phần phụ của đề. Chỉ dựa vào đề bài, tự giải thật cẩn thận, đừng bịa số. Công thức đặt trong $...$ theo LaTeX, KHÔNG dùng \\( \\) hay \\[ \\].
-"data": mỗi dữ kiện cho trong đề là một phần tử {"name","value"} (CHỈ khóa "name" viết không dấu, ví dụ principal, rate, years; số thì value là chuỗi số; đề cho PHÂN SỐ (2/5, một phần sáu...) thì giữ đúng phân số, viết "$\\\\frac{2}{5}$", TUYỆT ĐỐI không đổi sang số thập phân hay làm tròn; chỉ viết thập phân khi đề cho thập phân hoặc phần trăm; value là biểu thức, phân thức, căn, lũy thừa thì viết LaTeX và BỌC trong $...$, ví dụ "$\\\\frac{4}{x+y} + \\\\frac{1}{y-1} = 5$").
-${keep ? "" : `"answers": mỗi đáp án một phần tử {"name","value"}: số thì value là chuỗi số; nhiều nghiệm đặt tên x1, x2; điều kiện hoặc đáp án chữ là {"name":"ket_luan","value":"..."} viết NGẮN GỌN một cụm (ví dụ "m khác -4"), không viết cả câu giải thích.`}
-"skills": 2–5 kỹ năng hoặc kiến thức chính cần dùng, mỗi mục một cụm ngắn. "learning_objectives": 2–4 mục tiêu học tập. "common_errors": 2–4 sai lầm học sinh hay mắc với chính đề này.
-"hints": đúng 3 mức. Mức 1 chỉ hỏi định hướng; mức 2 gợi ý cách giải; mức 3 nêu bước tính đầu tiên, KHÔNG nêu kết quả cuối. "extension": một câu hỏi mở rộng.
-TRÌNH BÀY: gợi ý, sai lầm thường gặp, câu mở rộng mỗi mục là câu đủ chủ vị, ngắn gọn, kết thúc bằng dấu chấm (hoặc dấu hỏi với câu hỏi).
-QUAN TRỌNG: mọi chữ tiếng Việt trong skills, learning_objectives, common_errors, hints, extension và value của đáp án chữ phải có dấu đầy đủ, KHÔNG viết không dấu.
-Chỉ trả JSON {"data":[...],${keep ? "" : `"answers":[...],`}"skills":[...],"learning_objectives":[...],"common_errors":[...],"hints":[string,string,string],"extension":string}. Trong JSON, mỗi dấu \\ của LaTeX phải viết gấp đôi (\\\\frac, \\\\times, \\\\begin), nếu không sẽ thành ký tự điều khiển.`;
+const deriveSystem = (keep: boolean) => `Đọc đề Toán, rút dữ kiện, ${keep ? "" : "tính đáp án chuẩn "}và viết phần phụ. Chỉ dựa vào đề, tự giải cẩn thận, đừng bịa số. Công thức trong $...$ LaTeX, KHÔNG dùng \\( \\) hay \\[ \\].
+"data": mỗi dữ kiện của đề là {"name","value"} (CHỈ "name" không dấu, vd principal, rate, years; số thì value là chuỗi số; đề cho PHÂN SỐ thì giữ phân số "$\\\\frac{2}{5}$", không đổi sang thập phân; value là biểu thức, phân thức, căn, lũy thừa thì viết LaTeX BỌC trong $...$, vd "$\\\\frac{4}{x+y} + \\\\frac{1}{y-1} = 5$").
+${keep ? "" : `"answers": mỗi đáp án {"name","value"}: số thì value là chuỗi số; nhiều nghiệm đặt x1, x2; điều kiện hoặc đáp án chữ là {"name":"ket_luan","value":"..."} NGẮN GỌN một cụm (vd "m khác -4").\n`}"skills": 2–3 kiến thức chính, mỗi mục một cụm ngắn. "learning_objectives": 2 mục tiêu. "common_errors": 2–3 sai lầm học sinh hay mắc với chính đề này.
+"hints": đúng 3 mức: 1 chỉ hỏi định hướng; 2 gợi ý cách giải; 3 nêu bước tính đầu tiên, KHÔNG nêu kết quả cuối. "extension": một câu hỏi mở rộng.
+Gợi ý, sai lầm, câu mở rộng: mỗi mục là câu đủ chủ vị, ngắn, kết thúc bằng dấu chấm (hoặc dấu hỏi). Mọi chữ tiếng Việt trong skills, learning_objectives, common_errors, hints, extension và đáp án chữ phải có dấu đầy đủ.
+Trong JSON, mỗi dấu \\ của LaTeX viết gấp đôi (\\\\frac, \\\\times, \\\\begin).`;
 const pairs = z.array(z.object({ name: z.string().min(1), value: z.string().min(1) }));
 const toRecord = (a: { name: string; value: string }[]) => Object.fromEntries(a.map((x) => [x.name, /^-?\d+(\.\d+)?$/.test(x.value.trim()) ? Number(x.value) : x.value]));
 const derived = z.object({

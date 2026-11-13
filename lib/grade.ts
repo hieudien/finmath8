@@ -2,7 +2,7 @@ import type { Problem } from "@/lib/schema/problem";
 
 // Đoạn nối vào mọi prompt AI: giữ lời giải, chỉ dẫn, nhận xét trong kiến thức đã học đến hết lớp của đề.
 export const gradeRule = (grade: number) =>
-  `\nLỚP ${grade} (chương trình Toán phổ thông Việt Nam, GDPT 2018): học sinh mới học đến hết lớp ${grade}. CHỈ dùng kiến thức, thuật ngữ, công thức và phương pháp trong chương trình đến hết lớp ${grade}. KHÔNG dùng kiến thức lớp trên hoặc đại học (đạo hàm, tích phân, ma trận, giới hạn...) trừ khi đúng lớp ${grade} có học. Nếu có cách giải của lớp trên và cách giải của lớp ${grade}, luôn chọn cách của lớp ${grade}.`;
+  `\nLỚP ${grade} (GDPT 2018): chỉ dùng kiến thức đến hết lớp ${grade}; không dùng đạo hàm, tích phân, ma trận, giới hạn hay kiến thức lớp trên. Có nhiều cách thì chọn cách của lớp ${grade}.`;
 
 // Từ khóa kiến thức chưa học ở lớp dưới 11: thấy trong lời giải hay chỉ dẫn thì báo giáo viên.
 const ABOVE = /đạo hàm|tích phân|nguyên hàm|ma trận|định thức|vi phân|giới hạn của hàm|\\lim\b|\\int\b|\\iint\b|đại học|sinh viên/i;

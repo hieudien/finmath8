@@ -11,7 +11,8 @@ describe("lớp của đề", () => {
   it("prompt nêu đúng lớp và cấm kiến thức vượt lớp", () => {
     const r = gradeRule(9);
     expect(r).toContain("lớp 9");
-    expect(r).toContain("KHÔNG dùng kiến thức lớp trên");
+    expect(r).toContain("không dùng đạo hàm");
+    expect(r).toContain("kiến thức lớp trên");
   });
   it("lint báo kiến thức vượt lớp ở lớp dưới 11, không báo từ lớp 11", () => {
     expect(aboveGrade(mk(9, "Lấy đạo hàm hai vế"))).toHaveLength(1);
