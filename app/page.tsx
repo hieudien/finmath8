@@ -1,7 +1,7 @@
 import Brand from "@/components/Brand";
 import { LinkButton } from "@/components/ui";
 
-const NUMS = [["3", "mức gợi ý riêng cho từng bước: chỉ rõ vấn đề, câu hỏi con, ví dụ tương tự"], ["4", "tiêu chí chấm: nhận diện, kế hoạch, tính toán, giải thích"], ["5", "bước giải quyết vấn đề theo Polya"]];
+const NUMS = [["3", "mức gợi ý riêng cho từng bước: chỉ rõ vấn đề, câu hỏi con, ví dụ tương tự"], ["4", "tiêu chí chấm: hiểu đề bài, lập kế hoạch giải, thực hiện kế hoạch, kiểm tra và đánh giá"], ["5", "bước giải quyết vấn đề theo Polya"]];
 
 const TEACHER = [
   ["Tạo đề nhanh", "Soạn đề trực tiếp, chụp ảnh đề để AI đọc, hoặc nạp cả tệp Word thành nhiều đề cùng lúc. Công thức soạn bằng bàn phím toán, không cần biết LaTeX."],

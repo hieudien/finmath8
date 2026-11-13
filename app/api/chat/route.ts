@@ -24,7 +24,6 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("message"), slug: z.string().min(4), sessionId: z.string().uuid(), text: z.string().trim().min(1).max(500), ask: z.boolean().optional() }), // ask: câu hỏi "Em chưa hiểu"
   z.object({ action: z.literal("end"), slug: z.string().min(4), sessionId: z.string().uuid() }),
   z.object({ action: z.literal("hint"), slug: z.string().min(4), sessionId: z.string().uuid() }),
-  z.object({ action: z.literal("survey"), slug: z.string().min(4), sessionId: z.string().uuid(), likert: z.number().int().min(1).max(5).optional(), confidence: z.number().int().min(1).max(5).optional() }),
 ]);
 
 export const maxDuration = 60; // AI có hạn chót 40 giây, chừa thêm thời gian ghi DB
@@ -156,7 +155,7 @@ async function handle(req: Request, tr: Trace) {
   const t0 = Date.now();
   const [{ data: sd }, cfg, { data: msgs }] = await Promise.all([
     db.from("chat_sessions").select("*").eq("id", b.sessionId).eq("link_id", link.id).eq("anon_id", anon).maybeSingle(),
-    b.action === "survey" ? null : llmCfg(link.teacher_id),
+    llmCfg(link.teacher_id),
     b.action === "message" ? db.from("messages").select("role,content,hint_level,ts").eq("session_id", b.sessionId).order("id") : { data: null },
   ]);
   tm.db_pre = Date.now() - t0;
@@ -164,20 +163,6 @@ async function handle(req: Request, tr: Trace) {
   if (!sess) return err("Phiên chat không tồn tại.", 404);
   // Phiên giữ bản đề lúc mở; phiên cũ (chưa có bản ghim) dùng đề của liên kết.
   const prob = (sess.problem_snapshot ? parseProblems([sess.problem_snapshot]).ok[0] : undefined) ?? (problems.find((x) => x.id === sess.problem_code) as Problem);
-
-  if (b.action === "survey") {
-    const upd = { ...(b.likert && { survey_likert: b.likert }), ...(b.confidence && { confidence: b.confidence }) };
-    if (!Object.keys(upd).length) return err("Yêu cầu không hợp lệ.");
-    // Bản chấm điểm được ghi ngầm sau lượt cuối (after): khảo sát đến sớm hơn thì chờ tối đa ~8 giây cho dòng chấm điểm xuất hiện.
-    for (let i = 0; ; i++) {
-      const { data, error } = await db.from("session_evals").update(upd as never).eq("session_id", sess.id).select("session_id");
-      check({ error });
-      if (data?.length || i >= 4) break;
-      await new Promise((r) => setTimeout(r, 2000));
-    }
-    await log({ actor: "student", action: "survey_submitted", teacherId: link.teacher_id, anonId: anon, linkId: link.id, meta: { likert: b.likert, confidence: b.confidence } });
-    return Response.json({ ok: true });
-  }
 
   if (!cfg) return notReady(link, anon);
 

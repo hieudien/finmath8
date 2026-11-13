@@ -10,7 +10,7 @@ Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải q
 2. Giáo viên tạo đề: soạn trực tiếp, chụp ảnh đề hoặc tạo hàng loạt từ tệp Word (tab "Tạo đề hàng loạt"). AI điền đáp án, lời giải, gợi ý và câu chào đầu tiên; giáo viên kiểm tra rồi lưu. Giáo viên bấm "Chuẩn hóa đề" để AI viết lời giải (nếu thiếu), việc cần làm, 3 mức gợi ý, câu hỏi con và ví dụ tương tự cho từng bước.
 3. Giáo viên chọn một hoặc nhiều đề (đề cần có lời giải từng bước, thiếu thì học sinh chưa làm được), tạo liên kết công khai và gửi cho học sinh.
 4. Học sinh mở liên kết, nhập họ tên và lớp (không nhớ, mở lại là nhập lại), chọn đề, làm bài theo kiểu đã chọn, tự đánh giá mức hiểu bài và mức hài lòng cuối bài.
-5. Hệ thống chấm theo 4 tiêu chí (nhận diện, lập kế hoạch, tính toán, giải thích). Giáo viên xem thống kê theo liên kết, hồ sơ từng học sinh và nội dung hội thoại.
+5. Hệ thống chấm theo 4 tiêu chí (hiểu đề bài, lập kế hoạch giải, thực hiện kế hoạch, kiểm tra và đánh giá). Giáo viên xem thống kê theo liên kết, hồ sơ từng học sinh và nội dung hội thoại.
 
 ## Tính năng
 

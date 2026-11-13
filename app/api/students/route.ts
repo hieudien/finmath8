@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { randomBytes } from "node:crypto";
-import { toTen } from "@/lib/score";
+import { critTen, toTen } from "@/lib/score";
 import { admin } from "@/lib/supabase/admin";
 import { supabaseServer } from "@/lib/supabase/server";
 import { api, bad, requireUser } from "@/lib/auth";
@@ -100,7 +100,7 @@ export const POST = api(async (req) => {
   const facts = {
     so_phien: prof.attempts.length,
     so_bai_da_cham: prof.evaluated,
-    rubric_tb: prof.rubric.map((r) => `${r.name}: ${r.value.toFixed(1)}/3`),
+    rubric_tb: prof.rubric.map((r) => `${r.name}: ${critTen(r.value).toFixed(1)}/10`),
     loi_da_mac: prof.errors.slice(0, 8),
     ky_nang_bai_lam_chua_tot: prof.weakSkills.slice(0, 8),
     buoc_yeu: prof.weakSteps.slice(0, 8).map((w) => `${w.title}, bước ${w.step}: ${w.label} (gặp khó ${w.struggled}/${w.of} phiên${w.revealed ? `, bị giải hộ ${w.revealed} phiên` : ""})`),

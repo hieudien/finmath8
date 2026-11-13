@@ -54,8 +54,6 @@ export default function Worksheet({ slug, label, problems }: { slug: string; lab
   const [err, setErr] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [done, setDone] = useState<{ own: number; total: number } | null>(null);
-  const [rated, setRated] = useState(false);
-  const [sure, setSure] = useState(false);
   const [pending, setPending] = useState<(Resume & { p: WsProblem }) | null>(null);
   const [typing, setTyping] = useState(false); // đang gõ trên điện thoại: ẩn thanh nộp bài để bàn phím không chiếm thêm chỗ
   const tok = useRef(0);
@@ -120,7 +118,7 @@ export default function Worksheet({ slug, label, problems }: { slug: string; lab
 
   function reset() {
     setSid(undefined); setStyle("steps"); setWhole(""); setLocked([]); setRevealed([]); setResults({}); setHints({}); setHintOpen({}); setReveals({}); setOpen({}); setAsks({}); setConfirm(null);
-    setErr(""); setAttempt(0); setDone(null); setRated(false); setSure(false); setDraft(null); saved.current = ""; serverBlank.current = true;
+    setErr(""); setAttempt(0); setDone(null); setDraft(null); saved.current = ""; serverBlank.current = true;
   }
 
   // Mở đề: học sinh (cùng tên + lớp) đã làm dở đề này thì hỏi làm tiếp hay làm lại.
@@ -271,11 +269,6 @@ export default function Worksheet({ slug, label, problems }: { slug: string; lab
     setOpen({}); collapseExtras(); // nộp xong đóng hết: nhận xét bước sai hiện sẵn dưới tiêu đề và trong bảng tổng kết
     if (data.done) { setDone({ own: data.own ?? 0, total: data.total ?? prob.steps.length }); top.current?.scrollIntoView({ behavior: "smooth", block: "start" }); document.getElementById("ws-main")?.scrollTo({ top: 0, behavior: "smooth" }); return; }
     window.setTimeout(() => document.getElementById("ws-summary")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
-  }
-
-  async function rate(kind: "likert" | "confidence", n: number) {
-    (kind === "likert" ? setRated : setSure)(true);
-    await post("/api/worksheet", { action: "survey", slug, sessionId: sid, [kind]: n });
   }
 
   if (!who) {
@@ -435,18 +428,6 @@ export default function Worksheet({ slug, label, problems }: { slug: string; lab
         {done ? (
           <div className="flex flex-col gap-3">
             <Alert tone="success">Em đã làm đúng cả {done.total} bước. Số bước tự làm (không xem đáp án): {done.own}/{done.total}. Cảm ơn em.</Alert>
-            {!sure && (
-              <fieldset>
-                <legend className="mb-2 text-sm">Em tự thấy mình hiểu bài này đến đâu? (1 = chưa hiểu, 5 = hiểu rõ)</legend>
-                <div className="flex gap-2">{[1, 2, 3, 4, 5].map((k) => <Button key={k} variant="secondary" className="flex-1 px-0" onClick={() => rate("confidence", k)} aria-label={`${k} điểm`}>{k}</Button>)}</div>
-              </fieldset>
-            )}
-            {rated ? sure && <p className="text-sm text-text-muted">Đã ghi nhận đánh giá của bạn.</p> : (
-              <fieldset>
-                <legend className="mb-2 text-sm">Cách làm bài này giúp em giải bài tốt hơn? (1 = không, 5 = rất nhiều)</legend>
-                <div className="flex gap-2">{[1, 2, 3, 4, 5].map((k) => <Button key={k} variant="secondary" className="flex-1 px-0" onClick={() => rate("likert", k)} aria-label={`${k} điểm`}>{k}</Button>)}</div>
-              </fieldset>
-            )}
             {problems.length > 1 && <Button variant="secondary" type="button" onClick={leave}>Chọn bài khác</Button>}
           </div>
         ) : (

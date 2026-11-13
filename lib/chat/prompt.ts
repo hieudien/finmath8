@@ -16,7 +16,7 @@ export const evalSchema = z.object({
 
 export function evalSystem(p: Problem, helped = false) {
   return `Bạn chấm năng lực giải quyết vấn đề Toán từ đoạn hội thoại giữa chatbot và học sinh. Chỉ chấm phần học sinh tự làm, không tính điểm cho phần chatbot nói hộ.
-Rubric (mỗi tiêu chí 0–3): identify = nhận diện vấn đề/đại lượng; plan = lập kế hoạch/chọn cách tính; calculate = tính toán đúng; explain = đánh giá, so sánh, giải thích.
+Rubric (mỗi tiêu chí 0–3): identify = hiểu đề bài (đại lượng đã cho, cần tìm, điều kiện); plan = lập kế hoạch giải (chọn hướng, cách tính); calculate = thực hiện kế hoạch (tính đúng theo kế hoạch); explain = kiểm tra và đánh giá (thử lại kết quả, so sánh, kết luận).
 Đề: ${p.title}. Dữ liệu: ${JSON.stringify(p.data)}. Đáp án: ${JSON.stringify(p.solution)}.
 Sai lầm có sẵn: ${JSON.stringify(p.common_errors)}. "errors" = các sai lầm trong danh sách này mà học sinh thực sự mắc (chép nguyên văn), có thể rỗng.
 final_correct = học sinh tự đi tới kết luận đúng.

@@ -5,10 +5,10 @@ import ChatLog from "@/components/ChatLog";
 import "katex/dist/katex.min.css";
 import { Badge, Empty, ScoreBadge, StatusBadge } from "@/components/ui";
 import { check } from "@/lib/db";
-import { avgTen } from "@/lib/score";
+import { avgTen } from "@/lib/score"; // khi bỏ comment biểu đồ: thêm critTen, bandsTen
 import { sweep } from "@/lib/sweep";
 import { shortId } from "@/lib/sid";
-import { bits, compareStats, fmtTime, hardSteps, sessionState, studentMsgs, who, type Ev, type Sess, type StepInfo, type Summary } from "@/lib/stats";
+import { bits, compareStats, fmtTime, hardStudents, P_STATE, sessionState, studentMsgs, who, type Ev, type ProblemStat, type Sess, type StepInfo, type Summary } from "@/lib/stats";
 
 const helpedN = (x: Sess) => (x.revealed ? bits(x.revealed) : 0); // số bước bot đã hiện lời giải vì học sinh kẹt: không tính là tự làm
 const Helped = ({ x }: { x: Sess }) => helpedN(x) > 0 ? <Badge tone="warn">Giải hộ {helpedN(x)} bước</Badge> : null;
@@ -31,6 +31,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
     link ? sb.from("chat_sessions").select("id,link_id,seq,status,started_at,problem_code,student_code,student_name,student_class,revealed,struggled").eq("link_id", link).order("seq", { ascending: false }).limit(RECENT) : null,
     link ? sb.rpc("link_summary", { p_link: link } as never) : null,
     link ? null : sb.from("tag_stats").select("*"),
+    link ? sb.rpc("link_problem_stats", { p_link: link } as never) : null,
+    link ? sb.from("public_links").select("problems_snapshot").eq("id", link).maybeSingle() : null,
   ]);
   res.forEach((r) => r && check(r)); // lỗi đọc dữ liệu thì hiện trang báo lỗi, không để trang hiện số 0 gây hiểu nhầm
   const links = (res[0].data ?? []) as L[];
@@ -38,6 +40,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
   const sessions = (res[2]?.data ?? []) as Sess[];
   const summary = res[3]?.data as Summary | undefined;
   const evals = sessions.length ? (((await sb.from("session_evals").select("*").in("session_id", sessions.map((x) => x.id))).data ?? []) as Ev[]) : [];
+  // Mọi đề của liên kết (kể cả đề chưa ai làm) theo thứ tự trong liên kết, kèm học sinh và trạng thái từng em.
+  const pStats = new Map(((res[5]?.data ?? []) as ProblemStat[]).map((x) => [x.code, x.students]));
+  const snap = ((res[6]?.data as { problems_snapshot: { id: string; title?: string }[] } | null)?.problems_snapshot ?? []);
+  const byProblem = [...snap.map((p) => ({ code: p.id, title: p.title ?? p.id })), ...[...pStats.keys()].filter((c) => !snap.some((p) => p.id === c)).map((c) => ({ code: c, title: c }))]
+    .map((p) => ({ ...p, students: pStats.get(p.code) ?? [] }));
   const tags = new Map(((res[4]?.data ?? []) as TS[]).map((x) => [x.tag, { n: x.n, mean: x.mean, sd: x.sd_pop, v: x.var_samp }]));
 
   if (!links.length) return <div className="flex flex-col gap-6"><h1>Thống kê</h1><Empty text="Chưa có liên kết nào để thống kê." /></div>;
@@ -45,14 +52,14 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
   const cur = links.find((l) => l.id === link);
   if (cur && summary) {
     const s = sessions, e = evals;
-    const m = { ...summary, visits: stats.get(cur.id)?.visits ?? 0, enough: summary.sessions > 0, completion: summary.sessions ? Math.round((summary.done / summary.sessions) * 100) : 0 };
+    const m = { ...summary, enough: summary.sessions > 0 };
     const evBy = new Map(e.map((x) => [x.session_id, x]));
     const msgs = await studentMsgs(sb, s.map((x) => x.id));
     const stateOf = (x: Sess) => sessionState(x, evBy.get(x.id), msgs.get(x.id));
     const codes = [...new Set(s.filter((x) => x.struggled).map((x) => x.problem_code))];
     const pr = codes.length ? (((await sb.from("problems").select("code,content").in("code", codes).is("deleted_at", null)).data ?? []) as { code: string; content: { title?: string; solution_steps?: string[]; step_goals?: string[] } }[]) : [];
     const probs = new Map<string, StepInfo>(pr.map((r) => [r.code, { title: r.content.title ?? r.code, steps: r.content.solution_steps ?? [], goals: r.content.step_goals?.length === r.content.solution_steps?.length ? r.content.step_goals ?? [] : [] }]));
-    const hard = hardSteps(s, probs);
+    const hard = hardStudents(s, probs);
     return (
       <div className="flex flex-col gap-6">
         <div>
@@ -60,37 +67,61 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
           <h1>{cur.label}</h1>
           <p className="text-text-muted">Mỗi phiên gắn với mã và tên học sinh tự nhập. Xem từng học sinh ở mục <Link href="/dashboard/students" className="text-primary underline">Học sinh</Link>.</p>
         </div>
-        <Kpis items={[["Lượt mở", m.visits], ["Phiên chat", m.sessions], ["Hoàn thành", `${m.completion}%`], ["Điểm TB / 10", m.enough ? avgTen(m.totalAvg) : "—"]]} />
+        <Kpis items={[["Điểm TB / 10", m.enough ? avgTen(m.totalAvg) : "—"], ["Thời gian TB (phút)", m.enough ? m.durationMin : "—"]]} />
         {!m.enough ? (
           <p className="rounded-lg border border-border bg-surface p-4">Chưa có phiên chat nào. Số liệu sẽ hiện khi học sinh bắt đầu làm bài.</p>
         ) : (
           <>
             {/* Tạm ẩn 5 biểu đồ; bỏ comment để hiện lại:
             <Section title="Số phiên theo ngày"><LineBox data={m.daily} /></Section>
-            <Section title="Điểm trung bình theo tiêu chí (0–3)"><BarBox data={m.rubric} max={3} /></Section>
+            <Section title="Điểm trung bình theo tiêu chí (thang 10)"><BarBox data={m.rubric.map((b) => ({ ...b, value: critTen(b.value) }))} max={10} /></Section>
             <Section title="Phân bố tổng điểm (thang 10)"><BarBox data={bandsTen(m.totalDist)} /></Section>
             <Section title="Mức gợi ý cao nhất đã dùng"><BarBox data={m.hintDist} /></Section>
             <Section title="Lỗi thường gặp"><BarBox data={m.errors} horizontal /></Section>
             */}
-            <Kpis items={[["Đúng kết luận", `${m.correctPct}%`], ["Thời gian TB (phút)", m.durationMin], ["Lần tăng gợi ý TB", m.hintAvg], ["Hài lòng (1–5)", m.likertAvg == null ? "—" : `${m.likertAvg} (${m.likertN})`]]} />
+            <Section title="Học sinh làm được từng bài">
+              <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
+                {byProblem.map((p) => { const ok = p.students.filter((x) => x.state === "ok").length, n = p.students.length; return (
+                  <li key={p.code}>
+                    <details className="group">
+                      <summary className="flex min-h-11 cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-primary-soft">
+                        <span className="min-w-0 font-medium"><Badge tone="info">{p.code}</Badge> {p.title !== p.code && p.title}</span>
+                        <span className="tnum font-semibold">{ok}/{n} học sinh tự làm được <span className="text-text-muted group-open:hidden">▾</span><span className="hidden text-text-muted group-open:inline">▴</span></span>
+                      </summary>
+                      {n ? (
+                        <ul className="flex flex-col gap-1 border-t border-border px-4 py-2 text-sm">
+                          {p.students.map((x, i) => (
+                            <li key={x.code ?? `anon-${i}`} className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="min-w-0">{x.code ? `${x.name ?? "Học sinh"}${x.class ? ` (${x.class})` : ""}` : "Ẩn danh (cũ)"}</span>
+                              <span className="flex flex-wrap items-center gap-2"><span className="tnum text-text-muted">{x.sessions} phiên</span><Badge tone={P_STATE[x.state].tone}>{P_STATE[x.state].text}</Badge>{x.code && <Link href={`/dashboard/students/${encodeURIComponent(x.code)}`} className="text-primary underline">Hồ sơ</Link>}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : <p className="border-t border-border px-4 py-2 text-sm text-text-muted">Chưa học sinh nào làm đề này.</p>}
+                    </details>
+                  </li>); })}
+              </ul>
+              <p className="text-sm text-text-muted">Tự làm được: có ít nhất một lần nộp đúng mà bot không giải hộ bước nào. Mỗi học sinh tính một lần dù làm nhiều phiên.</p>
+            </Section>
             <Section title="Bước học sinh hay gặp khó">
               {hard.length ? (
                 <>
                   <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
-                    {hard.map((h) => (
-                      <li key={`${h.code}-${h.step}`}>
+                    {hard.map((h, hi) => (
+                      <li key={h.code ?? `anon-${hi}`}>
                         <details className="group">
                           <summary className="flex min-h-11 cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-primary-soft">
-                            <span className="min-w-0"><Badge tone="info">{h.code}</Badge> <span className="font-medium">Bước {h.step}</span>: {h.label}</span>
-                            <span className="tnum font-semibold">{h.n} học sinh <span className="text-text-muted group-open:hidden">▾</span><span className="hidden text-text-muted group-open:inline">▴</span></span>
+                            <span className="min-w-0 font-medium">{h.code ? `${h.name ?? "Học sinh"} (${h.code})` : "Ẩn danh (cũ)"}</span>
+                            <span className="tnum font-semibold">{h.steps.length} bước <span className="text-text-muted group-open:hidden">▾</span><span className="hidden text-text-muted group-open:inline">▴</span></span>
                           </summary>
                           <ul className="flex flex-col gap-1 border-t border-border px-4 py-2 text-sm">
-                            {h.students.map((w, i) => (
-                              <li key={w.code ?? i} className="flex flex-wrap items-center justify-between gap-2">
-                                {w.code ? <Link href={`/dashboard/students/${encodeURIComponent(w.code)}`} className="text-primary underline">{w.name ?? "Học sinh"} ({w.code})</Link> : <span>Ẩn danh (cũ)</span>}
-                                <span className="tnum text-text-muted">{w.times} phiên</span>
+                            {h.steps.map((s) => (
+                              <li key={`${s.code}-${s.step}`} className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="min-w-0"><Badge tone="info">{s.code}</Badge> <span className="font-medium">Bước {s.step}</span>: {s.label}</span>
+                                <span className="tnum text-text-muted">{s.times} phiên</span>
                               </li>
                             ))}
+                            {h.code && <li><Link href={`/dashboard/students/${encodeURIComponent(h.code)}`} className="text-primary underline">Xem hồ sơ</Link></li>}
                           </ul>
                         </details>
                       </li>
@@ -107,7 +138,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
                     <span className="flex min-w-0 flex-col gap-1">
                       <span className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="font-medium">{who(x)}</span><Badge tone="info">{x.problem_code}</Badge></span>
                       <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-muted tnum"><Badge mono>{shortId(x.id)}</Badge>{fmtTime(x.started_at)}</span>
-                      {ev && <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-muted tnum"><Badge>Gợi ý mức {ev.max_hint_level}</Badge><Badge>{Math.round(ev.duration_s / 60)} phút</Badge>{ev.confidence ? <Badge>Tự thấy hiểu {ev.confidence}/5</Badge> : null}</span>}
+                      {ev && <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-muted tnum"><Badge>Gợi ý mức {ev.max_hint_level}</Badge><Badge>{Math.round(ev.duration_s / 60)} phút</Badge></span>}
                     </span>
                     <span className="flex shrink-0 flex-col items-end gap-1">{ev ? <ScoreBadge total={ev.total} /> : <span className="text-text-muted">—</span>}<StatusBadge text={stateOf(x)} /><Helped x={x} /></span>
                   </li>); })}

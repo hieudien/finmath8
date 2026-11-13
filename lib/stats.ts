@@ -7,7 +7,7 @@ export const bits = (n: number) => n.toString(2).replace(/0/g, "").length; // s�
 export const studentKey = (name: string, cls: string) => `${name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/gi, "d").replace(/[^A-Za-z0-9]/g, "").toUpperCase()}.${cls.replace(/[^A-Za-z0-9]/g, "").toUpperCase()}`;
 // Học sinh cũ chưa có lớp thì hiện mã cũ trong ngoặc.
 export const who = (x: { seq: number; student_code: string | null; student_name: string | null; student_class?: string | null }) => x.student_name ? `${x.student_name} (${x.student_class || x.student_code})` : `Ẩn danh (cũ) #${x.seq}`;
-export type Ev = { session_id: string; identify: number; plan: number; calculate: number; explain: number; total: number; final_correct: boolean; max_hint_level: number; hint_count: number; errors: string[]; duration_s: number; survey_likert: number | null; confidence?: number | null };
+export type Ev = { session_id: string; identify: number; plan: number; calculate: number; explain: number; total: number; final_correct: boolean; max_hint_level: number; hint_count: number; errors: string[]; duration_s: number };
 
 export const r1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -15,8 +15,14 @@ type Bar = { name: string; value: number };
 // Kết quả hàm SQL link_summary (đã gom trong DB).
 export type Summary = {
   sessions: number; done: number; rubric: Bar[]; totalAvg: number; correctPct: number; durationMin: number; hintAvg: number;
-  totalDist: Bar[]; hintDist: Bar[]; errors: Bar[]; daily: Bar[]; likertAvg: number | null; likertN: number;
+  totalDist: Bar[]; hintDist: Bar[]; errors: Bar[]; daily: Bar[];
 };
+
+// Kết quả hàm SQL link_problem_stats: mỗi đề những học sinh nào và trạng thái từng em.
+// ok = tự làm được (có phiên đúng, không bị giải hộ; một lần là đủ); helped = đúng nhưng có giải hộ; wrong = chấm rồi chưa đúng; none = chưa nộp.
+export type PState = "ok" | "helped" | "wrong" | "none";
+export type ProblemStat = { code: string; students: { code: string | null; name: string | null; class: string | null; sessions: number; state: PState }[] };
+export const P_STATE: Record<PState, { text: string; tone: "success" | "warn" | "danger" | "neutral" }> = { ok: { text: "Tự làm được", tone: "success" }, helped: { text: "Đúng nhưng có giải hộ", tone: "warn" }, wrong: { text: "Chưa đúng", tone: "danger" }, none: { text: "Chưa nộp", tone: "neutral" } };
 
 type G = { n: number; mean: number; sd: number; v: number }; // v = phương sai mẫu, sd = độ lệch chuẩn tổng thể
 
@@ -75,6 +81,26 @@ export function hardSteps(ss: SRow[], probs: Map<string, StepInfo>) {
   }
   return [...seen.values()].map((e) => ({ code: e.code, title: probs.get(e.code)!.title, step: e.step, label: label(probs.get(e.code)!, e.step - 1), n: e.who.size, students: [...e.who.values()].sort((a, b) => b.times - a.times) }))
     .sort((a, b) => b.n - a.n || a.code.localeCompare(b.code) || a.step - b.step);
+}
+
+// Cả lớp, theo học sinh: mỗi học sinh gặp khó ở những (đề, bước) nào, mấy phiên. Nhiều bước nhất trước.
+export function hardStudents(ss: SRow[], probs: Map<string, StepInfo>) {
+  type Stp = { code: string; step: number; label: string; times: number };
+  const who = new Map<string, { code: string | null; name: string | null; steps: Map<string, Stp> }>();
+  for (const x of ss) {
+    const p = probs.get(x.problem_code);
+    for (let i = 0; p && i < p.steps.length; i++) if ((x.struggled ?? 0) >> i & 1) {
+      const key = x.student_code ?? x.id;
+      const w = who.get(key) ?? who.set(key, { code: x.student_code, name: x.student_name ?? null, steps: new Map() }).get(key)!;
+      const k = `${x.problem_code}|${i}`;
+      const s = w.steps.get(k) ?? w.steps.set(k, { code: x.problem_code, step: i + 1, label: label(p, i), times: 0 }).get(k)!;
+      s.times++;
+    }
+  }
+  return [...who.values()].map((w) => {
+    const steps = [...w.steps.values()].sort((a, b) => b.times - a.times || a.code.localeCompare(b.code) || a.step - b.step);
+    return { code: w.code, name: w.name, steps, total: steps.reduce((n, s) => n + s.times, 0) };
+  }).sort((a, b) => b.steps.length - a.steps.length || b.total - a.total);
 }
 
 // Một học sinh: mỗi (đề, bước) gặp khó mấy phiên, bị giải hộ mấy phiên, trên tổng số phiên làm đề đó. Bước giải hộ nhiều rồi gặp khó nhiều trước.

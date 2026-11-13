@@ -25,8 +25,6 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState(false);
-  const [rated, setRated] = useState(false);
-  const [sure, setSure] = useState(false); // đã tự đánh giá mức hiểu bài
   const [text, setText] = useState("");
   const [prog, setProg] = useState<Prog | null>(null);
   const [askOpen, setAskOpen] = useState(false); // khay "Hỏi bài" (ô gõ riêng, tách khỏi ô nộp bước)
@@ -91,7 +89,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
     const { ok, data } = await post<R>("/api/chat", { action: "resume", slug, sessionId, studentName: who?.name, studentClass: who?.cls });
     if (my !== tok.current) return;
     if (!ok || !data.sessionId) { setBusy(false); setErr(data.error ?? "Không mở lại được bài dở. Bạn thử lại hoặc chọn làm lại mới."); return; }
-    setPending(null); setBusy(false); setErr(""); setWrong(0); setDone(false); setRated(false); setSure(false); setAskOpen(false); setAskText("");
+    setPending(null); setBusy(false); setErr(""); setWrong(0); setDone(false); setAskOpen(false); setAskText("");
     setMsgs(data.msgs ?? []); setSid(data.sessionId); setProg(data.progress ?? { done: 0, total: p.total });
   }
 
@@ -131,7 +129,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
 
   function changeWho() {
     started.current = false; tok.current++; setPending(null);
-    setWho(null); setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setSure(false); setErr(""); setProg(null); setAskOpen(false); setAskText(""); setWrong(0);
+    setWho(null); setProb(null); setSid(undefined); setMsgs([]); setDone(false); setErr(""); setProg(null); setAskOpen(false); setAskText(""); setWrong(0);
   }
 
   // Nộp bước giải (ô chính) hoặc gửi câu hỏi (khay Hỏi bài): hai ô gõ riêng, cùng đường gửi.
@@ -167,17 +165,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   // Quay lại danh sách đề. Phiên đang làm dở để nguyên ("Bỏ dở"), giống khi học sinh đóng tab.
   function back() {
     tok.current++; setPending(null);
-    setProb(null); setSid(undefined); setMsgs([]); setDone(false); setRated(false); setSure(false); setText(""); setErr(""); setBusy(false); setShowStmt(false); setProg(null); setAskOpen(false); setAskText(""); setWrong(0);
-  }
-
-  async function rateSure(n: number) {
-    setSure(true);
-    await post("/api/chat", { action: "survey", slug, sessionId: sid, confidence: n });
-  }
-
-  async function rate(n: number) {
-    setRated(true);
-    await post("/api/chat", { action: "survey", slug, sessionId: sid, likert: n });
+    setProb(null); setSid(undefined); setMsgs([]); setDone(false); setText(""); setErr(""); setBusy(false); setShowStmt(false); setProg(null); setAskOpen(false); setAskText(""); setWrong(0);
   }
 
   if (!who) {
@@ -284,18 +272,6 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
         {done ? (
           <div className="flex flex-col gap-3">
             <Alert tone="success">Em đã hoàn thành bài. Cảm ơn em.</Alert>
-            {!sure && (
-              <fieldset>
-                <legend className="mb-2 text-sm">Em tự thấy mình hiểu bài này đến đâu? (1 = chưa hiểu, 5 = hiểu rõ)</legend>
-                <div className="flex gap-2">{[1, 2, 3, 4, 5].map((n) => <Button key={n} variant="secondary" className="flex-1 px-0" onClick={() => rateSure(n)} aria-label={`${n} điểm`}>{n}</Button>)}</div>
-              </fieldset>
-            )}
-            {rated ? sure && <p className="text-sm text-text-muted">Đã ghi nhận đánh giá của bạn.</p> : (
-              <fieldset>
-                <legend className="mb-2 text-sm">Chatbot giúp em giải bài tốt hơn? (1 = không, 5 = rất nhiều)</legend>
-                <div className="flex gap-2">{[1, 2, 3, 4, 5].map((n) => <Button key={n} variant="secondary" className="flex-1 px-0" onClick={() => rate(n)} aria-label={`${n} điểm`}>{n}</Button>)}</div>
-              </fieldset>
-            )}
           </div>
         ) : (
           <StepInput text={text} setText={setText} busy={busy} ready={!!sid} onSend={send} onHint={hint} progress={prog} askOpen={askOpen} setAskOpen={setAskOpen} askText={askText} setAskText={setAskText} onAsk={sendAsk} stuck={wrong >= 2} box={box} compact={kb} />

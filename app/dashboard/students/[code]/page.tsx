@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
 import { loadStudent } from "@/lib/students";
-import { fmtTime, r1, sessionState, studentMsgs } from "@/lib/stats";
+import { fmtTime, sessionState, studentMsgs } from "@/lib/stats";
+import { critTen } from "@/lib/score";
 import { shortId } from "@/lib/sid";
 import AdviceButton from "@/components/AdviceButton";
 import ShareButton from "@/components/ShareButton";
@@ -45,10 +46,10 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         <div className="flex flex-wrap items-start gap-2"><ShareButton code={prof.code} /><StudentDelete code={prof.code} /></div>
       </div>
 
-      <Section title="Điểm trung bình theo tiêu chí (thang 0–3)">
+      <Section title="Điểm trung bình theo tiêu chí (thang 10)">
         {prof.evaluated === 0 ? <p className="text-text-muted">Chưa có bài nào được chấm.</p> : (
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {prof.rubric.map((r, i) => <li key={r.key}><span className="block text-sm text-text-muted">{r.name}{i === 0 ? " (yếu nhất)" : ""}</span><span className={`tnum text-2xl font-bold ${i === 0 ? "text-danger" : ""}`}>{r1(r.value)}</span></li>)}
+            {prof.rubric.map((r) => <li key={r.key}><span className="block text-sm text-text-muted">{r.name}</span><span className="tnum text-2xl font-bold">{critTen(r.value)}</span></li>)}
           </ul>
         )}
       </Section>

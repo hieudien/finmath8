@@ -46,13 +46,11 @@ export default async function Page() {
   ];
   const next = steps.find((x) => !x.done);
   const o: Ov = ov ?? { sessions: 0, done: 0, evals: 0, total_avg: 0, correct_pct: 0, duration_s: 0, hint_avg: 0 };
-  const m = { sessions: o.sessions, completion: o.sessions ? Math.round((o.done / o.sessions) * 100) : 0, totalAvg: avgTen(o.total_avg), correctPct: Math.round(o.correct_pct), durationMin: r1(o.duration_s / 60), hintAvg: r1(o.hint_avg), errors: er ?? [] };
+  const m = { sessions: o.sessions, totalAvg: avgTen(o.total_avg), durationMin: r1(o.duration_s / 60), errors: er ?? [] };
   const label = new Map(links.map((l) => [l.id, l.label]));
   const kpis: [string, string | number][] = [
     ["Đề bài", np ?? 0],
     ["Liên kết đang mở", links.filter((l) => l.active).length],
-    ["Phiên chat", m.sessions],
-    ["Hoàn thành", m.sessions ? `${m.completion}%` : "—"],
   ];
 
   return (
@@ -129,7 +127,7 @@ export default async function Page() {
             <section className="flex flex-col gap-2 border-t border-border pt-4" aria-labelledby="sum">
               <h2 id="sum">Kết quả chung</h2>
               <dl className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                {([["Điểm TB / 10", m.totalAvg], ["Đúng kết luận", `${m.correctPct}%`], ["Thời gian TB (phút)", m.durationMin], ["Lần tăng gợi ý TB", m.hintAvg]] as [string, string | number][]).map(([k, v]) => (
+                {([["Điểm TB / 10", m.totalAvg], ["Thời gian TB (phút)", m.durationMin]] as [string, string | number][]).map(([k, v]) => (
                   <div key={k}><dt className="text-sm text-text-muted">{k}</dt><dd className="tnum text-2xl font-bold">{v}</dd></div>
                 ))}
               </dl>

@@ -41,7 +41,6 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("ask"), slug, sessionId: sid, step: z.number().int().min(0).max(30), text: z.string().trim().min(1).max(ASK_MAX) }),
   z.object({ action: z.literal("submit"), slug, sessionId: sid, style, answers: stepAnswers, whole: wholeText }),
   z.object({ action: z.literal("draft"), slug, sessionId: sid, style, answers: stepAnswers, whole: wholeText }), // lưu nháp khi rời ô nhập, không gọi AI
-  z.object({ action: z.literal("survey"), slug, sessionId: sid, likert: z.number().int().min(1).max(5).optional(), confidence: z.number().int().min(1).max(5).optional() }),
 ]);
 
 export const maxDuration = 60;
@@ -164,14 +163,6 @@ async function handle(req: Request, tr: Trace) {
   const prob = pickProb(sess);
   if (!prob) return err("Không tìm thấy bài.", 404);
   const cps = checkpoints(prob), n = cps.length;
-
-  if (b.action === "survey") {
-    const upd = { ...(b.likert && { survey_likert: b.likert }), ...(b.confidence && { confidence: b.confidence }) };
-    if (!Object.keys(upd).length) return err("Yêu cầu không hợp lệ.");
-    check(await db.from("session_evals").update(upd as never).eq("session_id", sess.id)); // bản chấm đã ghi đồng bộ lúc nộp đúng hết, không phải chờ
-    await log({ ...L, action: "survey_submitted", meta: { likert: b.likert, confidence: b.confidence } });
-    return Response.json({ ok: true });
-  }
 
   if (sess.status !== "active") return err("Bài này đã kết thúc.", 409);
 

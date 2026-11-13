@@ -1,7 +1,7 @@
 import { admin } from "@/lib/supabase/admin";
 import { loadStudent } from "@/lib/students";
-import { fmtTime, r1, sessionState, studentMsgs } from "@/lib/stats";
-import { avgTen } from "@/lib/score";
+import { fmtTime, sessionState, studentMsgs } from "@/lib/stats";
+import { avgTen, critTen } from "@/lib/score";
 import { shareOf } from "@/lib/share";
 import Brand from "@/components/Brand";
 import ParentChatLog from "@/components/ParentChatLog";
@@ -49,9 +49,9 @@ export default async function Page({ params }: { params: Promise<{ token: string
       </div>
 
       {prof.evaluated > 0 && (
-        <Section title="Điểm theo tiêu chí (thang 0–3)">
+        <Section title="Điểm theo tiêu chí (thang 10)">
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {prof.rubric.map((r) => <li key={r.key}><span className="block text-sm text-text-muted">{r.name}</span><span className="tnum text-2xl font-bold">{r1(r.value)}</span></li>)}
+            {prof.rubric.map((r) => <li key={r.key}><span className="block text-sm text-text-muted">{r.name}</span><span className="tnum text-2xl font-bold">{critTen(r.value)}</span></li>)}
           </ul>
         </Section>
       )}

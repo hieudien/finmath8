@@ -3,7 +3,7 @@ import { bits, weakSteps, type StepInfo } from "@/lib/stats";
 
 type Sb = Awaited<ReturnType<typeof supabaseServer>>;
 
-export const CRITERIA = [["identify", "Nhận diện"], ["plan", "Lập kế hoạch"], ["calculate", "Tính toán"], ["explain", "Giải thích"]] as const;
+export const CRITERIA = [["identify", "Hiểu đề bài"], ["plan", "Lập kế hoạch giải"], ["calculate", "Thực hiện kế hoạch"], ["explain", "Kiểm tra và đánh giá"]] as const;
 
 export type Attempt = {
   id: string; problem_code: string; title: string; status: string; started_at: string;
@@ -12,7 +12,7 @@ export type Attempt = {
 };
 export type Profile = {
   code: string; cls: string | null; names: string[]; attempts: Attempt[];
-  rubric: { key: string; name: string; value: number }[]; // trung bình 0..3, yếu nhất đứng đầu
+  rubric: { key: string; name: string; value: number }[]; // trung bình 0..3
   errors: { name: string; value: number }[];
   gaps: { name: string; value: number }[]; // kiến thức nền còn thiếu (AI ghi khi chấm phiên có bước được giải hộ)
   weakSkills: { name: string; value: number }[]; // kỹ năng của các bài làm chưa tốt (tổng < 8/12 hoặc chưa đúng)
@@ -43,7 +43,7 @@ export async function loadStudent(sb: Sb, code: string, tid?: string): Promise<P
   const info = new Map<string, StepInfo>(pd.map((x) => [x.code, { title: x.title ?? x.code, steps: x.steps ?? [], goals: x.goals?.length === x.steps?.length ? x.goals ?? [] : [] }]));
   const attempts = rows.map((r) => ({ id: r.id, problem_code: r.problem_code, title: prob.get(r.problem_code)?.title ?? r.problem_code, status: r.status, started_at: r.started_at, revealed: bits(r.revealed ?? 0), ev: arr(r.session_evals)[0] ?? null }));
   const done = attempts.filter((a) => a.ev);
-  const rubric = CRITERIA.map(([key, name]) => ({ key, name, value: done.length ? done.reduce((n, a) => n + (a.ev as never as Record<string, number>)[key], 0) / done.length : 0 })).sort((a, b) => a.value - b.value);
+  const rubric = CRITERIA.map(([key, name]) => ({ key, name, value: done.length ? done.reduce((n, a) => n + (a.ev as never as Record<string, number>)[key], 0) / done.length : 0 }));
   const errors = new Map<string, number>(), skills = new Map<string, number>(), gaps = new Map<string, number>();
   for (const a of done) {
     a.ev!.errors.forEach((e) => errors.set(e, (errors.get(e) ?? 0) + 1));
