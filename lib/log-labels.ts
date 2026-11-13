@@ -53,7 +53,7 @@ export const LOG: Record<string, Info> = {
   session_off_topic_closed: { label: "Chốt bài do lạc đề liên tục", group: STU, warn: true },
   ws_hint: { label: "Học sinh mở gợi ý", group: STU, text: (m) => `Bước ${s(m.step)}, gợi ý ${s(m.level)}` },
   ws_reveal: { label: "Học sinh xem đáp án một bước", group: STU, warn: true, text: (m) => `Bước ${s(m.step)} (không tính điểm)` },
-  ws_submit: { label: "Học sinh nộp bài", group: STU, text: (m) => `Lần ${s(m.attempt)}: đúng ${s(m.right)}/${s(m.total)} bước` },
+  ws_submit: { label: "Học sinh nộp bài", group: STU, text: (m) => `Lần ${s(m.attempt)}${m.style === "whole" ? " (nhập cả bài)" : ""}: đúng ${s(m.right)}/${s(m.total)} bước` },
   ws_ask: { label: "Học sinh hỏi về một bước", group: STU, text: (m) => `Bước ${s(m.step)}` },
 
   model_fallback: { label: "Tự đổi model AI", group: SYS, text: (m) => `Từ ${s(m.from)} sang ${s(m.to)}${m.reason ? ` (${s(m.reason)})` : ""}` },

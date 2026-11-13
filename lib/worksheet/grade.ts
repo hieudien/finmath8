@@ -30,14 +30,17 @@ ${p.title}. ${p.statement ?? ""}
 Dữ liệu: ${JSON.stringify(p.data)}
 Các bước lời giải: ${cps.map((c) => `S${c.id + 1}: ${stripStep(c.label)}`).join(" | ")}${gradeRule(p.grade)}`;
 
-export const wsSystem = (p: Problem, cps: Cp[]) => `Bạn là MathStep AI, chấm TỪNG BƯỚC bài làm Toán của học sinh. Công thức đặt trong $...$ theo LaTeX.
+export const wsSystem = (p: Problem, cps: Cp[], whole = false) => `Bạn là MathStep AI, chấm TỪNG BƯỚC bài làm Toán của học sinh. Công thức đặt trong $...$ theo LaTeX.
 ${bai(p, cps)}
 # QUY TẮC
-- Mỗi lượt có dòng [Các bước cần xét: ...] và đáp án học sinh viết cho từng bước dạng "Sk: ...". Với MỖI bước được liệt kê, xét ĐỘC LẬP phần Sk so với việc của bước Sk trong lời giải; bỏ qua các bước khác. Học sinh chép từ giấy nháp nên có thể ghi vắn tắt.
+- ${whole
+    ? `Học sinh viết lời giải CẢ BÀI trong một ô (sau dòng "BÀI LÀM:"). Mỗi lượt có dòng [Các bước cần xét: ...]. Với MỖI bước được liệt kê, tìm trong bài làm phần thực hiện việc của bước Sk (học sinh có thể không đánh số bước, viết vắn tắt hoặc gộp bước), rồi xét phần đó so với việc của bước Sk trong lời giải; bỏ qua các bước khác. Chỉ chọn "chưa làm" khi cả bài làm không có phần nào làm việc của bước Sk. Chỉ cần phần liên quan đến bước Sk đúng thì bước Sk đủ, dù các bước khác sai. Một con số chỉ tính cho bước Sk khi nó là kết quả của đúng phép tính của bước đó, không tính khi nó chỉ xuất hiện tình cờ ở chỗ khác.`
+    : `Mỗi lượt có dòng [Các bước cần xét: ...] và đáp án học sinh viết cho từng bước dạng "Sk: ...". Với MỖI bước được liệt kê, xét ĐỘC LẬP phần Sk so với việc của bước Sk trong lời giải; bỏ qua các bước khác. Học sinh chép từ giấy nháp nên có thể ghi vắn tắt.`}
 - verdict (đúng một trong bốn giá trị):
   "đủ": Sk có biểu thức, phương trình hoặc câu cụ thể thực hiện đúng việc của bước (cách khác nhưng đúng cũng được; bước cần phương trình thì phải có dấu "="). Viết ngắn hơn lời giải mẫu mà đủ ý vẫn là "đủ"; viết hệ phương trình bằng chữ thường, dùng "và", dấu ";" hoặc xuống dòng thay vì ký hiệu ngoặc nhọn vẫn là "đủ" nếu đúng các phương trình.
-  "thiếu": đúng hướng nhưng thiếu một phần cần thiết.
-  "sai": có nội dung nhưng làm sai phép tính, sai so sánh, dùng sai dữ kiện hoặc sai việc của bước (kể cả khi con số cuối trùng kết quả chuẩn mà cách làm sai bản chất). Chỉ chọn "sai" khi chắc chắn.
+  Học sinh được phép GỘP hoặc BỎ QUA bước biến đổi trung gian (viết gọn thành phương trình rút gọn rồi kết quả, vd "21-7y=7" rồi "y=2" thay vì liệt kê "21-6y-y=7", "-7y=-14"): nếu các biểu thức học sinh viết đều đúng toán (thử thay nghiệm vào để kiểm) và có kết quả cuối của bước thì vẫn là "đủ", KHÔNG chọn "thiếu" hay "sai" chỉ vì khác từng dòng của lời giải mẫu.
+  "thiếu": đúng hướng nhưng thiếu một phần cần thiết (thiếu KẾT QUẢ hoặc việc chính của bước; không tính là thiếu khi chỉ bỏ dòng trung gian).
+  "sai": có nội dung nhưng làm sai phép tính, sai so sánh, dùng sai dữ kiện hoặc sai việc của bước (kể cả khi con số cuối trùng kết quả chuẩn mà cách làm sai bản chất). Chỉ chọn "sai" khi chắc chắn và chỉ ra được ĐÚNG dòng/phép sai trong note; không chỉ ra được dòng sai cụ thể thì không chọn "sai". Trước khi chọn "sai", tự thử lại từng phép biến đổi học sinh viết bằng cách thay nghiệm.
   "chưa làm": chung chung, vô nghĩa, hoặc không có biểu thức cụ thể.
 - Dòng [Sk máy kiểm: KHỚP] nghĩa là số hoặc dạng chuẩn của bước đã có trong Sk: chỉ chọn "sai" nếu cách làm hoặc phép tính ở Sk sai thật sự, còn lại chọn "đủ". Dòng [Sk máy kiểm: KHÔNG khớp] chính xác hơn phán đoán của bạn: verdict KHÔNG được là "đủ".
 - evidence = trích NGUYÊN VĂN từ phần Sk (không sửa) khi verdict = "đủ"; các trường hợp khác để rỗng.
@@ -49,12 +52,13 @@ Trả JSON {"steps":[{"step":số thứ tự bước (1-based),"verdict":"đủ"
 const strongCfg = (cfg: LlmCfg): LlmCfg => ({ ...cfg, model: PROVIDERS[cfg.provider].models[2] ?? cfg.model });
 
 // Judge thật: gọi Gemini. first = model nhanh nhất chấm gộp; confirm = model mạnh xác nhận các bước bị bác dù số khớp (tránh bác oan học sinh).
-export function aiJudge(cfg: LlmCfg, p: Problem, onMs?: (key: string, ms: number) => void): Judge {
+export function aiJudge(cfg: LlmCfg, p: Problem, onMs?: (key: string, ms: number) => void, whole = false): Judge {
   const cps = checkpoints(p);
   return async (kind, ids, answers, metSet) => {
-    const text = `[Các bước cần xét: ${ids.map((i) => "S" + (i + 1)).join(", ")}]\n${ids.map((i) => `[S${i + 1} máy kiểm: ${metSet.has(i) ? "KHỚP" : "KHÔNG khớp"}]`).join("\n")}\n${ids.map((i) => `S${i + 1}: ${answers[i]}`).join("\n")}`;
+    const head = `[Các bước cần xét: ${ids.map((i) => "S" + (i + 1)).join(", ")}]\n${ids.map((i) => `[S${i + 1} máy kiểm: ${metSet.has(i) ? "KHỚP" : "KHÔNG khớp"}]`).join("\n")}\n`;
+    const text = head + (whole ? `BÀI LÀM:\n${answers[ids[0]]}` : ids.map((i) => `S${i + 1}: ${answers[i]}`).join("\n")); // cả bài: gửi toàn văn một lần, không lặp theo số bước
     const t0 = Date.now();
-    const out = await askJson(kind === "confirm" ? strongCfg(cfg) : cfg, wsSystem(p, cps), [{ role: "user", text }], aiSchema, { maxTokens: Math.min(1200, 120 + ids.length * 140), think: kind === "confirm" ? "low" : false, deadlineMs: 40_000, attemptMs: kind === "confirm" ? 20_000 : 12_000, use: "ws_grade", temperature: 0, seed: seedOf(p.id, kind, text) }).catch(() => null);
+    const out = await askJson(kind === "confirm" ? strongCfg(cfg) : cfg, wsSystem(p, cps, whole), [{ role: "user", text }], aiSchema, { maxTokens: Math.min(1200, 120 + ids.length * 140), think: kind === "confirm" ? "low" : false, deadlineMs: 40_000, attemptMs: kind === "confirm" ? 20_000 : 12_000, use: "ws_grade", temperature: 0, seed: seedOf(p.id, kind, text) }).catch(() => null);
     onMs?.(`ai_${kind}`, Date.now() - t0);
     return out ? out.steps.filter((x) => ids.includes(x.step - 1)).map((x) => ({ ...x, step: x.step - 1 })) : null;
   };
@@ -68,7 +72,9 @@ const CANNED: Record<Verdict, string> = {
 };
 
 // Chấm các bước chưa khóa. answers[i] là đáp án bước i (0-based). Trả kết quả cho đúng các bước chưa khóa và có nội dung.
-export async function gradeWorksheet(p: Problem, answers: string[], locked: number, judge: Judge): Promise<StepResult[]> {
+// whole = true: học sinh viết cả bài vào một ô, answers[i] của mọi bước chưa khóa là cùng một văn bản. Khác với từng bước: không cắt bài ở dòng sai đầu tiên
+// (phép sai ở bước 3 không được làm mất bằng chứng của bước 4), không tắt nhanh bằng "số trơn" hay bẫy đã biết, và số khớp tình cờ phải được AI xác nhận "đủ".
+export async function gradeWorksheet(p: Problem, answers: string[], locked: number, judge: Judge, whole = false): Promise<StepResult[]> {
   const cps = checkpoints(p);
   const res = new Map<number, StepResult>();
   const work: string[] = []; // phần học sinh tự viết của từng bước (đã gỡ câu chép lại đề và dòng sau phép tính sai đầu tiên)
@@ -80,25 +86,26 @@ export async function gradeWorksheet(p: Problem, answers: string[], locked: numb
     if (!raw) { res.set(c.id, { step: c.id, ok: false, note: "Bước này chưa có đáp án, bạn chép từ giấy nháp vào ô nhé." }); work[c.id] = ""; continue; }
     const lines = stripEcho(raw, [p.title, p.statement ?? ""]).split("\n").map((l) => ({ l, bad: badClaims(l) }));
     const firstBad = lines.findIndex((x) => x.bad.length);
-    const w = (firstBad < 0 ? lines : lines.slice(0, firstBad)).map((x) => x.l).join("\n").trim() || raw;
-    work[c.id] = w;
+    const w = whole ? lines.filter((x) => !x.bad.length).map((x) => x.l).join("\n").trim() || raw : (firstBad < 0 ? lines : lines.slice(0, firstBad)).map((x) => x.l).join("\n").trim() || raw;
+    work[c.id] = whole ? lines.map((x) => x.l).join("\n").trim() || raw : w; // cả bài: AI thấy đủ bài (kể cả dòng sai) để chỉ đúng lỗi; máy chỉ tìm kết quả trong các dòng không sai
     const hit = met(c, w);
     if (hit) metSet.add(c.id);
     const free = !c.must.length && !c.words?.length; // bước không có số/dạng chuẩn (lập biến, giải thích): chỉ AI phán được
-    if (firstBad >= 0 && !hit) { res.set(c.id, { step: c.id, ok: false, note: `Mình thấy "${lines[firstBad].bad[0]}" chưa đúng, bạn kiểm tra lại phép đó nhé.` }); continue; }
-    if (!free && !hit) {
+    // cả bài: dòng sai có thể thuộc bước khác, nên không chốt bằng luật mà để AI phán
+    if (!whole && firstBad >= 0 && !hit) { res.set(c.id, { step: c.id, ok: false, note: `Mình thấy "${lines[firstBad].bad[0]}" chưa đúng, bạn kiểm tra lại phép đó nhé.` }); continue; }
+    if (!free && !hit && !whole) {
       const why = trapReply(p, c, w, []); // đúng một kết quả sai đã biết: giải thích lỗi AI viết sẵn lúc tạo đề
       if (why) { res.set(c.id, { step: c.id, ok: false, note: toYou(why) }); continue; }
       if (bareNum(w)) { res.set(c.id, { step: c.id, ok: false, note: `Con số ${w.trim()} chưa khớp với kết quả của bước này, bạn soát lại phép tính nhé.` }); continue; }
     }
-    if (hit && bareNum(w)) { res.set(c.id, { step: c.id, ok: true, note: "" }); continue; } // con số trơn khớp kết quả chuẩn: không có cách làm để soát lập luận
+    if (hit && !whole && bareNum(w)) { res.set(c.id, { step: c.id, ok: true, note: "" }); continue; } // con số trơn khớp kết quả chuẩn: không có cách làm để soát lập luận
     needAi.push(c.id);
   }
 
   if (needAi.length) {
     const first = await judge("first", needAi, work, metSet).catch(() => null);
     const by = new Map((first ?? []).map((x) => [x.step, x]));
-    const disputed: number[] = [], recheck: number[] = [];
+    const disputed: number[] = [], weak: number[] = [], recheck: number[] = []; // weak (chỉ cả bài): số khớp nhưng AI không duyệt "đủ"
     for (const id of needAi) {
       const c = cps[id], v = by.get(id);
       if (!first) { // AI lỗi hoặc quá chậm: số khớp thì chấp nhận (server đã kiểm); số chưa khớp thì sai; bước chỉ AI phán được thì để nộp lại, không tính là sai
@@ -109,6 +116,7 @@ export async function gradeWorksheet(p: Problem, answers: string[], locked: numb
       }
       if (metSet.has(id)) {
         if (v?.verdict === "sai") disputed.push(id);
+        else if (whole && v && v.verdict !== "đủ") weak.push(id);
         else res.set(id, { step: id, ok: true, note: "" });
         continue;
       }
@@ -123,12 +131,18 @@ export async function gradeWorksheet(p: Problem, answers: string[], locked: numb
         if (d.ok || v.verdict !== "chưa làm") res.set(v.step, d); // model mạnh duyệt đủ thì nhận; không thì dùng nhận xét của model mạnh
       }
     }
-    if (disputed.length) {
-      const second = await judge("confirm", disputed, work, metSet).catch(() => null);
+    if (disputed.length || weak.length) {
+      const second = await judge("confirm", [...disputed, ...weak], work, metSet).catch(() => null); // một lượt xác nhận chung cho cả hai nhóm
       const by2 = new Map((second ?? []).map((x) => [x.step, x]));
       for (const id of disputed) {
         const v = by2.get(id);
-        res.set(id, v?.verdict === "sai" ? { step: id, ok: false, note: cleanNote(p, cps, id, v.note, answers) || CANNED["sai"] } : { step: id, ok: true, note: "" }); // model mạnh không đồng ý thì coi là đúng
+        // Số đã khớp: chỉ bác khi model mạnh cũng nói "sai" VÀ có nhận xét chỉ ra chỗ sai (nhận xét rỗng = chung chung). "Sai" chung chung, không nêu được lỗi thì không đủ để bác oan học sinh.
+        const sai = v?.verdict === "sai" && v.note.trim().length > 0;
+        res.set(id, sai ? { step: id, ok: false, note: cleanNote(p, cps, id, v.note, answers) || CANNED["sai"] } : { step: id, ok: true, note: "" });
+      }
+      for (const id of weak) {
+        const v = by2.get(id);
+        res.set(id, !v || v.verdict === "đủ" ? { step: id, ok: true, note: "" } : decide(p, cps, id, v, work, answers)); // không có phán quyết (AI lỗi): số đã khớp nên nhận
       }
     }
   }

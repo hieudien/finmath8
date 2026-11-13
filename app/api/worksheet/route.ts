@@ -25,6 +25,11 @@ const who = { studentName: z.string().trim().min(2).max(60), studentClass: z.str
 const slug = z.string().min(4);
 const sid = z.string().uuid();
 const ANSWER_MAX = 500; // khớp giới hạn ô nhập ở trình duyệt
+const WHOLE_MAX = 3000; // ô nhập cả bài (kiểu "whole")
+// Kiểu nhập: steps = mỗi bước một ô (answers[]); whole = cả bài một ô (whole). Học sinh chọn, khóa sau lần nộp đầu.
+const style = z.enum(["steps", "whole"]).default("steps");
+const wholeText = z.string().max(WHOLE_MAX).default("");
+const stepAnswers = z.array(z.string().max(ANSWER_MAX)).max(31).default([]);
 const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("start"), slug, problemCode: z.string(), ...who }),
   z.object({ action: z.literal("resume_check"), slug, problemCode: z.string(), ...who }),
@@ -33,8 +38,8 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("hint"), slug, sessionId: sid, step: z.number().int().min(0).max(30), level: z.number().int().min(1).max(HINT_LEVELS) }),
   z.object({ action: z.literal("reveal"), slug, sessionId: sid, step: z.number().int().min(0).max(30) }),
   z.object({ action: z.literal("ask"), slug, sessionId: sid, step: z.number().int().min(0).max(30), text: z.string().trim().min(1).max(ASK_MAX) }),
-  z.object({ action: z.literal("submit"), slug, sessionId: sid, answers: z.array(z.string().max(ANSWER_MAX)).min(1).max(31) }),
-  z.object({ action: z.literal("draft"), slug, sessionId: sid, answers: z.array(z.string().max(ANSWER_MAX)).min(1).max(31) }), // lưu nháp khi rời ô nhập, không gọi AI
+  z.object({ action: z.literal("submit"), slug, sessionId: sid, style, answers: stepAnswers, whole: wholeText }),
+  z.object({ action: z.literal("draft"), slug, sessionId: sid, style, answers: stepAnswers, whole: wholeText }), // lưu nháp khi rời ô nhập, không gọi AI
   z.object({ action: z.literal("survey"), slug, sessionId: sid, likert: z.number().int().min(1).max(5).optional(), confidence: z.number().int().min(1).max(5).optional() }),
 ]);
 
@@ -102,11 +107,12 @@ async function handle(req: Request, tr: Trace) {
         const pr = pickProb(s);
         if (!pr) continue;
         const n = checkpoints(pr).length, locked = s.progress ?? 0;
-        const filled = draftAnswers(s.draft, n).filter((a, i) => !(locked >> i & 1) && a.trim()).length;
+        const wholeDraft = s.draft?.style === "whole";
+        const filled = wholeDraft ? (s.draft?.whole?.trim() ? 1 : 0) : draftAnswers(s.draft, n).filter((a, i) => !(locked >> i & 1) && a.trim()).length;
         const { data: ms } = await db.from("messages").select("ts").eq("session_id", s.id).eq("role", "student").order("id", { ascending: false }).limit(1);
         const last = (ms as { ts: string }[] | null)?.[0]?.ts;
         if (!last && !s.revealed && !filled) continue;
-        return Response.json({ resume: { sessionId: s.id, done: bitsOf(locked, n).length, filled, total: n, lastAt: s.draft?.at ?? last ?? s.started_at } });
+        return Response.json({ resume: { sessionId: s.id, done: bitsOf(locked, n).length, filled, total: n, style: wholeDraft ? "whole" : "steps", lastAt: s.draft?.at ?? last ?? s.started_at } });
       }
       return Response.json({});
     }
@@ -169,10 +175,11 @@ async function handle(req: Request, tr: Trace) {
 
   if (b.action === "draft") {
     // Nháp = ảnh chụp đáp án mọi bước lúc rời ô nhập; ghi đè cột draft (không sinh dòng mới, không gọi AI). Nháp trống hoàn toàn thì không tính là làm dở (xem resume_check).
-    if (b.answers.length !== n) return err("Bản nháp không khớp số bước. Tải lại trang rồi thử lại.");
+    if (b.style === "steps" && b.answers.length !== n) return err("Bản nháp không khớp số bước. Tải lại trang rồi thử lại.");
     if (limited(`wd:${sess.id}`, 60, 60_000)) return err("Lưu nháp quá nhanh. Chờ một chút nhé.", 429);
-    const answers = b.answers.map((a) => scrub(a).slice(0, ANSWER_MAX));
-    check(await db.from("chat_sessions").update({ draft: { answers, at: new Date().toISOString() } } as never).eq("id", sess.id));
+    const at = new Date().toISOString();
+    const draft = b.style === "whole" ? { style: "whole", whole: scrub(b.whole).slice(0, WHOLE_MAX), at } : { style: "steps", answers: b.answers.map((a) => scrub(a).slice(0, ANSWER_MAX)), at };
+    check(await db.from("chat_sessions").update({ draft } as never).eq("id", sess.id));
     return Response.json({ ok: true });
   }
 
@@ -218,7 +225,9 @@ async function handle(req: Request, tr: Trace) {
   }
 
   // submit
-  if (b.answers.length !== n) return err("Bài nộp không khớp số bước. Tải lại trang rồi thử lại.");
+  const whole = b.style === "whole";
+  if (!whole && b.answers.length !== n) return err("Bài nộp không khớp số bước. Tải lại trang rồi thử lại.");
+  if (whole && !b.whole.trim()) return err("Em chưa viết bài giải. Viết lời giải vào ô rồi mới nộp được.");
   if (limited(`wsub:${sess.id}`, 1, 3000)) return err("Bạn gửi nhanh quá. Chờ một chút rồi nộp lại nhé.", 429);
   const cfg = await llmCfg(link.teacher_id);
   if (!cfg) return notReady(link, anon);
@@ -226,13 +235,14 @@ async function handle(req: Request, tr: Trace) {
   const attempt = (prevSubmits ?? 0) + 1;
   if (attempt > MAX_SUBMITS) return err("Bạn đã nộp quá nhiều lần. Báo giáo viên của em.", 429);
   const locked = sess.progress ?? 0;
-  const answers = b.answers.map((a) => scrub(a).trim());
+  const wholeClean = whole ? scrub(b.whole).trim() : "";
+  const answers = whole ? Array.from({ length: n }, () => wholeClean) : b.answers.map((a) => scrub(a).trim()); // cả bài: mọi bước cùng một văn bản, hàm chấm tự tìm phần của từng bước
   const empty = Array.from({ length: n }, (_, i) => i).filter((i) => !(locked >> i & 1) && !answers[i]);
   if (empty.length) return err(`Bước ${empty.map((i) => i + 1).join(", ")} chưa có đáp án. Điền đủ các bước rồi mới nộp được.`);
 
   const tm: Record<string, number> = {};
   const t0 = Date.now();
-  const results = await gradeWorksheet(prob, answers, locked, aiJudge(cfg, prob, (k, ms) => { tm[k] = (tm[k] ?? 0) + ms; }));
+  const results = await gradeWorksheet(prob, answers, locked, aiJudge(cfg, prob, (k, ms) => { tm[k] = (tm[k] ?? 0) + ms; }, whole), whole);
   tm.total = Date.now() - t0;
   const okMask = results.filter((r) => r.ok).reduce((m, r) => m | 1 << r.step, 0);
   const progress = locked | okMask;
@@ -241,13 +251,13 @@ async function handle(req: Request, tr: Trace) {
   const wrongBits = results.filter((r) => !r.ok && !r.unjudged).reduce((m, r) => m | 1 << r.step, 0);
 
   const summary = `Lần ${attempt}: đúng ${right}/${n} bước.${results.filter((r) => !r.ok).map((r) => ` Bước ${r.step + 1}: ${r.note}`).join("")}`;
-  const text = [`Nộp lần ${attempt}`, ...answers.map((a, i) => `Bước ${i + 1}${locked >> i & 1 ? " (đã đúng)" : ""}: ${a}`)].join("\n");
+  const text = whole ? `Nộp lần ${attempt} (cả bài)\n${wholeClean}` : [`Nộp lần ${attempt}`, ...answers.map((a, i) => `Bước ${i + 1}${locked >> i & 1 ? " (đã đúng)" : ""}: ${a}`)].join("\n");
   check(await db.from("messages").insert([
-    { session_id: sess.id, role: "student", content: text, meta: { ws: { attempt, answers } } },
+    { session_id: sess.id, role: "student", content: text, meta: { ws: whole ? { attempt, style: "whole", whole: wholeClean } : { attempt, style: "steps", answers } } },
     { session_id: sess.id, role: "bot", content: summary, step: done ? 5 : null, meta: { kind: done ? "done" : "ws_result", results, ai_parts: tm } },
   ] as never));
   check(await db.from("chat_sessions").update({ draft: null, progress, struggled: sess.struggled | wrongBits, step: done ? 5 : 1 + Math.min(3, Math.floor((right / n) * 4)) } as never).eq("id", sess.id));
-  await log({ ...L, action: "ws_submit", meta: { session: sess.id, attempt, right, total: n, wrong: bitsOf(wrongBits, n).map((i) => i + 1), ms: tm } });
+  await log({ ...L, action: "ws_submit", meta: { session: sess.id, attempt, style: b.style, right, total: n, wrong: bitsOf(wrongBits, n).map((i) => i + 1), ms: tm } });
 
   let score: ReturnType<typeof wsScore> | undefined;
   if (done) score = await finishWs(sess, prob, link.teacher_id, anon, link.id, progress);
@@ -261,14 +271,17 @@ async function state(sessionId: string, progress: number, revealed: number, n: n
     db.from("messages").select("meta").eq("session_id", sessionId).eq("role", "student").not("meta->ws", "is", null).order("id", { ascending: false }).limit(1),
     db.from("messages").select("meta").eq("session_id", sessionId).eq("role", "bot").eq("meta->>kind", "ws_result").order("id", { ascending: false }).limit(1),
   ]);
-  const answers = ((st as { meta: { ws?: { answers?: string[] } } }[] | null)?.[0]?.meta.ws?.answers ?? []) as string[];
+  const lastWs = (st as { meta: { ws?: { answers?: string[]; style?: string; whole?: string } } }[] | null)?.[0]?.meta.ws;
+  const answers = (lastWs?.answers ?? []) as string[];
   const results = ((bt as { meta: { results?: StepResult[] } }[] | null)?.[0]?.meta.results ?? []) as StepResult[];
   // Bước chưa khóa lấy bản nháp mới nhất (nháp ghi sau lần nộp gần nhất, nộp xong thì nháp được xóa); bước đã khóa giữ đáp án đã nộp.
   const dr = draftAnswers(draft, n);
-  return { locked: bitsOf(progress, n), revealed: bitsOf(revealed, n), answers: Array.from({ length: n }, (_, i) => (progress >> i & 1) || !draft ? (answers[i] ?? "") : dr[i]), results: results.filter((r) => !(progress >> r.step & 1)) };
+  const style = draft?.style ?? lastWs?.style ?? "steps";
+  if (style === "whole") return { style, whole: draft?.whole ?? lastWs?.whole ?? "", locked: bitsOf(progress, n), revealed: bitsOf(revealed, n), answers: Array.from({ length: n }, () => ""), results: results.filter((r) => !(progress >> r.step & 1)) };
+  return { style, whole: "", locked: bitsOf(progress, n), revealed: bitsOf(revealed, n), answers: Array.from({ length: n }, (_, i) => (progress >> i & 1) || !draft ? (answers[i] ?? "") : dr[i]), results: results.filter((r) => !(progress >> r.step & 1)) };
 }
 
-type Draft = { answers?: string[]; at?: string };
+type Draft = { style?: string; answers?: string[]; whole?: string; at?: string };
 const draftAnswers = (d: Draft | null | undefined, n: number) => Array.from({ length: n }, (_, i) => (typeof d?.answers?.[i] === "string" ? d!.answers![i] : ""));
 
 // Nộp đúng hết: chấm điểm bằng luật (không gọi AI), ghi session_evals và đóng phiên. Bước đã xem đáp án 0 điểm.

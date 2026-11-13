@@ -34,6 +34,8 @@ export function checkpoints(p: Problem): Cp[] {
     const cand = chk[id]?.result ? [chk[id].result, ...chk[id].accepts] : [];
     const sets = cand.filter(isNum).map((x) => [...new Set(numsIn(x))].filter((n) => !given.has(n))).filter((s) => s.length);
     const words = cand.filter((x) => !isNum(x)).map(canon).filter((w) => w.length >= 2);
+    // Đề cũ chưa có step_checks: lấy kết quả cuối "ẩn = số" của lời giải bước (vd "...từ đó tính được y = 2") làm dạng chữ chuẩn, để học sinh viết gọn vẫn khớp.
+    if (!cand.length && !words.length) { const fin = [...stripStep(label).matchAll(/\b([a-z])\s*=\s*(-?\d+(?:[.,]\d+)?)(?![\d.,]*\s*[a-z(])/gi)].pop(); if (fin && !given.has(fin[2].replace(",", ".")) && /\btừ đó|\bsuy ra|\bvậy|\btính được|\bta được|\bnên\b/i.test(stripStep(label))) words.push(canon(`${fin[1]}=${fin[2]}`)); }
     // Không có kết quả chuẩn và không có số đáp án: lấy số ngay sau dấu "=" cuối của bước (kết quả trung gian), bỏ số nhỏ để khỏi khớp nhầm.
     const tail = stripStep(label).split("=").slice(1).pop() ?? "";
     const eq = numsIn(tail).slice(0, 1).filter((n) => !given.has(n) && (n.length >= 3 || n.includes(".")));
@@ -48,7 +50,12 @@ export function checkpoints(p: Problem): Cp[] {
 // Dạng chữ/biểu thức w có trong tin không (không dính vào số dài hơn: "x=2" không khớp "x=25").
 // Chữ số đứng ngay trước w là hệ số hoặc phần của số lớn hơn: "y=1" không khớp "2y=1" hay "3y=1", "2" không khớp "12".
 export function hasWord(text: string, w: string) {
-  const t = canon(text);
+  // canon() xóa xuống dòng nên "21-7y=7\ny=2" thành "21-7y=7y=2" và "y=2" bị coi là "7y=2": xét từng dòng riêng trước, rồi mới xét cả đoạn (dạng chữ trải nhiều dòng).
+  const lines = text.split(/\n+/);
+  if (lines.length > 1 && lines.some((l) => hasWordIn(canon(l), w))) return true;
+  return hasWordIn(canon(text), w);
+}
+function hasWordIn(t: string, w: string) {
   for (let i = t.indexOf(w); i >= 0; i = t.indexOf(w, i + 1)) {
     const nx = t[i + w.length] ?? "", nn = t[i + w.length + 1] ?? "";
     const longer = /\d/.test(nx) || (/[.,]/.test(nx) && /\d/.test(nn)); // x=2 không khớp x=25 hay x=2.5; "x=2." cuối câu thì khớp

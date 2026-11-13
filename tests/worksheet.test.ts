@@ -143,6 +143,52 @@ describe("gradeWorksheet: một lần gọi AI gộp mọi bước cần AI", ()
   });
 });
 
+describe("gradeWorksheet: kiểu nhập cả bài (một ô)", () => {
+  const all = (t: string) => [t, t, t];
+  const txt = "A = 3 + 4 = 7\nB = 7 × 2 = 14\nC = 14 + 1 = 15";
+
+  it("đủ các bước trong một ô: tất cả đúng, MỘT lượt gọi AI, văn bản gửi một lần", async () => {
+    const j = fake([]);
+    const r = await gradeWorksheet(prob, all(txt), 0, j, true);
+    expect(r.map((x) => x.ok)).toEqual([true, true, true]);
+    expect(j).toHaveBeenCalledTimes(1);
+  });
+
+  it("số khớp nhưng AI không duyệt đủ: model mạnh xác nhận, vẫn không duyệt thì báo bước đó", async () => {
+    const j: Judge = vi.fn(async (_k: string, ids: number[]) => ids.map((id) => ({ step: id, verdict: id === 2 ? ("chưa làm" as const) : ("đủ" as const), evidence: "", note: "" })));
+    const r = await gradeWorksheet(prob, all("A = 3 + 4 = 7\nB = 7 × 2 = 14\nĐáp số 15"), 0, j, true);
+    expect(r.map((x) => x.ok)).toEqual([true, true, false]);
+    expect(vi.mocked(j).mock.calls[1][0]).toBe("confirm");
+    expect(vi.mocked(j).mock.calls[1][1]).toEqual([2]);
+  });
+
+  it("thiếu một bước: số bước đó không có trong bài thì chỉ báo bước đó", async () => {
+    const r = await gradeWorksheet(prob, all("A = 3 + 4 = 7\nB = 7 × 2 = 14"), 0, fake([{ step: 2, verdict: "chưa làm" }]), true);
+    expect(r.map((x) => x.ok)).toEqual([true, true, false]);
+  });
+
+  it("phép sai ở giữa bài không làm mất bằng chứng của bước sau (không cắt bài)", async () => {
+    const r = await gradeWorksheet(prob, all("A = 3 + 4 = 7\nB = 7 × 2 = 15\nC = 14 + 1 = 15"), 0, fake([]), true);
+    expect(r[0].ok).toBe(true);
+    expect(r[2].ok).toBe(true);
+  });
+
+  it("dòng sai của bước khác không bị gán nhầm cho bước chưa khớp: để AI phán, AI thấy đủ bài", async () => {
+    const j = fake([]);
+    const r = await gradeWorksheet(prob, all("A = 3 + 4 = 7\nB = 7 × 2 = 15\nĐáp số 15"), 0b001, j, true);
+    expect(r.find((x) => x.step === 1)?.note ?? "").not.toContain("15");
+    expect(j).toHaveBeenCalled();
+    expect(vi.mocked(j).mock.calls[0][2][1]).toContain("7 × 2 = 15");
+  });
+
+  it("bước đã khóa không chấm lại; con số trơn không tắt bằng luật (cần AI)", async () => {
+    const j = fake([]);
+    const r = await gradeWorksheet(prob, all("15"), 0b011, j, true);
+    expect(r.map((x) => x.step)).toEqual([2]);
+    expect(j).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("wsScore: xem đáp án thì bước đó 0 điểm", () => {
   it("đúng hết, không xem đáp án: điểm tối đa", () => expect(wsScore(3, 0b111, 0)).toMatchObject({ own: 3, total: 12, finalCorrect: true }));
   it("xem đáp án bước nào, bước đó không tính dù chép đúng", () => {
@@ -170,5 +216,56 @@ describe("worksheet view: không lộ đáp án xuống trình duyệt", () => {
   it("gợi ý theo mức lấy đúng mức của bước; đáp án chỉ lấy khi gọi riêng", () => {
     expect(wsHint(prob, 1, 2)).toBe("Dùng phép nhân.");
     expect(wsAnswer(prob, 2)).toContain("15");
+  });
+});
+
+describe("gradeWorksheet: học sinh viết gọn, bỏ bước trung gian (ca HP01 bước 3)", () => {
+  const hp = problemSchema.parse({
+    id: "HP", title: "Hệ thế", statement: "Giải hệ $x + 2y = 7$, $3x - y = 7$.", solution: { x: "$3$", y: "$2$" },
+    solution_steps: ["Biểu diễn $x = 7 - 2y$.", "Thế vào: $3(7 - 2y) - y = 7$.", "Giải phương trình ẩn $y$, khai triển và rút gọn thành $21 - 6y - y = 7$, tương đương $-7y = -14$, từ đó tính được $y = 2$."],
+    step_goals: ["Rút x", "Thế", "Giải y"],
+    step_hints: [["a.", "b.", "c."], ["a.", "b.", "c."], ["a.", "b.", "c."]],
+    step_checks: [{ result: "x = 7 - 2y", accepts: [] }, { result: "3(7 - 2y) - y = 7", accepts: [] }, { result: "y = 2", accepts: ["y=2"] }],
+    hints: [1, 2, 3].map((level) => ({ level, text: "Đọc lại đề." })),
+  });
+  const ans = ["x = 7 - 2y", "3(7 - 2y) - y = 7", "21-7y=7\ny=2"];
+
+  it("xuống dòng không làm 'y=2' dính thành '7y=2': khớp dạng chuẩn, AI không bác thì đúng", async () => {
+    const r = await gradeWorksheet(hp, ans, 0b011, fake([]));
+    expect(r).toMatchObject([{ step: 2, ok: true }]);
+  });
+
+  it("AI bác 'sai' chung chung (không nêu được lỗi) thì không bác oan bước đã khớp", async () => {
+    const j: Judge = vi.fn(async (_k: string, ids: number[]) => ids.map((id) => ({ step: id, verdict: "sai" as const, evidence: "", note: "" })));
+    const r = await gradeWorksheet(hp, ans, 0b011, j);
+    expect(r[0].ok).toBe(true);
+  });
+
+  it("vẫn không khớp khi 'y=2' thật sự là hệ số dính liền (7y=2)", async () => {
+    const r = await gradeWorksheet(hp, ["x = 7 - 2y", "3(7 - 2y) - y = 7", "7y=2"], 0b011, fake([{ step: 2, verdict: "thiếu" }]));
+    expect(r[0].ok).toBe(false);
+  });
+});
+
+describe("gradeWorksheet: cả bài, học sinh viết gọn (ca HP01 bước 3)", () => {
+  const hp = problemSchema.parse({
+    id: "HP", title: "Hệ thế", statement: "Giải hệ $x + 2y = 7$, $3x - y = 7$.", solution: { x: "$3$", y: "$2$" },
+    solution_steps: ["Biểu diễn $x = 7 - 2y$.", "Thế vào: $3(7 - 2y) - y = 7$.", "Giải phương trình ẩn $y$, khai triển và rút gọn thành $21 - 6y - y = 7$, tương đương $-7y = -14$, từ đó tính được $y = 2$."],
+    step_goals: ["Rút x", "Thế", "Giải y"],
+    step_hints: [["a.", "b.", "c."], ["a.", "b.", "c."], ["a.", "b.", "c."]],
+    step_checks: [{ result: "x = 7 - 2y", accepts: [] }, { result: "3(7 - 2y) - y = 7", accepts: [] }, { result: "y = 2", accepts: ["y=2"] }],
+    hints: [1, 2, 3].map((level) => ({ level, text: "Đọc lại đề." })),
+  });
+  const bai = "x = 7 - 2y\n3(7 - 2y) - y = 7\n21-7y=7\ny=2";
+
+  it("AI duyệt đủ thì bước 3 đúng", async () => {
+    const r = await gradeWorksheet(hp, [bai, bai, bai], 0b011, fake([]), true);
+    expect(r).toMatchObject([{ step: 2, ok: true }]);
+  });
+
+  it("AI chỉ nói 'sai' chung chung (số đã khớp) thì không bác oan", async () => {
+    const j: Judge = vi.fn(async (_k: string, ids: number[]) => ids.map((id) => ({ step: id, verdict: "sai" as const, evidence: "", note: "" })));
+    const r = await gradeWorksheet(hp, [bai, bai, bai], 0b011, j, true);
+    expect(r[0].ok).toBe(true);
   });
 });
