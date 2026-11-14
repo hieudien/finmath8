@@ -6,7 +6,7 @@ export default function Brand({ size = "md", tagline = false, taglineFromSm = fa
       <span aria-hidden="true" className={`grid ${box} shrink-0 place-items-center rounded-sm bg-primary font-bold text-on-primary`}>MS</span>
       <span className="leading-tight">
         <span className="block whitespace-nowrap font-bold text-text">MathStep AI</span>
-        {tagline && <span className={`${taglineFromSm ? "hidden sm:block" : "block"} text-xs text-text-muted`}>Trợ lý học Toán từng bước</span>}
+        {tagline && <span className={`${taglineFromSm ? "hidden sm:block" : "block"} text-xs text-text-muted`}>Trợ lý học Toán</span>}
       </span>
     </span>
   );

@@ -3,12 +3,13 @@ import { useEffect, useRef, useState } from "react";
 import Brand from "@/components/Brand";
 import { Alert, Button, Field, post } from "@/components/ui";
 import { MathText } from "@/components/MathText";
+import FigureImg from "@/components/FigureImg";
 import { StepInput } from "@/components/ChatInputs";
 import { shortId } from "@/lib/sid";
 
-type P = { id: string; title: string; statement: string; greeting: string; total: number; goal: string; example: string };
+type P = { id: string; title: string; statement: string; figure?: string | null; greeting: string; total: number }; // figure: địa chỉ ảnh hình vẽ của đề (nếu có)
 type M = { role: "student" | "bot"; text: string };
-type Prog = { done: number; total: number; next?: number; goal?: string; example?: string };
+type Prog = { done: number; total: number }; // chỉ để biết tiến bộ giữa các lượt, không hiện cho học sinh
 type Resume = { sessionId: string; progress: Prog; lastAt: string };
 type R = { sessionId?: string; msgs?: M[]; resume?: Resume; reply?: string; step?: number; done?: boolean; progress?: Prog; misrouted?: boolean };
 
@@ -27,7 +28,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   const [done, setDone] = useState(false);
   const [text, setText] = useState("");
   const [prog, setProg] = useState<Prog | null>(null);
-  const [askOpen, setAskOpen] = useState(false); // khay "Hỏi bài" (ô gõ riêng, tách khỏi ô nộp bước)
+  const [askOpen, setAskOpen] = useState(false); // khay "Hỏi bài" (ô gõ riêng, tách khỏi ô bài làm)
   const [askText, setAskText] = useState("");
   const [wrong, setWrong] = useState(0); // số lần nộp liên tiếp chưa qua bước, từ 2 thì nhắc bấm Gợi ý
   const [showStmt, setShowStmt] = useState(false); // mobile: đề thu gọn 1 dòng, bấm mở bottom sheet; desktop: đề luôn hiện đủ ở cột trái
@@ -103,7 +104,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   }
 
   async function begin(p: P, my: number) {
-    setProb(p); setBusy(false); setErr(""); setAskOpen(false); setAskText(""); setWrong(0); setProg({ done: 0, total: p.total, next: 1, goal: p.goal, example: p.example });
+    setProb(p); setBusy(false); setErr(""); setAskOpen(false); setAskText(""); setWrong(0); setProg({ done: 0, total: p.total });
     setMsgs([{ role: "bot", text: p.greeting }]); // hiện lời chào ngay; server tạo phiên song song, có sid thì mở ô nhập
     const { ok, data } = await post<R>("/api/chat", { action: "start", slug, problemCode: p.id, studentName: who?.name, studentClass: who?.cls });
     if (my !== tok.current) return;
@@ -132,7 +133,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
     setWho(null); setProb(null); setSid(undefined); setMsgs([]); setDone(false); setErr(""); setProg(null); setAskOpen(false); setAskText(""); setWrong(0);
   }
 
-  // Nộp bước giải (ô chính) hoặc gửi câu hỏi (khay Hỏi bài): hai ô gõ riêng, cùng đường gửi.
+  // Nộp bài làm (ô chính) hoặc gửi câu hỏi (khay Hỏi bài): hai ô gõ riêng, cùng đường gửi.
   async function submit(raw: string, ask: boolean) {
     const t = raw.trim();
     if (!t || !sid || busy) return;
@@ -142,7 +143,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
     setBusy(false);
     if (!ok) { setMsgs((m) => m.slice(0, -1)); (ask ? setAskText : setText)(t); return setErr(data.error ?? "Có lỗi. Bạn thử gửi lại nhé."); } // trả tin về ô nhập để không mất
     setMsgs((m) => [...m, { role: "bot", text: data.reply ?? "" }]);
-    if (ask) { setAskOpen(false); if (data.misrouted) setText(t); } // gửi nhầm bước vào khay hỏi: chuyển nguyên văn sang ô Nộp bước, bấm Nộp bước là xong
+    if (ask) { setAskOpen(false); if (data.misrouted) setText(t); } // gửi nhầm lời giải vào khay hỏi: chuyển nguyên văn sang ô bài làm, bấm Nộp bài làm là xong
     else if (data.progress) setWrong(data.progress.done > (prog?.done ?? 0) ? 0 : (w) => w + 1);
     if (data.progress) setProg(data.progress);
     if (data.done) setDone(true);
@@ -150,7 +151,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   const send = (e: React.FormEvent) => { e.preventDefault(); return submit(text, false); };
   const sendAsk = (e: React.FormEvent) => { e.preventDefault(); return submit(askText, true); };
 
-  // Nút Gợi ý: gợi ý có sẵn của đề, không gọi AI.
+  // Nút Gợi ý: server viết gợi ý từ đề đã chuẩn hóa.
   async function hint() {
     if (!sid || busy) return;
     setErr(""); setBusy(true);
@@ -190,7 +191,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
       <main className="h-screen-d mx-auto flex max-w-md flex-col gap-4 overflow-hidden px-4 py-8">
         <Brand tagline />
         <h1>{label}</h1>
-        <p className="text-text-muted">Xin chào <b>{who.name}</b> (lớp {who.cls}). Chọn một bài để bắt đầu. Chatbot sẽ gợi ý từng bước, bạn hãy tự suy nghĩ trước khi xin gợi ý.</p>
+        <p className="text-text-muted">Xin chào <b>{who.name}</b> (lớp {who.cls}). Chọn một bài để bắt đầu. Chatbot sẽ nhận xét bài làm của bạn, bạn hãy tự suy nghĩ trước khi xin gợi ý.</p>
         <Button variant="ghost" type="button" onClick={changeWho} className="-ml-3 self-start text-sm">Đổi thông tin</Button>
         {err && <Alert tone="danger">{err}</Alert>}
         <ul className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain">
@@ -212,7 +213,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
       <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
         <div role="dialog" aria-modal="true" aria-label="Bài làm dở" className="flex w-full max-w-sm flex-col gap-3 rounded-lg bg-surface p-5 shadow-lg">
           <h2 className="text-base font-semibold">Em đang làm dở bài này</h2>
-          <p className="text-text-muted">Em đã làm {pending.progress.done}/{pending.progress.total} bước{ago(pending.lastAt) ? ` (${ago(pending.lastAt)})` : ""}. Em muốn làm tiếp hay làm lại từ đầu?</p>
+          <p className="text-text-muted">Em đã làm dở bài này{ago(pending.lastAt) ? ` (${ago(pending.lastAt)})` : ""}. Em muốn làm tiếp hay làm lại từ đầu?</p>
           {err && <Alert tone="danger">{err}</Alert>}
           <Button type="button" onClick={resume} disabled={busy}>Làm tiếp</Button>
           <Button type="button" variant="secondary" onClick={restart} disabled={busy}>Làm lại mới</Button>
@@ -237,9 +238,10 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
         <section aria-label="Đề bài" className="shrink-0 border-b border-border border-l-4 border-l-primary bg-primary-soft px-4 py-1 lg:w-2/5 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:py-4 lg:text-base">
           <div className="flex h-7 items-center justify-between gap-2">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-primary">Đề bài</h2>
-            <button type="button" onClick={() => setShowStmt(true)} className="-mr-2 h-7 rounded-sm px-2 text-xs font-medium text-primary hover:bg-surface lg:hidden">Xem đủ</button>
+            <button type="button" onClick={() => setShowStmt(true)} className="-mr-2 h-7 rounded-sm px-2 text-xs font-medium text-primary hover:bg-surface lg:hidden">{prob.figure ? "Xem đủ và hình" : "Xem đủ"}</button>
           </div>
           <div style={kb ? { maxHeight: "calc(var(--vvh) * 0.22)" } : undefined} className={`${kb ? "" : "max-h-[5.5rem]"} overflow-y-auto overscroll-contain leading-tight lg:max-h-none lg:overflow-visible lg:leading-normal [&_.katex]:text-[1.05em] [&_.katex-display]:my-0.5 [&_.py-1]:py-0`}><MathText text={prob.statement.replace(/\n{2,}/g, "\n").trim()} /></div>
+          {prob.figure && <div className="mt-2 hidden lg:block"><FigureImg src={prob.figure} /></div>}
         </section>
       )}
       {showStmt && prob.statement && (
@@ -250,6 +252,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
               <Button variant="ghost" type="button" onClick={() => setShowStmt(false)} className="-mr-3 text-sm">Đóng</Button>
             </div>
             <MathText text={prob.statement.replace(/\n{2,}/g, "\n").trim()} />
+            {prob.figure && <div className="mt-3"><FigureImg src={prob.figure} /></div>}
           </div>
         </div>
       )}
@@ -274,7 +277,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
             <Alert tone="success">Em đã hoàn thành bài. Cảm ơn em.</Alert>
           </div>
         ) : (
-          <StepInput text={text} setText={setText} busy={busy} ready={!!sid} onSend={send} onHint={hint} progress={prog} askOpen={askOpen} setAskOpen={setAskOpen} askText={askText} setAskText={setAskText} onAsk={sendAsk} stuck={wrong >= 2} box={box} compact={kb} />
+          <StepInput text={text} setText={setText} busy={busy} ready={!!sid} onSend={send} onHint={hint} askOpen={askOpen} setAskOpen={setAskOpen} askText={askText} setAskText={setAskText} onAsk={sendAsk} stuck={wrong >= 2} box={box} compact={kb} />
         )}
       </footer>
       </div>

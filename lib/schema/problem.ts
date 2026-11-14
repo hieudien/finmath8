@@ -5,19 +5,17 @@ export const problemSchema = z.object({
   title: z.string().min(1, "Thiếu title"),
   grade: z.number().int().min(1).max(12).default(8),
   topic: z.string().default(""),
+  branch: z.enum(["algebra", "geometry", "other"]).optional().catch(undefined), // nhánh Đại số/Hình học/Khác; thiếu hoặc AI trả sai = chưa phân loại
   skills: z.array(z.string()).default([]), // kỹ năng/kiến thức chính của đề, để gom điểm yếu của học sinh theo kỹ năng
   reviewed: z.boolean().default(true), // false: AI vừa tạo, giáo viên chưa duyệt; đề chưa duyệt không đưa vào liên kết
   answer_locked: z.boolean().default(false), // giáo viên đã tự kiểm và xác nhận đáp án đúng: chuẩn hóa không bao giờ đổi, đề mới đưa vào liên kết được
   statement: z.string().trim().min(1, "Thiếu statement (đề bài)"), // nguồn duy nhất để AI tạo data, đáp án, lời giải
+  figure: z.object({ path: z.string().min(1), desc: z.string().default("") }).optional().catch(undefined), // hình vẽ của đề (ảnh đã cắt ở bucket "figures") + mô tả bằng chữ cho AI; thiếu hoặc sai dạng = đề không có hình
   learning_objectives: z.array(z.string()).default([]),
   data: z.record(z.string(), z.unknown()).default({}),
   solution: z.record(z.string(), z.unknown()),
   solution_steps: z.array(z.string()).default([]), // lời giải từng bước bằng văn bản, để giáo viên xem
   step_goals: z.array(z.string()).default([]), // việc cần làm ở từng bước (học sinh thấy), AI viết sẵn, song song solution_steps; lệch số bước thì không dùng
-  step_formats: z.array(z.string()).default([]), // dạng cần viết ở từng bước (vd "viết lại hệ với m = 1, mỗi phương trình có dấu ="), AI viết sẵn, song song solution_steps; lệch số bước thì không dùng
-  step_subs: z.array(z.array(z.string()).max(4)).default([]), // câu hỏi con chia nhỏ từng bước (gợi ý mức 2), AI viết sẵn, song song solution_steps; lệch số bước thì không dùng
-  step_analog: z.array(z.string()).default([]), // ví dụ tương tự với số khác hẳn cho từng bước (gợi ý mức 3), song song solution_steps
-  step_examples: z.array(z.string()).default([]), // ví dụ cách viết (không lộ kết quả) hiện trong ô nhập, song song solution_steps
   step_hints: z.array(z.array(z.string()).max(3)).default([]), // gợi ý riêng từng bước (mức 1-3), song song solution_steps; lệch số bước thì không dùng
   step_checks: z.array(z.object({ result: z.string(), accepts: z.array(z.string()).default([]) })).default([]), // kết quả chuẩn từng bước (số hoặc biểu thức/chữ) để server chấm, song song solution_steps; lệch số bước thì không dùng
   error_traps: z.array(z.object({ step: z.number().int().min(1), wrong: z.string(), why: z.string() })).default([]), // sai lầm cụ thể gắn bước: học sinh nộp đúng `wrong` thì server trả `why` (step đếm từ 1)

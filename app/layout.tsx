@@ -11,7 +11,7 @@ const font = Be_Vietnam_Pro({
 
 export const metadata: Metadata = {
   title: "MathStep AI",
-  description: "Chatbot gợi mở giúp học sinh tự giải bài Toán từng bước.",
+  description: "Chatbot gợi mở giúp học sinh tự giải bài Toán.",
 };
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };

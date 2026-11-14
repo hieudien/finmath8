@@ -1,6 +1,7 @@
 import type { Problem } from "@/lib/schema/problem";
 import { plain } from "@/lib/plain";
 import { canon } from "@/lib/answer-check";
+import { impliedNums } from "@/lib/chat/arith";
 
 // Chuẩn hóa số: bỏ dấu phân cách nghìn, dấu phẩy thập phân -> chấm. "300.000" -> 300000, "0,85" -> 0.85
 // Học sinh hay gõ "90k", "90 nghìn": đổi thành 90000.
@@ -22,7 +23,7 @@ export const stripStep = (s: string) => s.replace(/^Bước \d+\s*[:.)-]\s*/i, "
 // Mốc = từng bước của solution_steps. must = số đáp án (có trong solution, đề chưa nêu) mà bước đó ra; anchors = mọi số của bước.
 // ponytail: suy ra tự động từ solution_steps, không cần soạn thêm. Đề không có solution_steps thì dùng 1 mốc từ số đáp án.
 export function checkpoints(p: Problem): Cp[] {
-  const given = new Set(numsIn(JSON.stringify([p.data, p.statement ?? ""])));
+  const given = new Set(numsIn(JSON.stringify([p.data, p.statement ?? "", p.figure?.desc ?? ""])));
   const sol = new Set(numsIn(JSON.stringify(p.solution)).filter((n) => !given.has(n)));
   if (!p.solution_steps.length) return [{ id: 0, label: "Nêu đáp án", anchors: [...sol], must: [...sol] }];
   const chk = p.step_checks.length === p.solution_steps.length ? p.step_checks : []; // lệch số bước (giáo viên sửa lời giải) thì không dùng
@@ -92,12 +93,19 @@ const evidence = (c: Cp, text: string): string[] | null => {
 // Mốc đầu tiên khớp luôn được ghi nhận. Các mốc liền sau trong CÙNG một tin chỉ được gộp khi có số mới so với các mốc đã ghi nhận trong tin đó:
 // tin "x=10 hoặc x=-12" khớp luôn mốc chọn nghiệm và mốc kết luận chỉ nhờ cùng số 10, không phải bằng chứng cho hai bước sau.
 // ok: các mốc không có số mà AI đã duyệt (server đã kiểm bằng chứng): ghi nhận như mốc khớp, không thêm số vào seen.
+// Mốc có số mà học sinh chưa viết "= số" nhưng đã viết phép tính ra số đó trong một biểu thức gộp (ví dụ "(12 + 8) × 2 = 40" có phép 12 + 8 = 20): được ghi nhận
+// khi một mốc SAU nó trong cùng tin có bằng chứng thật. Phép tính phải nằm trong bài làm, không phải mốc nào có số trùng cũng qua.
 export function markByNumbers(text: string, cps: Cp[], mask: number, ok?: ReadonlySet<number>) {
   const seen = new Set<string>();
   let first = true;
+  let imp: Set<string> | undefined;
   for (const c of cps) {
     if (mask >> c.id & 1) continue;
-    const e = ok?.has(c.id) ? [] : evidence(c, text);
+    let e = ok?.has(c.id) ? [] : evidence(c, text);
+    if (!e && c.must.length && cps.some((d) => d.id > c.id && !(mask >> d.id & 1) && evidence(d, text))) {
+      imp ??= impliedNums(text);
+      if (c.must.every((n) => imp!.has(n))) e = [];
+    }
     if (!e) break;
     if (!first && e.length > 0 && e.every((n) => seen.has(n))) break;
     mask |= 1 << c.id;
@@ -110,7 +118,7 @@ export function markByNumbers(text: string, cps: Cp[], mask: number, ok?: Readon
 // Máy kiểm số học sinh vừa nêu: khớp số của lời giải / không khớp mốc nào. Chỉ nêu số chính học sinh viết nên không lộ đáp án.
 // ponytail: chỉ so số, không hiểu biểu thức. Cách giải khác đáng ra đúng sẽ bị báo "không khớp" (prompt dặn hỏi cách tính, không kết luận sai). Nâng cấp: parser biểu thức.
 export function verdict(text: string, p: Problem, cps: Cp[]) {
-  const given = new Set(numsIn(JSON.stringify([p.data, p.statement ?? ""])));
+  const given = new Set(numsIn(JSON.stringify([p.data, p.statement ?? "", p.figure?.desc ?? ""])));
   const sol = new Set([...numsIn(JSON.stringify(p.solution)), ...cps.flatMap((c) => c.anchors)]);
   const mine = [...new Set(numsIn(text))].filter((n) => !given.has(n) && (n.length >= 3 || n.includes(".") || sol.has(n)));
   return { match: mine.filter((n) => sol.has(n)), miss: mine.filter((n) => !sol.has(n)) };

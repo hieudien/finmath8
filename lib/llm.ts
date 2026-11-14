@@ -1,6 +1,6 @@
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { z } from "zod";
-import { PROVIDERS, type Provider } from "@/lib/models";
+import { PROVIDERS, fallbackChain, type Provider } from "@/lib/models";
 
 export type LlmCfg = {
   provider: Provider;
@@ -50,10 +50,10 @@ const isOverload = (e: unknown) => /\b50\d\b|UNAVAILABLE|overload|high demand|AI
 const isLongQuota = (e: unknown) => /PerDay|no longer available|404/i.test(String(e));
 
 // Hết quota (hoặc model không còn) thì tự thử model kế tiếp của cùng nhà cung cấp, tối đa 4 model.
-export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string, turns: Turn[], schema: T, opts: { think?: boolean | "low"; maxTokens?: number; deadlineMs?: number; attemptMs?: number; use?: string; temperature?: number; seed?: number } = {}): Promise<z.infer<T>> {
+export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string, turns: Turn[], schema: T, opts: { think?: boolean | "low"; maxTokens?: number; deadlineMs?: number; attemptMs?: number; use?: string; temperature?: number; seed?: number; models?: string[] } = {}): Promise<z.infer<T>> {
   const cfg = { ...cfg0, ...opts };
   const deadline = Date.now() + (opts.deadlineMs ?? Infinity); // chat đặt hạn chót để trả lỗi thân thiện trước khi trình duyệt tự báo timeout
-  const all = [cfg.model, ...PROVIDERS[cfg.provider].models.filter((id) => id !== cfg.model)].slice(0, 4);
+  const all = opts.models?.length ? opts.models : fallbackChain(cfg.provider, cfg.model); // models: chuỗi model cố định cho riêng lượt này
   const alive = all.filter((m) => (dead.get(deadKey(cfg, m)) ?? 0) < Date.now());
   const chain = alive.length ? alive : [cfg.model];
   let last: unknown;
@@ -84,10 +84,10 @@ export async function askJson<T extends z.ZodType>(cfg0: LlmCfg, system: string,
 
 // Như askJson nhưng trả văn bản thuần (không ép JSON): dùng khi nội dung có nhiều dấu \ của LaTeX mà JSON hay làm hỏng.
 // Cùng cơ chế hết hạn chót, đổi model khi hết quota hoặc quá tải; không tự kiểm tra định dạng, nơi gọi tự tách.
-export async function askText(cfg0: LlmCfg, system: string, turns: Turn[], opts: { think?: boolean | "low"; maxTokens?: number; deadlineMs?: number; attemptMs?: number; use?: string; temperature?: number; seed?: number } = {}): Promise<string> {
+export async function askText(cfg0: LlmCfg, system: string, turns: Turn[], opts: { think?: boolean | "low"; maxTokens?: number; deadlineMs?: number; attemptMs?: number; use?: string; temperature?: number; seed?: number; models?: string[] } = {}): Promise<string> {
   const cfg = { ...cfg0, ...opts };
   const deadline = Date.now() + (opts.deadlineMs ?? Infinity);
-  const all = [cfg.model, ...PROVIDERS[cfg.provider].models.filter((id) => id !== cfg.model)].slice(0, 4);
+  const all = opts.models?.length ? opts.models : fallbackChain(cfg.provider, cfg.model); // models: chuỗi model cố định cho riêng lượt này
   const alive = all.filter((m) => (dead.get(deadKey(cfg, m)) ?? 0) < Date.now());
   const chain = alive.length ? alive : [cfg.model];
   let last: unknown;

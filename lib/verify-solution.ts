@@ -1,3 +1,4 @@
+import { problemText } from "@/lib/figure";
 import { z } from "zod";
 import { askJson, type LlmCfg } from "@/lib/llm";
 import { canon, nums, texts } from "@/lib/answer-check";
@@ -8,7 +9,7 @@ import { swallow } from "@/lib/errors";
 import type { Problem } from "@/lib/schema/problem";
 
 const SOLVE = `Giải bài Toán rồi trả đáp án. Tự giải thật cẩn thận từng bước, đừng bịa số. Mỗi đáp án một phần tử {"name","value"}: số thì value là chuỗi số thuần (không dấu ngăn nghìn, dấu thập phân là dấu chấm), ví dụ "275000", "0.5"; đáp án chữ hoặc biểu thức thì value là chữ ngắn gọn ("B", "vô nghiệm", "x=2"). Gồm cả đáp số cuối và các kết quả trung gian chính. Chỉ trả JSON {"answers":[{"name":string,"value":string}]}.`;
-const JUDGE = `Bạn so sánh hai đáp án của cùng một bài Toán. Hai đáp án tương đương nếu cùng kết luận (viết khác nhau, thứ tự khác nhau vẫn tính là cùng). Chỉ trả JSON {"same":boolean,"reason":string (1 câu)}.`;
+const JUDGE = `Bạn so sánh hai đáp án của cùng một bài Toán. Hai đáp án tương đương nếu cùng kết luận (viết khác nhau, thứ tự khác nhau vẫn tính là cùng). Một đáp án ngắn (chỉ nêu đối tượng, ví dụ "H", "Điểm H") là câu trả lời cho câu hỏi tìm/xác định trong đề; đáp án kia viết cả câu mà nêu cùng đối tượng đó (ví dụ "H là tâm đường tròn nội tiếp tam giác DEF") thì là cùng kết luận, đừng suy đối tượng ngắn thành khái niệm khác ngoài câu hỏi của đề. Chỉ trả JSON {"same":boolean,"reason":string (1 câu)}.`;
 
 const near = (m: number, n: number) => Math.abs(m - n) <= Math.abs(n) * 0.005 + 1e-9;
 
@@ -68,13 +69,15 @@ export async function crossCheck(cfg: LlmCfg, p: Problem): Promise<string> {
   if (!Object.keys(p.solution).length) return "";
   const sub = substituteCheck(p);
   if (sub) return `Kiểm chéo đáp án: ${sub}`;
+  // Đề chứng minh mà đáp án chỉ là chữ (không có số): các ý chứng minh không có đáp án để so, giải độc lập lại cho kết luận khác nhau tùy ý nào AI chọn. Chỉ rà lời giải (checkSteps).
+  if (!nums(p.solution).length && /chứng minh/i.test(p.statement)) return "";
   const smart = { ...cfg, model: smartModel(cfg.provider) };
   // Lượt giải độc lập dùng bước giải riêng (lib/solve.ts, đo đúng 30/30 so với 12/30 của lời gọi cũ), nhiệt độ cao hơn và đổi cách giải để không lặp đúng lỗi
   // của lượt tạo đáp án. Hỏng thì dùng lời gọi cũ bên dưới.
   const sv = await solveOnce(smart, p, { temperature: 0.4, hint: "chọn cách giải khác nếu có" }).catch(swallow("giải đề (kiểm chéo)", { teacherId: cfg.teacherId, actor: "teacher" }));
   const r = sv
     ? { answers: Object.entries(sv.answers).map(([name, value]) => ({ name, value: String(value) })) }
-    : await askJson(smart, SOLVE + gradeRule(p.grade), [{ role: "user", text: `${p.statement}\nDữ liệu: ${JSON.stringify(p.data)}` }],
+    : await askJson(smart, SOLVE + gradeRule(p.grade), [{ role: "user", text: `${problemText(p)}\nDữ liệu: ${JSON.stringify(p.data)}` }],
       z.object({ answers: z.array(z.object({ name: z.string(), value: z.string() })).min(1) }), { think: true, use: "cross_check", temperature: 0 });
   const gotN = r.answers.flatMap((a) => nums(a.value));
   const gotT = r.answers.map((a) => canon(a.value));
@@ -84,8 +87,8 @@ export async function crossCheck(cfg: LlmCfg, p: Problem): Promise<string> {
   const notes: string[] = [];
   if (lack.length) notes.push(`lời giải độc lập không ra ${lack.join(", ")}`);
   if (lackT.length) {
-    const j = await askJson(smart, JUDGE, [{ role: "user", text: `Bài: ${p.statement}\nĐáp án của đề: ${JSON.stringify(p.solution)}\nĐáp án độc lập: ${JSON.stringify(r.answers)}` }], z.object({ same: z.boolean(), reason: z.string().default("") }), { use: "cross_check", temperature: 0 });
-    if (!j.same) notes.push(`kết luận chữ khác (${j.reason.slice(0, 120)})`);
+    const j = await askJson(smart, JUDGE, [{ role: "user", text: `Bài: ${problemText(p)}\nĐáp án của đề: ${JSON.stringify(p.solution)}\nĐáp án độc lập: ${JSON.stringify(r.answers)}` }], z.object({ same: z.boolean(), reason: z.string().default("") }), { use: "cross_check", temperature: 0 });
+    if (!j.same) notes.push(`kết luận chữ khác (đề: ${wantT.join("; ").slice(0, 80)} | giải độc lập: ${r.answers.map((a) => a.value).join("; ").slice(0, 80)} | ${j.reason.slice(0, 120)})`);
   }
   return notes.length ? `Kiểm chéo đáp án: ${notes.join("; ")}. Kiểm tra lại đáp án và lời giải của đề.` : "";
 }
@@ -110,14 +113,14 @@ export function auditVerdict(r: { ok: boolean; step?: number; wrong?: string; ri
 export async function checkSteps(cfg: LlmCfg, p: Problem): Promise<string> {
   if (!p.solution_steps.length) return "";
   const smart = { ...cfg, model: smartModel(cfg.provider) };
-  const r = await askJson(smart, AUDIT + gradeRule(p.grade), [{ role: "user", text: `${p.statement}
+  const r = await askJson(smart, AUDIT + gradeRule(p.grade), [{ role: "user", text: `${problemText(p)}
 Lời giải:
 ${stepsText(p)}` }],
     z.object({ ok: z.boolean(), step: z.number().default(0), wrong: z.string().default(""), right: z.string().default("") }), { think: true, use: "cross_check", temperature: 0 });
   const err = auditVerdict(r);
   if (!err) return "";
   // Hỏi lại một lần: báo lỗi có thật không.
-  const c = await askJson(smart, CONFIRM, [{ role: "user", text: `${p.statement}
+  const c = await askJson(smart, CONFIRM, [{ role: "user", text: `${problemText(p)}
 Lời giải:
 ${stepsText(p)}
 Báo lỗi: ${err}` }],
@@ -126,3 +129,19 @@ Báo lỗi: ${err}` }],
 }
 
 const CONFIRM = `Một người rà soát báo lỗi trong lời giải Toán. Tự tính lại bước bị nêu. Nếu bước đó thực sự sai về phép tính hoặc suy luận, real = true. Nếu bước đúng, hoặc báo lỗi tự mâu thuẫn, hoặc chỉ khác cách diễn đạt, real = false. Chỉ trả JSON {"real":boolean}.`;
+
+const KEY = `Bạn kiểm tra "kết quả chuẩn" của một đề Toán dạng điền khuyết hoặc trả lời ngắn. Tự làm đề trước, KHÔNG dựa vào kết quả chuẩn, rồi so.
+Kết quả chuẩn SAI nếu: không phải thứ đề yêu cầu điền/trả lời, thiếu ý quan trọng (vd thiếu "lớn nhất", "độ dài"), thừa hoặc sai ý, hoặc chỉ là phần đề đã cho sẵn.
+Chỉ báo sai khi CHẮC CHẮN. Chỉ trả JSON {"ok":boolean,"reason":string (1 câu, nêu bước nào và đúng phải là gì)}.`;
+
+// Kiểm kết quả chuẩn từng bước có thực sự là đáp án cần điền không (lỗi CBBM03: chuẩn "bình phương một cạnh" thay vì "cạnh lớn nhất" nên bot khen sai).
+// Chỉ chạy với đề có kết quả chuẩn dạng chữ (số đã có kiểm chéo bằng code). Trả mô tả lỗi, rỗng = ổn.
+export async function checkKey(cfg: LlmCfg, p: Problem): Promise<string> {
+  const words = p.step_checks.map((c, i) => ({ step: i + 1, result: c.result })).filter((c) => /\p{L}{2,}/u.test(c.result.replace(/\[a-z]+/g, "")));
+  if (!words.length) return "";
+  if (/chứng minh/i.test(p.statement)) return ""; // đề chứng minh: kết quả chuẩn từng bước là mệnh đề, không có "đáp án cần điền" để đối chiếu
+  const smart = { ...cfg, model: smartModel(cfg.provider) };
+  const r = await askJson(smart, KEY + gradeRule(p.grade), [{ role: "user", text: `${problemText(p)}\nKết quả chuẩn từng bước:\n${words.map((c) => `Bước ${c.step}: ${c.result}`).join("\n")}` }],
+    z.object({ ok: z.boolean(), reason: z.string().default("") }), { think: true, use: "cross_check", temperature: 0 });
+  return r.ok || !r.reason.trim() ? "" : `Kiểm kết quả chuẩn: ${r.reason.trim().slice(0, 300)}`;
+}

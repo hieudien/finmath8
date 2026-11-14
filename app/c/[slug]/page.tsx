@@ -2,11 +2,9 @@ import { after } from "next/server";
 import { admin } from "@/lib/supabase/admin";
 import { liveProblems } from "@/lib/links";
 import Chat from "@/components/Chat";
-import Worksheet from "@/components/Worksheet";
-import { isMode } from "@/lib/modes";
-import { wsView } from "@/lib/worksheet/view";
 import Brand from "@/components/Brand";
-import { stepCue, stepExample, stepsGreeting } from "@/lib/chat/goals";
+import { stepsGreeting } from "@/lib/chat/goals";
+import { figureUrl } from "@/lib/figure";
 import { checkpoints } from "@/lib/chat/progress";
 
 export const dynamic = "force-dynamic";
@@ -20,8 +18,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const { data } = await admin().from("public_links").select("id,teacher_id,label,active,expires_at,mode,problems_snapshot").eq("slug", slug).is("deleted_at", null).maybeSingle();
-  const l = data as { id: string; teacher_id: string; label: string; active: boolean; expires_at: string | null; mode: string; problems_snapshot: unknown } | null;
+  const { data } = await admin().from("public_links").select("id,teacher_id,label,active,expires_at,problems_snapshot").eq("slug", slug).is("deleted_at", null).maybeSingle();
+  const l = data as { id: string; teacher_id: string; label: string; active: boolean; expires_at: string | null; problems_snapshot: unknown } | null;
   const open = l && l.active && !(l.expires_at && new Date(l.expires_at) < new Date());
   if (!l || !open) {
     return (
@@ -34,15 +32,8 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   }
   const linkId = l.id;
   after(async () => { await admin().rpc("bump_visit", { p_link: linkId } as never); }); // không chặn việc hiển thị trang
-  const mode = isMode(l.mode) ? l.mode : "steps"; // chế độ cố định theo liên kết (chọn lúc tạo), không theo Cài đặt hiện tại
   const live = await liveProblems(l.teacher_id, l.problems_snapshot);
-  // Chế độ "làm theo bước rồi nộp cả bài": luồng riêng (components/Worksheet.tsx, /api/worksheet), không dùng chat. Đề chưa có lời giải từng bước thì không đưa vào.
-  if (mode === "worksheet") {
-    const ready = live.filter((p) => p.solution_steps.length > 0).map(wsView);
-    if (!ready.length) return <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col gap-4 px-4 py-8"><Brand tagline /><h1>{l.label}</h1><p className="text-text-muted">Liên kết này chưa có bài sẵn sàng. Hỏi giáo viên của em.</p></main>;
-    return <Worksheet slug={slug} label={l.label} problems={ready} />;
-  }
-  // greeting: lời chào cố định hiện ngay khi bấm chọn bài; total = số bước để hiện "Bước k/n".
-  const problems = live.map((p) => ({ id: p.id, title: p.title, statement: p.statement ?? "", total: checkpoints(p).length, goal: stepCue(p, 0), example: stepExample(p, 0), greeting: stepsGreeting(p) }));
+  // greeting: lời chào cố định hiện ngay khi bấm chọn bài; total = số mốc lời giải (ẩn với học sinh, chỉ để theo dõi tiến bộ).
+  const problems = live.map((p) => ({ id: p.id, title: p.title, statement: p.statement ?? "", figure: p.figure ? figureUrl(p.figure.path) : null, total: checkpoints(p).length, greeting: stepsGreeting() }));
   return <Chat slug={slug} label={l.label} problems={problems} />;
 }

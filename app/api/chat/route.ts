@@ -4,9 +4,8 @@ import { cookies } from "next/headers";
 import { sweep } from "@/lib/sweep";
 import { z } from "zod";
 import { admin } from "@/lib/supabase/admin";
-import { llmCfg } from "@/lib/teacher";
+import { llmCfg, withCtx } from "@/lib/teacher";
 import { getLink } from "@/lib/links";
-import { modeMismatch } from "@/lib/modes";
 import { finish, type Session, type Tm } from "@/lib/chat/engine";
 import { progress, stepAsk, stepHint, stepsOpening, stepTurn } from "@/lib/chat/steps";
 import { checkpoints } from "@/lib/chat/progress";
@@ -27,10 +26,6 @@ const body = z.discriminatedUnion("action", [
 ]);
 
 export const maxDuration = 60; // AI có hạn chót 40 giây, chừa thêm thời gian ghi DB
-
-const MAX_SESSIONS_PER_DAY = 30; // mỗi trình duyệt (anon_id): học sinh thật chỉ dùng khoảng 10 phiên/ngày, chặn ai đó tạo phiên vô hạn để đốt key của giáo viên
-
-const MAX_SESSIONS_PER_LINK_PER_DAY = 2000; // trần cả liên kết: lớp thật ~40 em x ~10 phiên; chặn kẻ xóa cookie để vượt giới hạn từng trình duyệt
 
 
 const err = (error: string, status = 400) => Response.json({ error }, { status });
@@ -81,7 +76,6 @@ async function handle(req: Request, tr: Trace) {
     return err("Liên kết này đã đóng. Hỏi giáo viên của em.", 404);
   }
   tr.teacherId = link.teacher_id; tr.linkId = link.id;
-  if (modeMismatch(link, "steps")) return err("Liên kết này dùng kiểu làm bài khác. Tải lại trang.", 409);
   const problems = link.problems;
 
   // Làm tiếp bài dở: khớp theo tên + lớp (không cần cùng trình duyệt), phiên "active" hoặc "abandoned" đều làm tiếp được.
@@ -119,17 +113,9 @@ async function handle(req: Request, tr: Trace) {
     const prob = problems.find((x) => x.id === b.problemCode);
     if (!prob) return err("Không tìm thấy bài.", 404);
     // Lời chào có sẵn không gọi AI; đề không có statement mới gọi AI để mở bài. Cả hai cần key hợp lệ.
-    const since = new Date(Date.now() - 86_400_000).toISOString();
-    const [cfg, { count: today }, { count: linkToday }] = await Promise.all([
-      llmCfg(link.teacher_id),
-      db.from("chat_sessions").select("id", { count: "exact", head: true }).eq("anon_id", anon).gte("started_at", since),
-      db.from("chat_sessions").select("id", { count: "exact", head: true }).eq("link_id", link.id).gte("started_at", since),
-    ]);
-    if (!cfg) return notReady(link, anon);
-    if ((linkToday ?? 0) >= MAX_SESSIONS_PER_LINK_PER_DAY) return denied("link_day", b.slug, anon, "Liên kết này đã đạt giới hạn lượt dùng hôm nay. Báo giáo viên của em.", link);
-    if ((today ?? 0) >= MAX_SESSIONS_PER_DAY) return denied("anon_day", b.slug, anon, "Hôm nay em đã làm nhiều bài rồi. Nghỉ một chút, mai làm tiếp nhé.", link);
+    if (!(await llmCfg(link.teacher_id))) return notReady(link, anon);
     sweep(); // dọn phiên bỏ dở và nhật ký lỗi cũ sau khi trả phản hồi
-    const { data: seq } = await db.rpc("next_seq", { p_link: link.id } as never); // sau khi qua mọi giới hạn, để số thứ tự không bị hụt
+    const { data: seq } = await db.rpc("next_seq", { p_link: link.id } as never); // sau khi qua mọi kiểm tra, để số thứ tự không bị hụt
     if (!prob.solution_steps.length) return err("Bài này chưa sẵn sàng. Báo giáo viên của em.", 409); // đề cũ thiếu lời giải từng bước
     const mode = "steps"; // cột mode giữ lại cho phiên cũ (chat, quiz)
     const name = b.studentName.replace(/\s+/g, " "), cls = b.studentClass.replace(/\s+/g, "").toUpperCase(), code = studentKey(name, cls);
@@ -153,10 +139,10 @@ async function handle(req: Request, tr: Trace) {
   // Phiên, cấu hình AI và các tin của phiên độc lập nhau: đọc song song một lượt thay vì nối tiếp.
   const tm: Tm = {};
   const t0 = Date.now();
-  const [{ data: sd }, cfg, { data: msgs }] = await Promise.all([
+  const [{ data: sd }, cfg0, { data: msgs }] = await Promise.all([
     db.from("chat_sessions").select("*").eq("id", b.sessionId).eq("link_id", link.id).eq("anon_id", anon).maybeSingle(),
     llmCfg(link.teacher_id),
-    b.action === "message" ? db.from("messages").select("role,content,hint_level,ts").eq("session_id", b.sessionId).order("id") : { data: null },
+    b.action === "message" || b.action === "hint" ? db.from("messages").select("role,content,hint_level,ts,meta").eq("session_id", b.sessionId).order("id") : { data: null },
   ]);
   tm.db_pre = Date.now() - t0;
   const sess = sd as (Session & { problem_code: string; problem_snapshot?: unknown }) | null;
@@ -164,7 +150,8 @@ async function handle(req: Request, tr: Trace) {
   // Phiên giữ bản đề lúc mở; phiên cũ (chưa có bản ghim) dùng đề của liên kết.
   const prob = (sess.problem_snapshot ? parseProblems([sess.problem_snapshot]).ok[0] : undefined) ?? (problems.find((x) => x.id === sess.problem_code) as Problem);
 
-  if (!cfg) return notReady(link, anon);
+  if (!cfg0) return notReady(link, anon);
+  const cfg = withCtx(cfg0, { sessionId: sess.id, problem: sess.problem_code, linkId: link.id, anonId: anon }); // token của phiên này ghi kèm phiên và đề
 
   try {
     if (b.action === "end") {
@@ -174,9 +161,9 @@ async function handle(req: Request, tr: Trace) {
       return Response.json({ ok: true, done: true });
     }
     if (sess.status !== "active") return err("Bài này đã kết thúc.", 409);
-    if (b.action === "hint") return Response.json(await stepHint(cfg, sess, prob, link.teacher_id));
-    // Một lần đọc (ở trên) cho cả chống gửi dồn và ngữ cảnh của lượt này.
-    const all = (msgs ?? []) as { role: "student" | "bot"; content: string; hint_level: number | null; ts: string }[];
+    // Một lần đọc (ở trên) cho cả chống gửi dồn và ngữ cảnh của lượt này (gợi ý cũng cần xem bài làm vừa nộp).
+    const all = (msgs ?? []) as { role: "student" | "bot"; content: string; hint_level: number | null; ts: string; meta?: { kind?: string } | null }[];
+    if (b.action === "hint") return Response.json(await stepHint(cfg, sess, prob, link.teacher_id, all));
     const said = all.filter((m) => m.role === "student");
     // Chống gửi dồn: cách tin trước ít nhất 2 giây trong cùng phiên.
     const last = said.at(-1);

@@ -10,17 +10,15 @@ const base = (over: Partial<Problem> = {}): Problem => problemSchema.parse({
 
 describe("lintProblem", () => {
   it("đề tốt: không cảnh báo", () => {
-    const p = base({ solution: { saved: 45000, cost: 255000 }, step_goals: ["Tính tiền được giảm", "Tính số tiền phải trả"], step_hints: [["a", "b", "c"], ["a", "b", "c"]], });
+    const p = base({ solution: { saved: 45000, cost: 255000 } });
     expect(lintProblem(p)).toEqual([]);
   });
-  it("mục tiêu và gợi ý lộ kết quả", () => {
-    const p = base({ step_goals: ["Tính tiền giảm, ra 45000", "Tính số tiền phải trả"], step_hints: [["a", "b", "c"], ["a", "b", "Ra 255000 nhé"]] });
-    const t = lintProblem(p).join("|");
-    expect(t).toContain("Mục tiêu bước 1");
-    expect(t).toContain("Gợi ý riêng của bước 2");
+  it("chỉ dẫn theo bước kiểu cũ không còn bị cảnh báo (runtime bỏ qua)", () => {
+    const p = base({ solution: { saved: 45000, cost: 255000 }, step_goals: ["Tính tiền giảm, ra 45000"], step_hints: [["Ra 255000 nhé"]] });
+    expect(lintProblem(p)).toEqual([]);
   });
-  it("chỉ dẫn lệch số bước", () => {
-    expect(lintProblem(base({ step_goals: ["chỉ một"], step_hints: [["a"]] })).join("|")).toContain("lệch số bước");
+  it("lời giải chỉ 1 bước thì nhắc chuẩn hóa lại", () => {
+    expect(lintProblem(base({ solution_steps: ["Phải trả 255000."] })).join("|")).toContain("chuẩn hóa lại");
   });
   it("đáp án chữ mà chưa có step_checks thì cảnh báo", () => {
     expect(lintProblem(base({ solution: { cost: 255000, best: "B" } })).join("|")).toContain("phần chữ");
@@ -35,5 +33,29 @@ describe("missingNums (kiểm chéo)", () => {
     expect(missingNums([5000], [275000, 270000])).toEqual([]); // hiệu của hai số trong lời giải
     expect(missingNums([275000.5], [275000])).toEqual([]); // sai số 0,5%
     expect(missingNums([275000, 999], [275000, 270000])).toEqual([999]);
+  });
+});
+
+import { descriptiveSteps } from "../lib/lint";
+import { looksLikeQuestion } from "../lib/chat/intent";
+
+describe("descriptiveSteps: bước chỉ mô tả cách làm", () => {
+  const base = { statement: "Chiều dài 12 m, chiều rộng 8 m. Tính chu vi." };
+  it("bước chỉ có chữ bị bắt, bước có số hoặc dấu = thì không", () => {
+    const p = { ...base, solution_steps: ["Ta tính chu vi bằng cách lấy tổng chiều dài và chiều rộng rồi nhân đôi.", "Tổng là $12 + 8 = 20$.", "Chu vi là $20 \times 2 = 40$.", "Vậy chu vi là 40 m."] };
+    expect(descriptiveSteps(p)).toEqual([0]);
+  });
+  it("bước cuối và bước 'Vậy…' bằng chữ là bình thường; đề không có số thì không xét", () => {
+    expect(descriptiveSteps({ ...base, solution_steps: ["Tổng là $12 + 8 = 20$.", "Vậy hình đó có chu vi lớn."] })).toEqual([]);
+    expect(descriptiveSteps({ statement: "Chứng minh tam giác cân.", solution_steps: ["Hai cạnh bằng nhau.", "Kết luận."] })).toEqual([]);
+  });
+});
+
+describe("looksLikeQuestion: cụm 'bằng cách' không phải câu hỏi", () => {
+  it("lời giải có 'bằng cách' không bị nhắc nhầm, câu hỏi thật vẫn bắt", () => {
+    expect(looksLikeQuestion("Ta tính chu vi bằng cách lấy tổng chiều dài và chiều rộng rồi nhân với 2.")).toBe(false);
+    expect(looksLikeQuestion("Cách làm thế nào?")).toBe(true);
+    expect(looksLikeQuestion("làm cách nào để tìm x")).toBe(true);
+    expect(looksLikeQuestion("Đề hỏi gì vậy")).toBe(true);
   });
 });

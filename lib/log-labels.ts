@@ -3,7 +3,7 @@ import { toTen } from "@/lib/score";
 export type Meta = Record<string, unknown>;
 type Info = { label: string; group: string; warn?: boolean; text?: (m: Meta) => string };
 
-const MODE: Record<string, string> = { chat: "Chat", steps: "Từng bước", quiz: "Trắc nghiệm", worksheet: "Làm theo bước rồi nộp cả bài" };
+const MODE: Record<string, string> = { chat: "Chat", steps: "Từng bước", quiz: "Trắc nghiệm" };
 const PROVIDER: Record<string, string> = { gemini: "Google Gemini" };
 const s = (v: unknown) => (v == null ? "" : String(v));
 
@@ -31,6 +31,7 @@ export const LOG: Record<string, Info> = {
   problem_deleted: { label: "Xóa đề", group: PROB },
   problem_standardized: { label: "Chuẩn hóa đề", group: PROB, text: (m) => (m.code ? `Đề ${s(m.code)}${m.version ? ` (bản ${s(m.version)})` : ""}` : "") },
   problem_normalized: { label: "Đọc đề từ văn bản", group: PROB, text: (m) => (m.code ? `Đề ${s(m.code)}` : "") },
+  figure_uploaded: { label: "Tải hình vẽ của đề", group: PROB },
   problem_image_read: { label: "Đọc đề từ ảnh", group: PROB },
   import_read: { label: "Đọc nguồn nạp đề hàng loạt", group: PROB, text: (m) => `${s(m.items)} đề${m.attempts ? `, đọc ${s(m.attempts)} lần` : ""}` },
   import_batch_created: { label: "Bắt đầu nạp đề hàng loạt", group: PROB, text: (m) => `${s(m.file)}: ${s(m.found)} đề` },

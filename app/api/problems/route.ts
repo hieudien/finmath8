@@ -2,8 +2,8 @@ import { check } from "@/lib/db";
 import { z } from "zod";
 import { admin } from "@/lib/supabase/admin";
 import { api, bad, requireUser } from "@/lib/auth";
-import { askJson } from "@/lib/llm";
-import { llmCfg } from "@/lib/teacher";
+import { askJson, askText } from "@/lib/llm";
+import { llmCfg, withCtx } from "@/lib/teacher";
 import { lockIfAnswered, parseProblems, problemSchema, type Problem } from "@/lib/schema/problem";
 import { SEED } from "@/lib/seed";
 import { log } from "@/lib/log";
@@ -13,15 +13,18 @@ import { finishProblem, makeSteps, referenceNote, standardizeProblem } from "@/l
 import { repairProblem, tidyLine, tidyStatement } from "@/lib/repair";
 import { CHUNK, PAR, BUDGET_MS, freeCode, pool } from "@/lib/batch";
 import { cannotLock, missingInfo, needsWork } from "@/lib/ready";
+import { blockers } from "@/lib/lint";
 import { gradeRule } from "@/lib/grade";
-import { readExamImage, type ImageResult } from "@/lib/read-image";
-import { solveOnce } from "@/lib/solve";
+import { isBranch, taxonomyRule } from "@/lib/taxonomy";
+import { readExamImage, normalizeText, DESCRIBE_FIGURE, type ImageResult } from "@/lib/read-image";
+import { FIGURE_BUCKET } from "@/lib/figure";
+import { proofAnswer, proofKey, solveOnce } from "@/lib/solve";
 import { walk } from "@/lib/latex-fix";
 import { checkSteps, crossCheck } from "@/lib/verify-solution";
 import { readExamItems } from "@/lib/read-multi";
 import { holdAnswer, releaseAnswer, summary, viewOf, type BatchItem, type BatchStatus } from "@/lib/import-batch";
 const NORMALIZE_SYSTEM = `Bạn chuẩn hóa một đề Toán từ văn bản thô sang JSON. Đề có thể thuộc bất kỳ chủ đề và lớp nào (giải phương trình, hình học, tỉ lệ, tình huống thực tế...). Chỉ trả JSON một đối tượng đúng mẫu:
-{"id":"BTxx","title":string,"grade":số lớp (đúng lớp được giao ở cuối),"topic":string,"skills":[2–5 kỹ năng/kiến thức chính cần dùng, mỗi mục một cụm ngắn],"statement":string (nguyên văn đề bài cho học sinh; đề nhiều ý thì mỗi ý một dòng a), b), c) cách nhau bằng ký tự xuống dòng),"learning_objectives":[string],"data":{số liệu đề cho, nếu có; tỉ lệ dạng thập phân 0.x},"solution":{đáp án chuẩn. Số thì dạng số, ví dụ {"x":3}; nhiều nghiệm {"x1":2,"x2":-3}; vô nghiệm hoặc đáp án chữ {"ket_luan":"vô nghiệm"}},"solution_steps":[lời giải từng bước, mỗi bước 1–2 câu đủ chủ vị có phép tính, kết thúc bằng dấu chấm, liệt kê nhiều ý trong một bước thì ngăn bằng dấu chấm phẩy, bước cuối là kết luận],"common_errors":[sai lầm học sinh hay mắc với đề này],"hints":[{"level":1,"text":..},{"level":2,"text":..},{"level":3,"text":..}],"extension":string,"rubric":{"identify":3,"plan":3,"calculate":3,"explain":3}}
+{"id":"BTxx","title":string,"grade":số lớp (đúng lớp được giao ở cuối),"topic":string,"branch":"algebra"|"geometry"|"other","skills":[2–5 kỹ năng/kiến thức chính cần dùng, mỗi mục một cụm ngắn],"statement":string (nguyên văn đề bài cho học sinh; đề nhiều ý thì mỗi ý một dòng a), b), c) cách nhau bằng ký tự xuống dòng),"learning_objectives":[string],"data":{số liệu đề cho, nếu có; tỉ lệ dạng thập phân 0.x},"solution":{đáp án chuẩn. Số thì dạng số, ví dụ {"x":3}; nhiều nghiệm {"x1":2,"x2":-3}; vô nghiệm hoặc đáp án chữ {"ket_luan":"vô nghiệm"}},"solution_steps":[lời giải từng bước, mỗi bước 1–2 câu đủ chủ vị có phép tính, kết thúc bằng dấu chấm, liệt kê nhiều ý trong một bước thì ngăn bằng dấu chấm phẩy, bước cuối là kết luận],"common_errors":[sai lầm học sinh hay mắc với đề này],"hints":[{"level":1,"text":..},{"level":2,"text":..},{"level":3,"text":..}],"extension":string,"rubric":{"identify":3,"plan":3,"calculate":3,"explain":3}}
 Quy tắc: công thức, phương trình có ký hiệu toán đặt trong $...$ theo LaTeX (ví dụ $x^2$, $2x + 3 = 11$), KHÔNG dùng \( \) hay \[ \]. Tự giải đề, tính đáp án thật cẩn thận, đừng bịa số không có trong đề. Gợi ý mức 1 chỉ hỏi định hướng; mức 2 gợi ý cách giải; mức 3 nêu bước tính đầu tiên, KHÔNG nêu kết quả cuối. Nếu văn bản có nhiều đề, chỉ chuẩn hóa đề đầu. Nếu thiếu id, dùng "BT99".`;
 
 async function save(teacherId: string, list: Problem[]) {
@@ -43,10 +46,13 @@ async function save(teacherId: string, list: Problem[]) {
   return n;
 }
 
+const classifySchema = z.object({ branch: z.enum(["algebra", "geometry", "other"]), topic: z.string().default("") });
 const grade = z.number({ error: "Chọn lớp cho đề." }).int().min(1, "Chọn lớp cho đề.").max(12, "Chọn lớp cho đề.");
 const body = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("normalize"), text: z.string().min(20, "Văn bản quá ngắn."), grade }),
+  z.object({ action: z.literal("normalize"), text: z.string().min(20, "Văn bản quá ngắn."), grade, reference: z.array(z.string().transform((s) => s.slice(0, 2000))).max(60).optional(), figure: z.object({ path: z.string().min(1).max(200), desc: z.string().max(2000) }).optional() }),
   z.object({ action: z.literal("read_image"), image: z.string().max(6_000_000, "Ảnh quá lớn.").regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/, "Chỉ nhận ảnh png, jpeg, webp.") }),
+  z.object({ action: z.literal("upload_figure"), image: z.string().max(1_500_000, "Ảnh hình quá lớn.").regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/, "Chỉ nhận ảnh png, jpeg, webp.") }),
+  z.object({ action: z.literal("describe_figure"), image: z.string().max(1_500_000, "Ảnh hình quá lớn.").regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/, "Chỉ nhận ảnh png, jpeg, webp.") }),
   z.object({ action: z.literal("save"), problems: z.array(z.unknown()).min(1) }),
   z.object({ action: z.literal("seed") }),
   z.object({ action: z.literal("verify"), id: z.string().uuid() }),
@@ -59,6 +65,8 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("state"), id: z.string().uuid() }),
   z.object({ action: z.literal("finish"), ids: z.array(z.string().uuid()).min(1).max(CHUNK) }),
   z.object({ action: z.literal("audit"), ids: z.array(z.string().uuid()).min(1).max(CHUNK) }),
+  z.object({ action: z.literal("classify_todo") }),
+  z.object({ action: z.literal("classify"), ids: z.array(z.string().uuid()).min(1).max(CHUNK) }),
   // Nạp hàng loạt từ tệp Word: đọc từng nguồn (ảnh/đoạn chữ) thành nhiều đề -> tạo đợt nháp -> AI làm theo hai pha (make, finish) -> xác nhận mới lưu vào problems.
   z.object({ action: z.literal("read_items"), image: z.string().max(6_000_000, "Ảnh quá lớn.").regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/, "Chỉ nhận ảnh png, jpeg, webp.").optional(), text: z.string().min(20, "Đoạn chữ quá ngắn.").max(20_000).optional() }).refine((x) => !!x.image !== !!x.text, "Gửi một ảnh hoặc một đoạn chữ."),
   z.object({ action: z.literal("batch_start"), file_name: z.string().max(200), grade, sources: z.number().int().min(0).max(500), read_errors: z.array(z.object({ name: z.string().max(100), reason: z.string().max(500) })).max(100),
@@ -107,7 +115,7 @@ export const POST = api(async (req, tr) => {
     if (r instanceof Response) return r;
     const { prob, version } = r;
     if (!Object.keys(prob.solution).length) return bad("Đề chưa có đáp án để kiểm tra.");
-    const note = await crossCheck(cfg, prob);
+    const note = await crossCheck(withCtx(cfg, { problem: prob.id }), prob);
     return (await commit(b.id, version, { ...prob, check_note: note }, { verify: !note })) ?? Response.json({ ok: true, match: !note, note });
   }
 
@@ -121,7 +129,7 @@ export const POST = api(async (req, tr) => {
       if (!Object.keys(prob.solution).length) return bad("Đề chưa có đáp án để xác nhận.");
       return (await commit(b.id, version, { ...prob, answer_locked: true, reviewed: true, check_note: "" }, { answer: "lock" })) ?? Response.json({ ok: true });
     }
-    const next: Problem = { ...prob, solution: b.solution, answer_locked: true, check_note: "", solution_steps: [], step_goals: [], step_hints: [], step_checks: [], error_traps: [], step_formats: [], step_examples: [], step_subs: [], step_analog: [] };
+    const next: Problem = { ...prob, solution: b.solution, answer_locked: true, check_note: "", solution_steps: [], step_goals: [], step_hints: [], step_checks: [], error_traps: [] };
     return (await commit(b.id, version, next, { answer: "set" })) ?? Response.json({ ok: true });
   }
 
@@ -174,7 +182,7 @@ export const POST = api(async (req, tr) => {
       const pp = problemSchema.safeParse(row.content);
       if (!pp.success) { checked++; flagged.push({ name: row.code, reason: "Đề lưu sai định dạng." }); return; }
       try {
-        const run = async () => (pp.data.answer_locked ? "" : await crossCheck(cfg, pp.data)) || (await checkSteps(cfg, pp.data));
+        const run = async () => (pp.data.answer_locked ? "" : await crossCheck(withCtx(cfg, { problem: row.code }), pp.data)) || (await checkSteps(withCtx(cfg, { problem: row.code }), pp.data));
         const note = await Promise.race([run(), new Promise<never>((_, rej) => { const t = setTimeout(() => rej(new Error("AI_TIMEOUT: đề kiểm quá 50s")), 50_000); t.unref?.(); })]);
         checked++;
         if (!note) return;
@@ -188,6 +196,38 @@ export const POST = api(async (req, tr) => {
     return Response.json({ ok: true, checked, flagged, failed, left: left.map((r) => r.id) });
   }
 
+  // Đề chưa có nhánh Đại số/Hình học.
+  if (b.action === "classify_todo") {
+    const { data } = await admin().from("problems").select("id,content").eq("teacher_id", u.id).is("deleted_at", null).order("code");
+    return Response.json({ ok: true, ids: ((data ?? []) as { id: string; content: { branch?: unknown } }[]).filter((r) => !isBranch(r.content?.branch)).map((r) => r.id) });
+  }
+
+  // Phân loại nhanh bằng một lượt AI nhỏ (chỉ đọc đề bài): đặt nhánh; chủ đề chỉ điền khi đang trống. Không đụng lớp, đáp án, lời giải.
+  if (b.action === "classify") {
+    const cfg = await llmCfg(u.id);
+    if (!cfg) return bad(NO_KEY);
+    const { data } = await admin().from("problems").select("id,code,content,version").eq("teacher_id", u.id).is("deleted_at", null).in("id", b.ids);
+    const failed: { name: string; reason: string }[] = [];
+    let made = 0;
+    const rows = (data ?? []) as { id: string; code: string; content: unknown; version: number }[];
+    const left = await pool(rows, PAR, Date.now() + BUDGET_MS, async (row) => {
+      const pp = problemSchema.safeParse(row.content);
+      if (!pp.success) { failed.push({ name: row.code, reason: "Đề lưu sai định dạng." }); return; }
+      const p = pp.data;
+      try {
+        const sys = `Phân loại một đề Toán lớp ${p.grade}. Chỉ trả JSON {"branch":"algebra"|"geometry"|"other","topic":string}.` + taxonomyRule(p.grade);
+        const r = await askJson(withCtx(cfg, { problem: row.code }), sys, [{ role: "user", text: `Tiêu đề: ${p.title}\nChủ đề hiện có: ${p.topic}\nĐề bài: ${p.statement}` }], classifySchema, { think: "low", use: "classify", deadlineMs: 40_000 });
+        const next: Problem = { ...p, branch: r.branch, topic: p.topic.trim() ? p.topic : r.topic.trim() };
+        const { data: upd } = await admin().from("problems").update({ content: next, version: row.version + 1, updated_at: new Date().toISOString() } as never).eq("id", row.id).eq("teacher_id", u.id).eq("version", row.version).select("id");
+        if (upd?.length) made++; else failed.push({ name: row.code, reason: "Đề vừa được sửa ở nơi khác, bấm phân loại lại sau." });
+      } catch (e) {
+        await reportError(e, `phân loại đề ${row.code}`, { teacherId: u.id, actor: "teacher" });
+        failed.push({ name: row.code, reason: "AI chưa trả lời được." });
+      }
+    });
+    return Response.json({ ok: true, made, failed, left: left.map((r) => r.id) });
+  }
+
   if (b.action === "finish") {
     const cfg = await llmCfg(u.id);
     if (!cfg) return bad(NO_KEY);
@@ -197,7 +237,7 @@ export const POST = api(async (req, tr) => {
     const rows = (data ?? []) as { id: string; code: string; content: unknown; version: number }[];
     const left = await pool(rows, PAR, Date.now() + BUDGET_MS, async (row) => {
       const pp = problemSchema.safeParse(row.content);
-      const r = pp.success ? await Promise.race([standardizeProblem(cfg, pp.data), new Promise<never>((_, rej) => { const t = setTimeout(() => rej(new Error("AI_TIMEOUT: đề làm quá 50s")), 50_000); t.unref?.(); })]).catch(async (e) => { await reportError(e, `hoàn thiện đề ${row.code}`, { teacherId: u.id, actor: "teacher" }); return "AI chưa trả lời được. Bấm chạy lại."; }) : "Đề lưu sai định dạng.";
+      const r = pp.success ? await Promise.race([standardizeProblem(withCtx(cfg, { problem: row.code }), pp.data), new Promise<never>((_, rej) => { const t = setTimeout(() => rej(new Error("AI_TIMEOUT: đề làm quá 50s")), 50_000); t.unref?.(); })]).catch(async (e) => { await reportError(e, `hoàn thiện đề ${row.code}`, { teacherId: u.id, actor: "teacher" }); return "AI chưa trả lời được. Bấm chạy lại."; }) : "Đề lưu sai định dạng.";
       if (typeof r === "string") {
         failed.push({ name: row.code, reason: r });
         // Lỗi AI (exception) đã ghi ở trên; đề không đạt chuẩn thì ghi lý do vào Nhật ký lỗi để xem lại sau.
@@ -261,10 +301,10 @@ export const POST = api(async (req, tr) => {
       const name = `Đề thứ ${i + 1}`;
       if (make) {
         try {
-          const raw = await askJson(cfg, NORMALIZE_SYSTEM + gradeRule(batch.grade), [{ role: "user", text: it.statement }], problemSchema, { think: true, use: "normalize" });
+          const raw = await askJson(cfg, NORMALIZE_SYSTEM + gradeRule(batch.grade) + taxonomyRule(batch.grade), [{ role: "user", text: it.statement }], problemSchema, { think: true, use: "normalize" });
           const out = walk({ ...raw, grade: batch.grade, statement: it.statement }) as Problem; // lớp do giáo viên chọn, đề bài là bản giáo viên đã duyệt
           out.id = "BT00"; out.reviewed = false; out.check_note = "";
-          out.solution_steps = []; out.step_goals = []; out.step_hints = []; out.step_checks = []; out.error_traps = []; out.step_formats = []; out.step_examples = []; out.step_subs = []; out.step_analog = []; // do pha finish viết khớp đáp án
+          out.solution_steps = []; out.step_goals = []; out.step_hints = []; out.step_checks = []; out.error_traps = []; // do pha finish viết khớp đáp án
           if (Object.keys(it.answers).length) { out.solution = it.answers as Problem["solution"]; } // đáp số từ tệp chỉ để AI bám theo, không khóa: giáo viên tự xác nhận sau khi lưu
           out.answer_locked = false;
           patch.set(i, { status: "drafted", reason: "", draft: out });
@@ -333,7 +373,13 @@ export const POST = api(async (req, tr) => {
     if (!cfg) return bad(NO_KEY);
     const pp = problemSchema.safeParse(b.problem);
     if (!pp.success) return bad("Đề chưa đủ để AI hoàn thiện.");
-    const done = await finishProblem(cfg, pp.data);
+    // Hosting cắt ở 60s: quá 50s thì báo lỗi rõ ràng (đã ghi nhật ký) thay vì để bị cắt giữa chừng.
+    const slow = new Promise<never>((_, rej) => { const t = setTimeout(() => rej(new Error("AI_TIMEOUT: hoàn thiện đề quá 50s")), 50_000); t.unref?.(); });
+    const done = await Promise.race([finishProblem(withCtx(cfg, { problem: pp.data.id }), pp.data), slow]).catch(async (e) => {
+      await reportError(e, `hoàn thiện đề ${pp.data.id}`, { teacherId: u.id, actor: "teacher" });
+      return null;
+    });
+    if (done === null) return bad("AI trả lời quá chậm. Bấm chạy lại.", 504);
     if (typeof done === "string") { await reportError(new Error(done), `hoàn thiện đề ${pp.data.id}: không đạt chuẩn`, { teacherId: u.id, actor: "teacher", kind: "format", meta: { code: pp.data.id } }); return bad(done); } // ghi để tra được từ nhật ký lỗi
     return Response.json({ ok: true, problem: done });
   }
@@ -345,7 +391,7 @@ export const POST = api(async (req, tr) => {
     const pp = problemSchema.safeParse(b.problem);
     if (!pp.success) return bad("Đề chưa đủ để AI chuẩn hóa: " + (pp.error.issues[0]?.message ?? "sai định dạng") + ".");
     if (!Object.keys(pp.data.solution).length) return bad("Chưa có đáp án để giữ. Nhập đáp án hoặc bấm nút AI giải lại cả đáp án.");
-    const r = await standardizeProblem(cfg, { ...pp.data, answer_locked: true }).catch(async (e) => { await reportError(e, "chuẩn hóa đề đang soạn", { teacherId: u.id, actor: "teacher" }); return "AI chưa trả lời được. Bấm chạy lại."; });
+    const r = await standardizeProblem(withCtx(cfg, { problem: pp.data.id }), { ...pp.data, answer_locked: true }).catch(async (e) => { await reportError(e, "chuẩn hóa đề đang soạn", { teacherId: u.id, actor: "teacher" }); return "AI chưa trả lời được. Bấm chạy lại."; });
     if (typeof r === "string") { if (!/^AI chưa trả lời được/.test(r)) await reportError(new Error(r), `chuẩn hóa đề đang soạn ${pp.data.id}: không đạt chuẩn`, { teacherId: u.id, actor: "teacher", kind: "format", meta: { code: pp.data.id } }); return bad(r); }
     return Response.json({ ok: true, problem: { ...r, answer_locked: false } }); // khóa chỉ đặt khi giáo viên tick xác nhận và lưu
   }
@@ -371,7 +417,31 @@ export const POST = api(async (req, tr) => {
     const out = await readExamImage(cfg, { mime, b64 }, legacy);
     if (!out.statement.trim()) { await reportError(new Error(`Đọc đề từ ảnh trả rỗng (${mime}, ${b64.length} ký tự)`), "đọc đề từ ảnh", { teacherId: u.id, actor: "teacher", kind: "format" }); return bad("Không thấy đề bài trong ảnh. Thử ảnh rõ hơn."); }
     await log({ actor: "teacher", action: "problem_image_read", teacherId: u.id, meta: { chars: out.statement.length, answer: !!Object.keys(out.solution).length, steps: out.solution_steps.length, attempts: out.attempts, warnings: out.warnings.length } });
-    return Response.json({ ok: true, statement: out.statement.trim(), solution: out.solution, solution_steps: out.solution_steps, warnings: out.warnings });
+    return Response.json({ ok: true, statement: out.statement.trim(), solution: out.solution, solution_steps: out.solution_steps, warnings: out.warnings, figure: out.figure ?? null });
+  }
+
+  // Hình vẽ của đề: client đã cắt và nén; server lưu vào bucket công khai, đường dẫn bắt đầu bằng id giáo viên để chỉ xóa được hình của mình.
+  if (b.action === "upload_figure") {
+    const [head, b64] = b.image.split(",");
+    const mime = head.slice(5, head.indexOf(";"));
+    const buf = Buffer.from(b64, "base64");
+    if (buf.length > 1_000_000) return bad("Ảnh hình quá lớn (tối đa 1MB).");
+    const path = `${u.id}/${crypto.randomUUID()}.${mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg"}`;
+    const { error } = await admin().storage.from(FIGURE_BUCKET).upload(path, buf, { contentType: mime, upsert: false });
+    if (error) throw new Error("Lỗi lưu hình: " + error.message);
+    await log({ actor: "teacher", action: "figure_uploaded", teacherId: u.id, meta: { bytes: buf.length } });
+    return Response.json({ ok: true, path });
+  }
+
+  // Mô tả hình bằng chữ cho AI (khi giáo viên tự thêm hình, hoặc muốn AI mô tả lại): chỉ nhìn hình, không giải.
+  if (b.action === "describe_figure") {
+    const cfg = await llmCfg(u.id);
+    if (!cfg) return bad(NO_KEY);
+    const [head, b64] = b.image.split(",");
+    const text = await askText(cfg, DESCRIBE_FIGURE, [{ role: "user", text: "Mô tả hình vẽ này.", image: { mime: head.slice(5, head.indexOf(";")), b64 } }], { deadlineMs: 40_000, use: "read_image" });
+    const desc = normalizeText(text.replaceAll("```", "")).trim();
+    if (!desc) return bad("AI chưa mô tả được hình. Thử lại hoặc tự nhập mô tả.");
+    return Response.json({ ok: true, desc });
   }
 
   if (b.action === "normalize") {
@@ -379,14 +449,19 @@ export const POST = api(async (req, tr) => {
     if (!cfg) return bad("Chưa có API key. Vào Cài đặt để nhập.");
     // Ba lần gọi AI nối tiếp phải xong trong 50s (hosting cắt ở 60s): mỗi bước nhận phần thời gian còn lại, quá hạn thì ném AI_TIMEOUT có cấu trúc thay vì bị cắt.
     const end = Date.now() + 50_000, left = (reserve = 0) => Math.max(3_000, end - Date.now() - reserve);
-    const raw = await askJson(cfg, NORMALIZE_SYSTEM + gradeRule(b.grade), [{ role: "user", text: b.text }], problemSchema, { think: true, use: "normalize", deadlineMs: 25_000 });
+    const raw = await askJson(cfg, NORMALIZE_SYSTEM + gradeRule(b.grade) + taxonomyRule(b.grade), [{ role: "user", text: b.text }], problemSchema, { think: true, use: "normalize", deadlineMs: 25_000 });
     const out = walk({ ...raw, grade: b.grade }) as Problem;
+    // Dòng "[Hình vẽ kèm theo đề: ...]" chỉ để AI đọc: AI có thể chép lại vào đề bài nên bỏ đi; hình và mô tả giữ ở trường figure.
+    out.statement = out.statement.split(/\r?\n/).filter((l) => !l.trim().startsWith("[Hình vẽ kèm theo đề")).join("\n").trim();
+    if (b.figure) out.figure = b.figure;
     // Đáp án và lời giải do bước giải riêng viết (model chỉ giải, làm trước đáp án sau, tự thay số kiểm); phần còn lại của đề giữ như AI vừa tạo. Hỏng thì giữ bản của AI.
-    const sv = await solveOnce(cfg, { statement: out.statement, grade: b.grade }, { deadlineMs: left(12_000) }).catch(swallow("giải đề (normalize)", { teacherId: u.id, actor: "teacher" }));
+    const sv = await solveOnce(cfg, { statement: out.statement, grade: b.grade, figure: out.figure }, { deadlineMs: left(12_000) }).catch(swallow("giải đề (normalize)", { teacherId: u.id, actor: "teacher" }));
     if (sv) {
-      out.solution = sv.answers as Problem["solution"];
+      out.solution = proofAnswer(out.statement, sv.answers) as Problem["solution"];
+      const pk = await proofKey(cfg, out, { deadlineMs: left(20_000) }); // đề chứng minh: trích đáp án ý "tìm/xác định" bằng gemini-3.5-flash
+      if (pk !== null) out.solution = (pk ? { ket_luan: pk } : {}) as Problem["solution"];
       // Lời giải chi tiết của bước giải riêng chỉ làm tham khảo: các bước hiển thị do makeSteps viết gọn (3–8 bước). Lỗi thì để trống, "complete" sẽ viết lại.
-      const s = await makeSteps(cfg, out, referenceNote(sv.steps), left()).catch(swallow("viết các bước (normalize)", { teacherId: u.id, actor: "teacher" }));
+      const s = await makeSteps(cfg, out, referenceNote(sv.steps) + (b.reference?.length ? `\nLời giải của giáo viên trong ảnh đề (chỉ tham khảo cách trình bày; có thể sai hoặc thiếu, kết quả phải theo đáp án trên):\n${b.reference.join("\n")}` : ""), left()).catch(swallow("viết các bước (normalize)", { teacherId: u.id, actor: "teacher" }));
       out.solution_steps = Array.isArray(s) ? s : [];
     } // sửa ký tự điều khiển do JSON nuốt dấu \ ngay khi nhận từ AI, trước khi trả cho trình duyệt
     // Lời giải lệch đáp án thì bỏ lời giải; "complete" viết lại. Kiểm chéo và chỉ dẫn do "complete" làm để mỗi request nằm trong 60s.
@@ -406,6 +481,9 @@ export const POST = api(async (req, tr) => {
   if (b.action === "save") {
     const { ok, errors } = parseProblems(b.problems);
     if (errors.length) return bad(errors.join(" | "));
+    // Đề đánh dấu đã duyệt (giáo viên bấm lưu) mà còn lỗi nặng thì không lưu; đề AI mới tạo (reviewed=false) vẫn lưu để chờ duyệt.
+    const blocked = ok.filter((x) => x.reviewed !== false && blockers(x).length).map((x) => `${x.id}: ${blockers(x)[0]}`);
+    if (blocked.length) return bad(`Không lưu được vì đề còn lỗi nặng. ${blocked.slice(0, 3).join(" | ")}`);
     return Response.json({ ok: true, saved: await save(u.id, ok) });
   }
 

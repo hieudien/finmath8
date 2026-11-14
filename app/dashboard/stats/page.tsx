@@ -8,7 +8,7 @@ import { check } from "@/lib/db";
 import { avgTen } from "@/lib/score"; // khi bỏ comment biểu đồ: thêm critTen, bandsTen
 import { sweep } from "@/lib/sweep";
 import { shortId } from "@/lib/sid";
-import { bits, compareStats, fmtTime, hardStudents, P_STATE, sessionState, studentMsgs, who, type Ev, type ProblemStat, type Sess, type StepInfo, type Summary } from "@/lib/stats";
+import { bits, compareStats, fmtTime, hardStudents, P_STATE, sessionState, studentMsgs, who, type Ev, type ProblemStat, type Sess, type ProbInfo, type Summary } from "@/lib/stats";
 
 const helpedN = (x: Sess) => (x.revealed ? bits(x.revealed) : 0); // số bước bot đã hiện lời giải vì học sinh kẹt: không tính là tự làm
 const Helped = ({ x }: { x: Sess }) => helpedN(x) > 0 ? <Badge tone="warn">Giải hộ {helpedN(x)} bước</Badge> : null;
@@ -16,7 +16,14 @@ const Helped = ({ x }: { x: Sess }) => helpedN(x) > 0 ? <Badge tone="warn">Giả
 type L = { id: string; label: string; tag: string | null };
 type LS = { link_id: string; sessions: number; done: number; total_avg: number; visits: number };
 type TS = { tag: string; n: number; mean: number; sd_pop: number; var_samp: number };
+type Tok = { calls: number; input: number; output: number; thoughts: number };
+type PU = Tok & { problem: string; kind: "prep" | "session"; sessions: number };
+type SU = Tok & { session_id: string };
+const nf = new Intl.NumberFormat("vi-VN");
+const tokTotal = (t: Tok) => t.input + t.output + t.thoughts;
+const trio = (t: Tok) => `${nf.format(Math.round(t.input))} / ${nf.format(Math.round(t.output))} / ${nf.format(Math.round(t.thoughts))}`; // in / out / thoughts
 const RECENT = 100;
+const NO_TOK: Tok = { calls: 0, input: 0, output: 0, thoughts: 0 };
 const TAG: Record<string, string> = { pre: "Trước", post: "Sau", experiment: "Thực nghiệm", control: "Đối chứng" };
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ link?: string }> }) {
@@ -45,6 +52,16 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
   const snap = ((res[6]?.data as { problems_snapshot: { id: string; title?: string }[] } | null)?.problems_snapshot ?? []);
   const byProblem = [...snap.map((p) => ({ code: p.id, title: p.title ?? p.id })), ...[...pStats.keys()].filter((c) => !snap.some((p) => p.id === c)).map((c) => ({ code: c, title: c }))]
     .map((p) => ({ ...p, students: pStats.get(p.code) ?? [] }));
+  // Token AI từ lúc ghi kèm đề và phiên (dòng cũ không có nên không tính). Số phiên và token đề tính trên mọi liên kết của giáo viên.
+  const codes0 = byProblem.map((p) => p.code);
+  const [puRes, suRes] = await Promise.all([
+    codes0.length ? sb.rpc("ai_usage_by_problem", { days: 3650 } as never).in("problem", codes0) : null,
+    sessions.length ? sb.rpc("ai_usage_by_session", { days: 3650 } as never).in("session_id", sessions.map((x) => x.id)) : null,
+  ]);
+  [puRes, suRes].forEach((r) => r && check(r));
+  const puAll = (puRes?.data ?? []) as unknown as PU[];
+  const puOf = (code: string, kind: PU["kind"]) => puAll.find((r) => r.problem === code && r.kind === kind);
+  const suBy = new Map(((suRes?.data ?? []) as unknown as SU[]).map((r) => [r.session_id, r]));
   const tags = new Map(((res[4]?.data ?? []) as TS[]).map((x) => [x.tag, { n: x.n, mean: x.mean, sd: x.sd_pop, v: x.var_samp }]));
 
   if (!links.length) return <div className="flex flex-col gap-6"><h1>Thống kê</h1><Empty text="Chưa có liên kết nào để thống kê." /></div>;
@@ -57,8 +74,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
     const msgs = await studentMsgs(sb, s.map((x) => x.id));
     const stateOf = (x: Sess) => sessionState(x, evBy.get(x.id), msgs.get(x.id));
     const codes = [...new Set(s.filter((x) => x.struggled).map((x) => x.problem_code))];
-    const pr = codes.length ? (((await sb.from("problems").select("code,content").in("code", codes).is("deleted_at", null)).data ?? []) as { code: string; content: { title?: string; solution_steps?: string[]; step_goals?: string[] } }[]) : [];
-    const probs = new Map<string, StepInfo>(pr.map((r) => [r.code, { title: r.content.title ?? r.code, steps: r.content.solution_steps ?? [], goals: r.content.step_goals?.length === r.content.solution_steps?.length ? r.content.step_goals ?? [] : [] }]));
+    const pr = codes.length ? (((await sb.from("problems").select("code,content").in("code", codes).is("deleted_at", null)).data ?? []) as { code: string; content: { title?: string } }[]) : [];
+    const probs = new Map<string, ProbInfo>(pr.map((r) => [r.code, { title: r.content.title ?? r.code }]));
     const hard = hardStudents(s, probs);
     return (
       <div className="flex flex-col gap-6">
@@ -103,7 +120,35 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
               </ul>
               <p className="text-sm text-text-muted">Tự làm được: có ít nhất một lần nộp đúng mà bot không giải hộ bước nào. Mỗi học sinh tính một lần dù làm nhiều phiên.</p>
             </Section>
-            <Section title="Bước học sinh hay gặp khó">
+            <Section title="Token AI theo đề">
+              {puAll.length ? (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[40rem] text-left text-sm">
+                      <thead><tr className="border-b border-border-strong"><th className="py-2 pr-2">Đề</th><th className="pr-2">Chuẩn bị đề</th><th className="pr-2">Số phiên</th><th className="pr-2">Trung bình mỗi phiên</th><th className="pr-2">Tổng các phiên</th><th>Tổng đề</th></tr></thead>
+                      <tbody className="tnum">
+                        {byProblem.filter((p) => puOf(p.code, "prep") || puOf(p.code, "session")).map((p) => {
+                          const prep = puOf(p.code, "prep") ?? NO_TOK, ses = puOf(p.code, "session"), n = ses?.sessions ?? 0, sum = ses ?? NO_TOK;
+                          const avg = n ? { ...NO_TOK, input: sum.input / n, output: sum.output / n, thoughts: sum.thoughts / n } : null;
+                          const all = { ...NO_TOK, input: prep.input + sum.input, output: prep.output + sum.output, thoughts: prep.thoughts + sum.thoughts };
+                          return (
+                            <tr key={p.code} className="border-b border-border">
+                              <td className="py-2 pr-2"><Badge tone="info">{p.code}</Badge></td>
+                              <td className="pr-2">{prep.calls ? trio(prep) : "—"}</td>
+                              <td className="pr-2">{n}</td>
+                              <td className="pr-2">{avg ? trio(avg) : "—"}</td>
+                              <td className="pr-2">{n ? trio(sum) : "—"}</td>
+                              <td className="font-semibold">{nf.format(Math.round(tokTotal(all)))}</td>
+                            </tr>);
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-sm text-text-muted">Mỗi ô là in / out / thoughts (token). Tổng đề gồm chuẩn bị đề (chuẩn hóa, kiểm đáp án, phân loại, viết lời giải) và mọi phiên làm bài, cộng cả in, out và thoughts. Số phiên và token của đề tính trên mọi liên kết của bạn. Chỉ tính từ lúc hệ thống bắt đầu ghi theo đề; token chuẩn bị của đề mới đang nạp hoặc tạo hàng loạt chưa gắn được vào đề nào.</p>
+                </>
+              ) : <p className="text-text-muted">Chưa có số liệu token theo đề. Số liệu hiện khi có lượt gọi AI mới của đề.</p>}
+            </Section>
+            <Section title="Đề học sinh hay gặp khó">
               {hard.length ? (
                 <>
                   <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
@@ -112,12 +157,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
                         <details className="group">
                           <summary className="flex min-h-11 cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-primary-soft">
                             <span className="min-w-0 font-medium">{h.code ? `${h.name ?? "Học sinh"} (${h.code})` : "Ẩn danh (cũ)"}</span>
-                            <span className="tnum font-semibold">{h.steps.length} bước <span className="text-text-muted group-open:hidden">▾</span><span className="hidden text-text-muted group-open:inline">▴</span></span>
+                            <span className="tnum font-semibold">{h.problems.length} đề <span className="text-text-muted group-open:hidden">▾</span><span className="hidden text-text-muted group-open:inline">▴</span></span>
                           </summary>
                           <ul className="flex flex-col gap-1 border-t border-border px-4 py-2 text-sm">
-                            {h.steps.map((s) => (
-                              <li key={`${s.code}-${s.step}`} className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="min-w-0"><Badge tone="info">{s.code}</Badge> <span className="font-medium">Bước {s.step}</span>: {s.label}</span>
+                            {h.problems.map((s) => (
+                              <li key={s.code} className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="min-w-0"><Badge tone="info">{s.code}</Badge> <span className="font-medium">{s.title}</span></span>
                                 <span className="tnum text-text-muted">{s.times} phiên</span>
                               </li>
                             ))}
@@ -127,9 +172,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
                       </li>
                     ))}
                   </ul>
-                  <p className="text-sm text-text-muted">Tính khi học sinh bấm Gợi ý, bấm Em chưa hiểu, nộp sai hoặc được giải hộ ở bước đó. Chỉ tính trong các phiên gần nhất bên dưới, kiểu từng bước.</p>
+                  <p className="text-sm text-text-muted">Tính khi học sinh bấm Gợi ý, bấm Em chưa hiểu, nộp sai hoặc được giải hộ ở bước đó. Chỉ tính trong các phiên gần nhất bên dưới. Bước là bước của lời giải chi tiết trong đề (học sinh không thấy số thứ tự này).</p>
                 </>
-              ) : <p className="text-text-muted">Chưa có học sinh nào gặp khó ở một bước cụ thể.</p>}
+              ) : <p className="text-text-muted">Chưa có học sinh nào gặp khó ở một đề cụ thể.</p>}
             </Section>
             <Section title={`Từng phiên (${s.length}/${m.sessions} phiên gần nhất)`}>
               <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface md:hidden">
@@ -138,6 +183,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
                     <span className="flex min-w-0 flex-col gap-1">
                       <span className="flex flex-wrap items-center gap-x-2 gap-y-1"><span className="font-medium">{who(x)}</span><Badge tone="info">{x.problem_code}</Badge></span>
                       <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-muted tnum"><Badge mono>{shortId(x.id)}</Badge>{fmtTime(x.started_at)}</span>
+                      {suBy.has(x.id) && <span className="text-sm text-text-muted tnum">Token: {trio(suBy.get(x.id)!)}</span>}
                       {ev && <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-muted tnum"><Badge>Gợi ý mức {ev.max_hint_level}</Badge><Badge>{Math.round(ev.duration_s / 60)} phút</Badge></span>}
                     </span>
                     <span className="flex shrink-0 flex-col items-end gap-1">{ev ? <ScoreBadge total={ev.total} /> : <span className="text-text-muted">—</span>}<StatusBadge text={stateOf(x)} /><Helped x={x} /></span>
@@ -145,13 +191,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ l
               </ul>
               <div className="hidden overflow-x-auto md:block">
                 <table className="w-full min-w-[34rem] text-left text-sm">
-                  <thead><tr className="border-b border-border-strong"><th className="py-2 pr-2">Mã phiên</th><th className="pr-2">Bắt đầu</th><th className="pr-2">Học sinh</th><th className="pr-2">Đề</th><th className="pr-2">Điểm</th><th className="pr-2">Gợi ý tối đa</th><th className="pr-2">Phút</th><th>Trạng thái</th></tr></thead>
+                  <thead><tr className="border-b border-border-strong"><th className="py-2 pr-2">Mã phiên</th><th className="pr-2">Bắt đầu</th><th className="pr-2">Học sinh</th><th className="pr-2">Đề</th><th className="pr-2">Điểm</th><th className="pr-2">Gợi ý tối đa</th><th className="pr-2">Phút</th><th className="pr-2">Token in / out / thoughts</th><th>Trạng thái</th></tr></thead>
                   <tbody className="tnum">
                     {s.map((x) => { const ev = evBy.get(x.id); return (
                       <tr key={x.id} className="border-b border-border">
                         <td className="py-2 pr-2"><Badge mono>{shortId(x.id)}</Badge></td><td className="pr-2 whitespace-nowrap">{fmtTime(x.started_at)}</td><td className="pr-2">{who(x)}</td><td className="pr-2"><Badge tone="info">{x.problem_code}</Badge></td>
                         <td className="pr-2">{ev ? <ScoreBadge total={ev.total} /> : "—"}</td><td className="pr-2">{ev ? `Mức ${ev.max_hint_level}` : "—"}</td>
-                        <td className="pr-2">{ev ? Math.round(ev.duration_s / 60) : "—"}</td>
+                        <td className="pr-2">{ev ? Math.round(ev.duration_s / 60) : "—"}</td><td className="pr-2 whitespace-nowrap">{suBy.has(x.id) ? trio(suBy.get(x.id)!) : "—"}</td>
                         <td><span className="flex flex-wrap items-center gap-1"><StatusBadge text={stateOf(x)} /><Helped x={x} /></span></td>
                       </tr>); })}
                   </tbody>

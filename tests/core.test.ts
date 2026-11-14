@@ -9,15 +9,16 @@ import { friendly, kindOf } from "../lib/errors";
 import { describe as describe_, ERR_KIND } from "../lib/log-labels";
 import { plain } from "../lib/plain";
 import { missingInfo, needsWork, readiness } from "../lib/ready";
-import { ladder, revealLine, scoreCap, STALL_LIMIT } from "../lib/chat/assist";
+import { ladder, revealCap, revealLine, STALL_LIMIT } from "../lib/chat/assist";
 import { ASK_METHOD, ASK_NEXT, keepOrAsk, earlyClose, checkpoints, countDone, hasEq, hasNum, markByNumbers, needsEq, offStreak, OFF_REPLIES, shapeOk, sim, stepOf, tighten, verdict, verify } from "../lib/chat/progress";
 import { SEED } from "../lib/seed";
 import { tidyLine, tidyStatement } from "../lib/repair";
-import { hardSteps, studentKey, weakSteps } from "../lib/stats";
+import { badClaims, claimNote, RESULT_MARK } from "../lib/chat/arith";
+import { hardProblems, studentKey, weakProblems } from "../lib/stats";
 import { leaksCalc } from "../lib/chat/prompt";
 import { cannedStuck, looksLikeStep, misses, NOT_JUDGE, offReply, PRAISE } from "../lib/chat/steps";
-import { ASK_ANSWER, ASK_IS_STEP, ASK_LEAK, ASK_LIMIT, ASK_NOT_JUDGE, CLOSINGS, CLOSINGS_HELP, isOff, OFF_AGAIN, OFF_FIRST, pick, REPEAT, RETRY, STEP_LEAK, STUCK_HINT, STUCK_NOHINT } from "../lib/chat/canned";
-import { hasGuides, stepCue, stepGoal, stepLead, stepsGreeting } from "../lib/chat/goals";
+import { ASK_ANSWER, ASK_IS_STEP, ASK_LEAK, ASK_NOT_JUDGE, CLOSINGS, CLOSINGS_HELP, isOff, OFF_AGAIN, OFF_FIRST, pick, REPEAT, RETRY, STEP_LEAK, STUCK_HINT, STUCK_NOHINT } from "../lib/chat/canned";
+import { hasChecks, stepCue, stepGoal, stepLead, stepsGreeting } from "../lib/chat/goals";
 import { machineCheck, recent } from "../lib/chat/steps";
 
 describe("pii", () => {
@@ -216,16 +217,12 @@ describe("thang goi y: hien loi giai khi ket", () => {
     expect(ladder("steps", 3, STALL_LIMIT - 1, false)).toEqual({ stall: STALL_LIMIT, reveal: true });
     expect(ladder("steps", 3, 4, true)).toEqual({ stall: 0, reveal: false });
   });
-  it("scoreCap: chi tinh phan tu lam", () => {
-    const cps = [cp(0), cp(1), cp(2), cp(3)];
-    expect(scoreCap(cps, 0)).toBe(3);
-    expect(scoreCap(cps, 0b0100)).toBe(3); // 3/4 tu lam: ceil(2.25) = 3
-    expect(scoreCap(cps, 0b0110)).toBe(2);
-    expect(scoreCap(cps, 0b1111)).toBe(0);
+  it("revealCap: moi lan giai ho tru tran 1, khong phu thuoc so buoc", () => {
+    expect([0, 1, 2, 3, 5].map(revealCap)).toEqual([3, 2, 1, 0, 0]);
   });
   it("revealLine bo tien to Buoc N", () => {
-    expect(revealLine(cp(1), 4)).toContain("làm việc 1");
-    expect(revealLine(cp(1), 4)).not.toMatch(/Bước 2:/);
+    expect(revealLine(cp(1))).toContain("làm việc 1");
+    expect(revealLine(cp(1))).not.toMatch(/Bước [0-9]/);
   });
 });
 
@@ -240,22 +237,22 @@ describe("keepOrAsk", () => {
 
 describe("missingInfo", () => {
   const base = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
-  const full = { ...base, solution: { x: 4 }, solution_steps: ["a", "b"], step_goals: ["a", "b"], step_hints: [["h"], ["h"]] };
+  const full = { ...base, solution: { x: 4 }, solution_steps: ["a", "b"], step_goals: [], step_hints: [], step_checks: [{ result: "", accepts: [] }, { result: "", accepts: [] }] };
   it("du thi rong, thieu thi liet ke", () => {
     expect(missingInfo(full)).toEqual([]);
     expect(missingInfo({ ...full, solution: {} })).toEqual(["đáp án"]);
-    expect(missingInfo({ ...full, solution_steps: [], step_goals: [], step_hints: [] })).toEqual(["lời giải từng bước", "chỉ dẫn và gợi ý từng bước"]);
-    expect(missingInfo({ ...full, step_goals: [] })).toEqual(["chỉ dẫn và gợi ý từng bước"]);
+    expect(missingInfo({ ...full, solution_steps: [], step_checks: [] })).toEqual(["lời giải từng bước", "kết quả chuẩn từng bước (chuẩn hóa đề)"]);
+    expect(missingInfo({ ...full, step_checks: [] })).toEqual(["kết quả chuẩn từng bước (chuẩn hóa đề)"]);
     expect(missingInfo({ nonsense: 1 })).toEqual(["đề lưu sai định dạng"]);
   });
 });
 
 describe("readiness", () => {
   const base = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
-  const full = { ...base, solution: { x: 4 }, solution_steps: ["a", "b"], step_goals: ["a", "b"], step_hints: [["h"], ["h"]], step_checks: [{ result: "", accepts: [] }, { result: "", accepts: [] }], reviewed: true };
+  const full = { ...base, solution: { x: 4 }, solution_steps: ["a", "b"], step_goals: [], step_hints: [], step_checks: [{ result: "", accepts: [] }, { result: "", accepts: [] }], reviewed: true };
   it("dem tung nhom", () => {
     expect(readiness(full)).toMatchObject({ ok: true, needGuides: false, pending: false, lint: [] });
-    expect(readiness({ ...full, step_goals: [] })).toMatchObject({ ok: false, needGuides: true });
+    expect(readiness({ ...full, step_goals: ["a", "b"], step_hints: [["h"], ["h"]] })).toMatchObject({ ok: false, needGuides: true }); // còn chỉ dẫn theo bước kiểu cũ: cần chuẩn hóa lại
     expect(readiness({ ...full, step_checks: [] })).toMatchObject({ ok: false, needGuides: true }); // đề cũ chưa có kết quả chuẩn từng bước
     expect(readiness({ ...full, reviewed: false })).toMatchObject({ ok: false, pending: true });
     expect(readiness({ ...full, check_note: "lệch" })).toMatchObject({ ok: false }); // có cảnh báo thì không được tính đạt chuẩn
@@ -263,6 +260,21 @@ describe("readiness", () => {
     expect(needsWork(full)).toBe(false);
     expect(needsWork({ nonsense: 1 })).toBe(false);
     expect(readiness({ nonsense: 1 })).toMatchObject({ bad: true, ok: false });
+  });
+});
+
+describe("badClaims: phep tinh viet bang chu va cau bao loi ket qua", () => {
+  it("nhân/chia/cộng/trừ bằng chữ giữa hai số được kiểm như ký hiệu", () => {
+    expect(badClaims("chu vi = (12 + 8) nhân 2 = 41")).toEqual(["(12 + 8) × 2 = 41"]);
+    expect(badClaims("chu vi = (12 + 8) nhân 2 = 40")).toEqual([]);
+    expect(badClaims("7 cộng 5 = 13")).toEqual(["7+5 = 13"]);
+    expect(badClaims("tổng cộng 20")).toEqual([]);
+  });
+  it("claimNote: đẳng thức sai nói rõ lỗi kết quả, không nêu số đúng, không nói 'phép đó sai'", () => {
+    const n = claimNote("(12 + 8) × 2 = 41");
+    expect(n).toContain(RESULT_MARK);
+    expect(n).not.toMatch(/40|phép đó/);
+    expect(claimNote("5 < 3")).toBe('Mình thấy "5 < 3" chưa đúng, bạn kiểm tra lại dòng đó nhé.');
   });
 });
 
@@ -277,15 +289,25 @@ describe("kieu tuong tac", () => {
     expect(markByNumbers("x = 4", cps, 0b001)).toBe(0b011);
     expect(markByNumbers("mọi số", cps, 0b011)).toBe(0b011); // buoc 3 khong co so: cho AI, server khong tu xac nhan
   });
+  it("markByNumbers: phep tinh trung gian nam trong bieu thuc gop duoc ghi nhan khi muc sau co bang chung", () => {
+    const cp = (id: number, must: string[]) => ({ id, label: "", anchors: must, must });
+    const cps = [cp(0, ["20"]), cp(1, ["40"])];
+    expect(markByNumbers("(12 + 8) × 2 = 40", cps, 0)).toBe(0b11); // co phep 12 + 8 (= 20) va ket qua 40
+    expect(markByNumbers("12 + 8 nhân 2 = 40", cps, 0)).toBe(0b11);
+    expect(markByNumbers("(12 + 8) × 2", cps, 0)).toBe(0); // chua co ket qua nao: khong ghi nhan
+    expect(markByNumbers("(12 + 9) × 2 = 40", cps, 0)).toBe(0); // phep 12 + 9 = 21, khong phai 20
+    expect(markByNumbers("20", cps, 0)).toBe(0b01); // khong doi hanh vi cu
+  });
 });
 
 describe("chi dan tung buoc", () => {
   const base = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
   const p = { ...base, statement: "Tìm x", data: {}, solution: { x: 4321 }, solution_steps: ["Tính 2x = 8642", "Vậy x = 4321"], step_goals: [] as string[], step_hints: [] as string[][] };
-  it("hasGuides chi khi khop so buoc", () => {
-    expect(hasGuides(p)).toBe(false);
-    expect(hasGuides({ ...p, step_goals: ["a", "b"], step_hints: [["h"], ["h"]] })).toBe(true);
-    expect(hasGuides({ ...p, step_goals: ["a"], step_hints: [["h"], ["h"]] })).toBe(false);
+  it("hasChecks chi khi ket qua chuan khop so buoc", () => {
+    const ck = (n: number) => Array.from({ length: n }, () => ({ result: "", accepts: [] as string[] }));
+    expect(hasChecks({ ...p, step_checks: [] })).toBe(false);
+    expect(hasChecks({ ...p, step_checks: ck(2) })).toBe(true);
+    expect(hasChecks({ ...p, step_checks: ck(1) })).toBe(false);
   });
   it("stepGoal: uu tien muc tieu, thieu thi goi y muc 1, lech thi rong", () => {
     expect(stepGoal({ ...p, step_goals: ["Tìm 2x", "Tìm x"], step_hints: [["g1"], ["g2"]] }, 0)).toBe("Tìm 2x");
@@ -317,49 +339,48 @@ describe("chi dan tung buoc", () => {
     expect(looksLikeStep(q, "Hệ số của y là 2 và -2, hai số đối nhau")).toBe(true);
     expect(NOT_JUDGE.test("Đúng rồi bạn! cộng vế")).toBe(true);
   });
-  it("misses: dem tin nop tu lan bot nen Buoc k/n gan nhat, bo qua cau hoi", () => {
-    const m = (role: "bot" | "student", content: string) => ({ role, content, hint_level: 0 });
-    const all = [m("bot", "Bước 1/5: a"), m("student", "x"), m("bot", "sai"), m("bot", "Bước 2/5: b"), m("student", "y"), m("student", "[Hỏi] gì"), m("bot", "ok"), m("student", "z")];
-    expect(misses(all, 2, 5)).toBe(2);
-    expect(misses(all, 1, 5)).toBe(3);
-    expect(misses([], 1, 5)).toBe(0);
+  it("misses: dem tin nop lien tiep chua tien them moc (tu tin bot meta.kind right/open/done), bo qua cau hoi", () => {
+    const m = (role: "bot" | "student", content: string, kind?: string) => ({ role, content, hint_level: 0, meta: kind ? { kind } : null });
+    const all = [m("bot", "chào", "open"), m("student", "x"), m("bot", "Đúng rồi", "right"), m("student", "y"), m("student", "[Hỏi] gì"), m("bot", "sai", "wrong"), m("student", "z")];
+    expect(misses(all)).toBe(2); // y, z kể từ tin right gần nhất; câu hỏi không tính
+    expect(misses(all.slice(0, 2))).toBe(1);
+    expect(misses([m("student", "a"), m("bot", "sai", "wrong"), m("student", "b")])).toBe(2); // chưa có mốc nào: đếm từ đầu
+    expect(misses([])).toBe(0);
   });
   it("cannedStuck: khong biet / doi dap an / lap tin thi tra cau cung, tin lam bai thi de AI", () => {
     const q = { ...p, step_goals: ["Tìm 2x", "Tìm x"], step_hints: [["a"], ["b"]] };
-    const cps = checkpoints(q);
-    const c = (t: string, prior: string[] = [], hl = 0) => cannedStuck({ hint_level: hl }, q, cps, 0, t, prior);
+    const c = (t: string, prior: string[] = [], hl = 0) => cannedStuck({ hint_level: hl }, t, prior);
     const has = (out: string, arr: readonly string[]) => arr.some((x) => out.includes(x));
     expect(has(c("không biết"), STUCK_HINT)).toBe(true);
-    expect(c("không biết")).toContain("Việc cần làm ở bước 1/2: Tìm 2x");
+    expect(c("không biết")).not.toMatch(/Việc cần làm|bước d/);
     expect(has(c("cho em đáp án"), ASK_ANSWER)).toBe(true);
     expect(has(c("bó tay", [], 3), STUCK_NOHINT)).toBe(true);
     expect(has(c("2x = 5", ["2x = 5", "2x = 5"]), REPEAT)).toBe(true);
-    for (let i = 0; i < 20; i++) expect((c("không biết", [], 0).match(/Việc cần làm ở bước/g) ?? []).length).toBe(1); // cue chỉ một lần
     expect(c("2x = 5", ["2x = 5", "[Hỏi] gì", "2x = 6"])).toBe("");
     expect(c("Tính 2x bằng cách chia")).toBe("");
   });
-  it("offReply: nem cu the buoc, lan 2 doi cau", () => {
-    const q = { ...p, step_goals: ["Tìm 2x", "Tìm x"], step_hints: [["a"], ["b"]] };
-    const cps = checkpoints(q);
-    const r1 = offReply(q, cps, 0, []);
-    expect(r1).toContain("Bước 1/2: Tìm 2x");
-    const r2 = offReply(q, cps, 0, [{ role: "bot", content: r1, hint_level: 0 }]);
+  it("offReply: khong nem buoc nao, lan 2 doi cau", () => {
+    const r1 = offReply([]);
+    expect(OFF_FIRST.some((x) => r1.startsWith(x))).toBe(true);
+    expect(r1).not.toMatch(/Bước d/);
+    const r2 = offReply([{ role: "bot", content: r1, hint_level: 0 }]);
     expect(OFF_AGAIN.some((x) => r2.startsWith(x))).toBe(true);
-    expect(r2).toContain("Bước 1/2: Tìm 2x");
     expect(r2).not.toBe(r1);
-    const r3 = offReply(q, cps, 0, [{ role: "bot", content: r1, hint_level: 0 }, { role: "bot", content: r2, hint_level: 0 }]);
+    const r3 = offReply([{ role: "bot", content: r1, hint_level: 0 }, { role: "bot", content: r2, hint_level: 0 }]);
     expect(OFF_AGAIN.some((x) => r3.startsWith(x))).toBe(true); // lạc đề liên tiếp vẫn nhận ra, không quay về câu lần 1
   });
   it("canned: moi nhom 5 bien the khac nhau, pick tranh lap tin truoc", () => {
-    for (const a of [STUCK_HINT, STUCK_NOHINT, ASK_ANSWER, REPEAT, OFF_FIRST, OFF_AGAIN, ASK_LIMIT, ASK_IS_STEP, ASK_NOT_JUDGE, ASK_LEAK, STEP_LEAK, RETRY, CLOSINGS, CLOSINGS_HELP]) expect(new Set(a).size).toBe(5);
+    for (const a of [STUCK_HINT, STUCK_NOHINT, ASK_ANSWER, REPEAT, OFF_FIRST, OFF_AGAIN, ASK_IS_STEP, ASK_NOT_JUDGE, ASK_LEAK, STEP_LEAK, RETRY, CLOSINGS, CLOSINGS_HELP]) expect(new Set(a).size).toBe(5);
     for (let i = 0; i < 30; i++) expect(pick(RETRY, RETRY[2])).not.toBe(RETRY[2]);
     expect(pick(["a"], "a")).toBe("a"); // chỉ còn một biến thể thì vẫn dùng được
     expect(isOff(OFF_FIRST[3])).toBe(true);
     expect(isOff("Bước 1/5: a")).toBe(false);
   });
-  it("stepsGreeting neu viec cua buoc 1", () => {
-    expect(stepsGreeting({ ...p, step_goals: ["Tìm 2x", "Tìm x"], step_hints: [["a"], ["b"]] })).toContain("Bước 1/2: Tìm 2x");
-    expect(stepsGreeting(p)).toBe("Bạn viết từng bước giải vào ô bên dưới, mỗi lần một bước. Mình sẽ kiểm tra từng bước. Cần gợi ý thì bấm nút Gợi ý nhé. Bước 1/2: Tính 2x = …");
+  it("stepsGreeting khong neu buoc nao, cho phep nop mot buoc, nhieu buoc hoac ca bai", () => {
+    const g = stepsGreeting();
+    expect(g).not.toMatch(/Bước d/);
+    expect(g).toContain("nhiều bước");
+    expect(g).toContain("cả lời giải");
   });
   it("stepCue luon co noi dung: thieu muc tieu thi lay loi giai da che so", () => {
     expect(stepCue(p, 0)).toBe("Tính 2x = …");
@@ -371,17 +392,17 @@ describe("chi dan tung buoc", () => {
     expect(stepLead({ ...p, step_goals: ["Tìm 2x", "Tìm x"], step_hints: [["Nhìn vế trái"], ["x = 4321"]] }, 1)).toBe("");
     expect(stepLead(p, 0)).toBe("");
   });
-  it("hardSteps dem hoc sinh theo buoc, nhieu nhat truoc", () => {
-    const probs = new Map([["A", { title: "t", steps: ["Bước 1: a", "Bước 2: b"], goals: [] as string[] }]]);
-    const r = hardSteps([{ id: "1", problem_code: "A", student_code: "h1", struggled: 0b10 }, { id: "2", problem_code: "A", student_code: "h1", struggled: 0b10 }, { id: "3", problem_code: "A", student_code: "h2", struggled: 0b11 }], probs);
-    expect(r.map((x) => [x.step, x.n, x.label])).toEqual([[2, 2, "b"], [1, 1, "a"]]);
+  it("hardProblems dem hoc sinh theo de, nhieu nhat truoc", () => {
+    const probs = new Map([["A", { title: "ta" }], ["B", { title: "tb" }]]);
+    const r = hardProblems([{ id: "1", problem_code: "A", student_code: "h1", struggled: 0b10 }, { id: "2", problem_code: "A", student_code: "h1", struggled: 0b10 }, { id: "3", problem_code: "A", student_code: "h2", struggled: 0b11 }, { id: "4", problem_code: "B", student_code: "h1", struggled: 0 }], probs);
+    expect(r.map((x) => [x.code, x.n, x.title])).toEqual([["A", 2, "ta"]]); // phien khong gap kho khong tinh
     expect(r[0].students.map((w) => [w.code, w.times])).toEqual([["h1", 2], ["h2", 1]]);
   });
-  it("weakSteps: mot hoc sinh, buoc giai ho len truoc", () => {
-    const probs = new Map([["A", { title: "t", steps: ["a", "b", "c"], goals: [] as string[] }]]);
-    const r = weakSteps([{ id: "1", problem_code: "A", student_code: "h", struggled: 0b011, revealed: 0b010 }, { id: "2", problem_code: "A", student_code: "h", struggled: 0b001 }], probs);
-    expect(r.map((x) => [x.step, x.struggled, x.revealed, x.of])).toEqual([[2, 1, 1, 2], [1, 2, 0, 2]]);
-    expect(r[0].sessions.map((x) => [x.id, x.helped])).toEqual([["1", true]]);
+  it("weakProblems: mot hoc sinh, de giai ho len truoc", () => {
+    const probs = new Map([["A", { title: "ta" }], ["B", { title: "tb" }]]);
+    const r = weakProblems([{ id: "1", problem_code: "A", student_code: "h", struggled: 0b011, revealed: 0b010 }, { id: "2", problem_code: "A", student_code: "h", struggled: 0b001 }, { id: "3", problem_code: "B", student_code: "h", struggled: 0b001 }, { id: "4", problem_code: "B", student_code: "h", struggled: 0 }], probs);
+    expect(r.map((x) => [x.code, x.struggled, x.revealed, x.of])).toEqual([["A", 2, 1, 2], ["B", 1, 0, 2]]);
+    expect(r[0].sessions.map((x) => [x.id, x.helped]).sort()).toEqual([["1", true], ["2", false]]);
   });
 });
 

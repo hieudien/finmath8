@@ -3,7 +3,7 @@ import { freeCode, pool } from "../lib/batch";
 import { problemSchema, type Problem } from "../lib/schema/problem";
 
 vi.mock("../lib/llm", () => ({ askJson: vi.fn(), askText: vi.fn() }));
-vi.mock("../lib/verify-solution", () => ({ crossCheck: vi.fn(), checkSteps: vi.fn(async () => ""), substituteState: vi.fn(() => ({ state: "skip", msg: "" })) }));
+vi.mock("../lib/verify-solution", () => ({ crossCheck: vi.fn(), checkSteps: vi.fn(async () => ""), checkKey: vi.fn(async () => ""), substituteState: vi.fn(() => ({ state: "skip", msg: "" })) }));
 vi.mock("../lib/step-all", () => ({ guidesFor: vi.fn() })); // chỉ dẫn do một lượt gộp viết; test giả lập kết quả của nó
 import { finishProblem, standardizeProblem, unaccented } from "../lib/fill";
 import { repairProblem } from "../lib/repair";
@@ -41,23 +41,23 @@ describe("pool", () => {
 });
 
 describe("finishProblem", () => {
-  it("đề AI mới: kiểm chéo khớp, viết chỉ dẫn, đặt đã duyệt", async () => {
+  it("đề AI mới: kiểm chéo khớp, viết kết quả chuẩn, đặt đã duyệt", async () => {
     vi.mocked(crossCheck).mockResolvedValue("");
     vi.mocked(guidesFor).mockImplementation(asP(guides));
     const r = await finishProblem(cfg, base());
     expect(typeof r).toBe("object");
-    expect(r).toMatchObject({ reviewed: true, check_note: "", step_goals: guides.goals });
+    expect(r).toMatchObject({ reviewed: true, check_note: "", step_checks: guides.checks, step_goals: [], step_hints: [] });
   });
   it("kiểm chéo lệch thì trả lỗi, không lưu đề dở", async () => {
     vi.mocked(crossCheck).mockResolvedValue("Kiểm chéo đáp án: lệch");
     expect(await finishProblem(cfg, base())).toContain("lệch");
   });
-  it("chỉ dẫn lộ kết quả: viết lại; vẫn lộ thì lỗi", async () => {
+  it("kết quả chuẩn lệch số bước: viết lại; vẫn lệch thì lỗi", async () => {
     vi.mocked(crossCheck).mockResolvedValue("");
-    const leak = { ...guides, goals: ["Tính tiền giảm, ra 45000", "Tính số tiền phải trả"] };
-    vi.mocked(guidesFor).mockReset().mockImplementationOnce(asP(leak)).mockImplementationOnce(asP(guides));
+    const bad = { ...guides, checks: [{ result: "45000", accepts: [] }] };
+    vi.mocked(guidesFor).mockReset().mockImplementationOnce(asP(bad)).mockImplementationOnce(asP(guides));
     expect(await finishProblem(cfg, base())).toMatchObject({ reviewed: true });
-    vi.mocked(guidesFor).mockReset().mockImplementation(asP(leak));
+    vi.mocked(guidesFor).mockReset().mockImplementation(asP(bad));
     expect(await finishProblem(cfg, base())).toContain("chưa làm đề này đạt chuẩn");
   });
   it("lời giải có phép tính sai: viết lại một lần; vẫn sai thì lỗi", async () => {
@@ -67,7 +67,7 @@ describe("finishProblem", () => {
     vi.mocked(checkSteps).mockReset().mockResolvedValueOnce("Bước 2 sai").mockResolvedValueOnce("");
     vi.mocked(askJson).mockReset().mockResolvedValueOnce({ steps: ["Tiền giảm là 300000 x 0,15 = 45000.", "Phải trả 300000 - 45000 = 255000."] });
     expect(await finishProblem(cfg, base())).toMatchObject({ reviewed: true });
-    expect(askJson).toHaveBeenCalledTimes(3);
+    expect(askJson).toHaveBeenCalledTimes(1);
     vi.mocked(checkSteps).mockReset().mockResolvedValue("Bước 2 sai");
     vi.mocked(askJson).mockReset().mockResolvedValue({ steps: ["Tiền giảm là 300000 x 0,15 = 45000.", "Phải trả 300000 - 45000 = 255000."] });
     expect(await finishProblem(cfg, base())).toContain("chưa đạt");
@@ -111,7 +111,7 @@ describe("repairProblem + standardizeProblem", () => {
     expect(r.solution_steps.join(" ")).not.toContain("56.000.000");
     expect(r).toMatchObject({ common_errors: ["Quên trừ tiền giảm"], extension: "Giảm 20% thì sao?", skills: ["Tính phần trăm"], learning_objectives: ["Tính giá sau giảm"] });
     expect(r.hints.map((h) => h.text)).toEqual(["h1", "h2", "h3"]);
-    expect(askJson).toHaveBeenCalledTimes(4); // tạo lại + lời giải + dạng cần viết + giàn đỡ
+    expect(askJson).toHaveBeenCalledTimes(2); // tạo lại + lời giải (không còn dạng cần viết, giàn đỡ)
     expect(askText).toHaveBeenCalledTimes(1); // 1 phiếu giải độc lập
   });
   const derive = (v: string) => ({ data: [], answers: [{ name: "cost", value: v }], skills: ["a"], learning_objectives: ["b"], common_errors: ["c"], hints: ["h1", "h2", "h3"], extension: "e" });
@@ -135,7 +135,7 @@ describe("repairProblem + standardizeProblem", () => {
     const r = await standardizeProblem(cfg, base({ reviewed: true, answer_locked: true })) as Problem;
     expect(r.solution).toEqual({ cost: 255000 });
     expect(r.answer_locked).toBe(true);
-    expect(askJson).toHaveBeenCalledTimes(4); // tạo lại + lời giải + dạng cần viết + giàn đỡ
+    expect(askJson).toHaveBeenCalledTimes(2); // tạo lại + lời giải (không còn dạng cần viết, giàn đỡ)
     expect(crossCheck).not.toHaveBeenCalled();
   });
   it("unaccented: khối chữ không dấu bị bắt, có dấu thì qua", () => {

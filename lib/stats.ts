@@ -59,66 +59,59 @@ export function sessionState(x: { status: string }, ev: { final_correct: boolean
 }
 export const fmtTime = (iso: string) => new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(iso));
 
-// Bước học sinh gặp khó. struggled/revealed là mặt nạ bit theo bước (cùng cách đánh bit với progress).
-export type StepInfo = { title: string; steps: string[]; goals: string[] };
+// Phiên gặp khó = học sinh bấm Gợi ý, Em chưa hiểu, nộp sai hoặc được giải hộ (struggled hoặc revealed khác 0). Tính theo đề, không theo bước:
+// học sinh không thấy bước nên không có "bước nào" để gặp khó; đề nào khó thì lời giải và sai lầm thường gặp của đề đó nói lên chỗ khó.
+export type ProbInfo = { title: string };
 type SRow = { id: string; problem_code: string; student_code: string | null; student_name?: string | null; struggled?: number; revealed?: number; started_at?: string };
-const cut = (t: string) => { const s = t.replace(/^Bước \d+\s*[:.)-]\s*/i, ""); return s.length > 70 ? s.slice(0, 70) + "…" : s; };
-const label = (p: StepInfo, i: number) => cut(p.goals[i] || p.steps[i]);
+const hit = (x: SRow) => ((x.struggled ?? 0) | (x.revealed ?? 0)) !== 0;
 
-// Cả lớp: đếm số học sinh (không phải số phiên) gặp khó ở từng bước của từng đề, kèm danh sách học sinh. Nhiều nhất trước.
-export function hardSteps(ss: SRow[], probs: Map<string, StepInfo>) {
+// Cả lớp: đếm số học sinh (không phải số phiên) gặp khó ở từng đề, kèm danh sách học sinh. Nhiều nhất trước.
+export function hardProblems(ss: SRow[], probs: Map<string, ProbInfo>) {
   type St = { code: string | null; name: string | null; times: number };
-  const seen = new Map<string, { code: string; step: number; who: Map<string, St> }>();
+  const seen = new Map<string, Map<string, St>>();
   for (const x of ss) {
-    const p = probs.get(x.problem_code);
-    for (let i = 0; p && i < p.steps.length; i++) if ((x.struggled ?? 0) >> i & 1) {
-      const k = `${x.problem_code}|${i}`;
-      const e = seen.get(k) ?? seen.set(k, { code: x.problem_code, step: i + 1, who: new Map() }).get(k)!;
-      const w = e.who.get(x.student_code ?? x.id) ?? { code: x.student_code, name: x.student_name ?? null, times: 0 };
-      w.times++;
-      e.who.set(x.student_code ?? x.id, w);
-    }
+    if (!probs.has(x.problem_code) || !hit(x)) continue;
+    const who = seen.get(x.problem_code) ?? seen.set(x.problem_code, new Map()).get(x.problem_code)!;
+    const w = who.get(x.student_code ?? x.id) ?? { code: x.student_code, name: x.student_name ?? null, times: 0 };
+    w.times++;
+    who.set(x.student_code ?? x.id, w);
   }
-  return [...seen.values()].map((e) => ({ code: e.code, title: probs.get(e.code)!.title, step: e.step, label: label(probs.get(e.code)!, e.step - 1), n: e.who.size, students: [...e.who.values()].sort((a, b) => b.times - a.times) }))
-    .sort((a, b) => b.n - a.n || a.code.localeCompare(b.code) || a.step - b.step);
+  return [...seen].map(([code, who]) => ({ code, title: probs.get(code)!.title, n: who.size, students: [...who.values()].sort((a, b) => b.times - a.times) }))
+    .sort((a, b) => b.n - a.n || a.code.localeCompare(b.code));
 }
 
-// Cả lớp, theo học sinh: mỗi học sinh gặp khó ở những (đề, bước) nào, mấy phiên. Nhiều bước nhất trước.
-export function hardStudents(ss: SRow[], probs: Map<string, StepInfo>) {
-  type Stp = { code: string; step: number; label: string; times: number };
-  const who = new Map<string, { code: string | null; name: string | null; steps: Map<string, Stp> }>();
+// Cả lớp, theo học sinh: mỗi học sinh gặp khó ở những đề nào, mấy phiên. Nhiều đề nhất trước.
+export function hardStudents(ss: SRow[], probs: Map<string, ProbInfo>) {
+  type Pr = { code: string; title: string; times: number };
+  const who = new Map<string, { code: string | null; name: string | null; problems: Map<string, Pr> }>();
   for (const x of ss) {
     const p = probs.get(x.problem_code);
-    for (let i = 0; p && i < p.steps.length; i++) if ((x.struggled ?? 0) >> i & 1) {
-      const key = x.student_code ?? x.id;
-      const w = who.get(key) ?? who.set(key, { code: x.student_code, name: x.student_name ?? null, steps: new Map() }).get(key)!;
-      const k = `${x.problem_code}|${i}`;
-      const s = w.steps.get(k) ?? w.steps.set(k, { code: x.problem_code, step: i + 1, label: label(p, i), times: 0 }).get(k)!;
-      s.times++;
-    }
+    if (!p || !hit(x)) continue;
+    const key = x.student_code ?? x.id;
+    const w = who.get(key) ?? who.set(key, { code: x.student_code, name: x.student_name ?? null, problems: new Map() }).get(key)!;
+    const e = w.problems.get(x.problem_code) ?? w.problems.set(x.problem_code, { code: x.problem_code, title: p.title, times: 0 }).get(x.problem_code)!;
+    e.times++;
   }
   return [...who.values()].map((w) => {
-    const steps = [...w.steps.values()].sort((a, b) => b.times - a.times || a.code.localeCompare(b.code) || a.step - b.step);
-    return { code: w.code, name: w.name, steps, total: steps.reduce((n, s) => n + s.times, 0) };
-  }).sort((a, b) => b.steps.length - a.steps.length || b.total - a.total);
+    const problems = [...w.problems.values()].sort((a, b) => b.times - a.times || a.code.localeCompare(b.code));
+    return { code: w.code, name: w.name, problems, total: problems.reduce((n, s) => n + s.times, 0) };
+  }).sort((a, b) => b.problems.length - a.problems.length || b.total - a.total);
 }
 
-// Một học sinh: mỗi (đề, bước) gặp khó mấy phiên, bị giải hộ mấy phiên, trên tổng số phiên làm đề đó. Bước giải hộ nhiều rồi gặp khó nhiều trước.
-export function weakSteps(ss: SRow[], probs: Map<string, StepInfo>) {
+// Một học sinh: mỗi đề gặp khó mấy phiên, bị giải hộ mấy phiên, trên tổng số phiên làm đề đó. Giải hộ nhiều rồi gặp khó nhiều trước.
+export function weakProblems(ss: SRow[], probs: Map<string, ProbInfo>) {
   const total = new Map<string, number>();
-  const out = new Map<string, { code: string; title: string; step: number; label: string; struggled: number; revealed: number; sessions: { id: string; started_at: string; helped: boolean }[] }>();
+  const out = new Map<string, { code: string; title: string; struggled: number; revealed: number; sessions: { id: string; started_at: string; helped: boolean }[] }>();
   for (const x of ss) {
     const p = probs.get(x.problem_code);
     if (!p) continue;
     total.set(x.problem_code, (total.get(x.problem_code) ?? 0) + 1);
-    for (let i = 0; i < p.steps.length; i++) {
-      const a = (x.struggled ?? 0) >> i & 1, b = (x.revealed ?? 0) >> i & 1;
-      if (!a && !b) continue;
-      const k = `${x.problem_code}|${i}`;
-      const e = out.get(k) ?? out.set(k, { code: x.problem_code, title: p.title, step: i + 1, label: label(p, i), struggled: 0, revealed: 0, sessions: [] }).get(k)!;
-      e.struggled += a | b; e.revealed += b;
-      e.sessions.push({ id: x.id, started_at: x.started_at ?? "", helped: !!b });
-    }
+    if (!hit(x)) continue;
+    const helped = (x.revealed ?? 0) !== 0;
+    const e = out.get(x.problem_code) ?? out.set(x.problem_code, { code: x.problem_code, title: p.title, struggled: 0, revealed: 0, sessions: [] }).get(x.problem_code)!;
+    e.struggled++;
+    if (helped) e.revealed++;
+    e.sessions.push({ id: x.id, started_at: x.started_at ?? "", helped });
   }
-  return [...out.values()].map((e) => ({ ...e, sessions: e.sessions.sort((a, b) => b.started_at.localeCompare(a.started_at)), of: total.get(e.code) ?? 0 })).sort((a, b) => b.revealed - a.revealed || b.struggled - a.struggled || a.code.localeCompare(b.code) || a.step - b.step);
+  return [...out.values()].map((e) => ({ ...e, sessions: e.sessions.sort((a, b) => b.started_at.localeCompare(a.started_at)), of: total.get(e.code) ?? 0 })).sort((a, b) => b.revealed - a.revealed || b.struggled - a.struggled || a.code.localeCompare(b.code));
 }

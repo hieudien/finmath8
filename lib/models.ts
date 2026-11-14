@@ -30,3 +30,8 @@ export const PROVIDERS: Record<Provider, ProviderInfo> = {
     models: ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash"],
   },
 };
+
+// Model không đưa vào chuỗi dự phòng: quá chậm khi model chính quá tải (cross_check đo 51s trung bình, tối đa 128s). Vẫn nằm trong `models` để chỉ số models[n] không đổi.
+export const SKIP_FALLBACK = ["gemini-3.1-flash-lite"];
+export const fallbackChain = (p: Provider, first: string): string[] =>
+  [first, ...PROVIDERS[p].models.filter((id) => id !== first && !SKIP_FALLBACK.includes(id))].slice(0, 4);

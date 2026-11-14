@@ -84,7 +84,7 @@ export function ImportPanel({ todo }: { todo: number }) {
         </AiButton>
         <Button variant="ghost" onClick={seed} disabled={running} pending={wait || undefined}>Thêm đề mẫu</Button>
       </div>
-      {todo > 0 && !running && <p className="text-sm text-text-muted">AI làm đến khi đề đạt chuẩn: sửa công thức hỏng, kiểm chéo đáp án, viết lời giải và chỉ dẫn từng bước. Ước tính khoảng {when(minutes(todo, 35))}; chạy theo lượt {CHUNK} đề, dừng lúc nào cũng được và làm tiếp sau.</p>}
+      {todo > 0 && !running && <p className="text-sm text-text-muted">AI làm đến khi đề đạt chuẩn: sửa công thức hỏng, kiểm chéo đáp án, viết lời giải chi tiết từng bước cơ bản. Ước tính khoảng {when(minutes(todo, 35))}; chạy theo lượt {CHUNK} đề, dừng lúc nào cũng được và làm tiếp sau.</p>}
       {panel}
     </div>
   );

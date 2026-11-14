@@ -9,7 +9,7 @@ import { checkpoints, numsIn, stripStep } from "../lib/chat/progress";
 import { leaks, leaksCalc } from "../lib/chat/prompt";
 import { stepSystem, machineCheck, PRAISE } from "../lib/chat/steps";
 import { fillMissing } from "../lib/fill";
-import { hasGuides } from "../lib/chat/goals";
+import { hasChecks } from "../lib/chat/goals";
 
 // Đo AI thật theo từng cấu hình model. Kết quả in ra bảng và ghi evals/out/<thời gian>.json.
 // Biến môi trường: EVAL_IDS (mã đề, mặc định TC01,TC03,TC05), EVAL_REPEAT (mặc định 3), EVAL_ONLY (student|teacher).
@@ -78,7 +78,7 @@ async function teacherEval(model: string) {
     if (typeof out === "string") { rows.push({ id: p.id, ok: false, answer: false, guides: false, note: out }); continue; }
     const got = numsIn(JSON.stringify(out.solution)).map(Number);
     const miss = numsIn(JSON.stringify(p.solution)).map(Number).filter((n) => !got.some((g) => near(g, n)));
-    rows.push({ id: p.id, ok: true, answer: !miss.length, guides: hasGuides(out), note: miss.length ? "thiếu " + miss.join(",") : "" });
+    rows.push({ id: p.id, ok: true, answer: !miss.length, guides: hasChecks(out), note: miss.length ? "thiếu " + miss.join(",") : "" });
   }
   return { rows, summary: { answer: `${rows.filter((r) => r.answer).length}/${rows.length}`, guides: `${rows.filter((r) => r.guides).length}/${rows.length}`, ...fmt(since(i0)) } };
 }

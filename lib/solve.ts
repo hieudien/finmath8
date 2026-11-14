@@ -1,4 +1,7 @@
-import { askText, type LlmCfg } from "@/lib/llm";
+import { problemText } from "@/lib/figure";
+import { askJson, askText, type LlmCfg } from "@/lib/llm";
+import { PROVIDERS } from "@/lib/models";
+import { z } from "zod";
 import { swallow } from "@/lib/errors";
 import { gradeRule } from "@/lib/grade";
 import { FORMAT_RULE } from "@/lib/format-rule";
@@ -15,6 +18,7 @@ Cách làm:
 2. Giải lần lượt từng ý, mỗi bước một phép biến đổi, viết đủ phép tính trung gian, cẩn thận dấu và hệ số. Ý sau dùng kết quả ý trước.
 3. Đề có tham số: thay một giá trị cụ thể của tham số để kiểm tra công thức tổng quát; không khớp thì tính lại.
 4. Thay đáp án cuối vào đề để kiểm tra; sai thì sửa.
+5. Đề chứng minh nhiều ý: các ý "chứng minh" không có đáp án để ghi; đáp án chỉ là kết quả của ý "tìm/xác định/tính" (ví dụ "H là tâm đường tròn nội tiếp tam giác DEF"), viết cụ thể, không viết kiểu "đã chứng minh xong". Tên đáp án của đề chứng minh luôn là ket_luan (không thêm tiền tố ý, không bắt đầu bằng số).
 Chỉ trả văn bản đúng khung, không JSON, không khối mã:
 <loi_giai>
 mỗi bước một dòng, công thức $...$ LaTeX, bước cuối là kết luận
@@ -29,7 +33,7 @@ ket_luan chỉ cho đáp án chữ (vô nghiệm, "m khác 2", tên người...)
 </dap_an>`;
 
 export type Solved = { steps: string[]; answers: Record<string, unknown>; check: string };
-type P = { statement: string; grade: number };
+type P = { statement: string; grade: number; figure?: { desc?: string } | null }; // có figure thì mô tả hình được đưa vào đề
 type Opts = { temperature?: number; seed?: number; hint?: string; deadlineMs?: number };
 
 // "14/3" thành số; các giá trị khác giữ nguyên.
@@ -58,9 +62,10 @@ export function parseSolved(raw: string): Solved | null {
   return { steps: (t.loi_giai ?? "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean), answers, check: t.kiem_tra ?? "" };
 }
 
+
 // Một lần giải. null khi model không trả đủ khung hoặc không có đáp án.
 export async function solveOnce(cfg: LlmCfg, p: P, o: Opts = {}): Promise<Solved | null> {
-  const user = `${p.statement}${o.hint ? `\n(Gợi ý cách làm: ${o.hint})` : ""}`;
+  const user = `${problemText(p)}${o.hint ? `\n(Gợi ý cách làm: ${o.hint})` : ""}`;
   const raw = await askText(cfg, SOLVE_PROMPT + FORMAT_RULE + gradeRule(p.grade), [{ role: "user", text: user }],
     { think: true, temperature: o.temperature ?? 0, seed: o.seed, use: "answer", deadlineMs: o.deadlineMs });
   return parseSolved(raw);
@@ -78,7 +83,7 @@ dung nếu đáp án thỏa MỌI điều kiện của đề, sai nếu có đi�
 
 // Kiểm đáp án bằng thay số trong một lần gọi mới (không thấy lời giải nên không bị neo vào lập luận).
 export async function verifyBySubstitution(cfg: LlmCfg, p: P, answers: Record<string, unknown>, o: { deadlineMs?: number } = {}): Promise<{ ok: boolean; note: string }> {
-  const raw = await askText(cfg, VERIFY_PROMPT + gradeRule(p.grade), [{ role: "user", text: `${p.statement}\nĐáp án ứng viên: ${JSON.stringify(answers)}` }],
+  const raw = await askText(cfg, VERIFY_PROMPT + gradeRule(p.grade), [{ role: "user", text: `${problemText(p)}\nĐáp án ứng viên: ${JSON.stringify(answers)}` }],
     { think: true, temperature: 0, use: "cross_check", deadlineMs: o.deadlineMs });
   const t = tagged(raw, ["tinh", "ket_qua"]);
   // Bỏ dấu tiếng Việt rồi lấy từ đầu tiên: "Đúng", "đúng.", "dung" đều là đạt; "sai", "không thỏa" là không.
@@ -126,4 +131,23 @@ export async function solveReliable(cfg: LlmCfg, p: P, mode: Mode, o: { deadline
   const pool = [a, b, c].filter((s): s is Solved => !!s);
   const win = pool.find((s, i) => pool.some((t, j) => j !== i && sameAnswers(s.answers, t.answers)));
   return win ? { solved: win, flagged: false, calls, why: "" } : { solved: pool[0] ?? null, flagged: true, calls, why: "ba lần giải không có hai lần trùng nhau" };
+}
+
+// Đề chứng minh: đáp án chỉ có nghĩa với ý "tìm/xác định". Một đáp án chữ thì đặt tên ket_luan; câu kiểu "đã chứng minh xong" không phải đáp án nên bỏ.
+export function proofAnswer(statement: string, answers: Record<string, unknown>): Record<string, unknown> {
+  if (!/chứng minh/i.test(statement) || nums(answers).length) return answers;
+  const keys = Object.keys(answers);
+  if (keys.length === 1 && !/chứng minh (xong|được|đầy đủ)|đã chứng minh/i.test(String(answers[keys[0]]))) return { ket_luan: answers[keys[0]] };
+  return keys.length === 1 ? {} : answers;
+}
+
+// Đề chứng minh nhiều ý: đáp án chỉ là kết quả của ý "tìm/xác định/tính". Model nhỏ hay chọn nhầm ý, nên một lượt riêng bằng model mạnh hơn (models[2]) chỉ trích đáp án ý đó.
+// Trả chuỗi đáp án, "" khi đề không có ý như vậy, null khi lỗi (giữ cách cũ).
+export async function proofKey(cfg: LlmCfg, p: { statement: string; figure?: { desc?: string } | null }, o: { deadlineMs?: number } = {}): Promise<string | null> {
+  if (!/chứng minh/i.test(p.statement)) return null;
+  const strong = { ...cfg, model: PROVIDERS[cfg.provider].models[2] ?? cfg.model };
+  const r = await askJson(strong, `Đề Toán có nhiều ý, trong đó có ý "chứng minh". Tìm ý yêu cầu TÌM, XÁC ĐỊNH hoặc TÍNH một kết quả (không phải chứng minh), rồi trả đáp án NGẮN GỌN của riêng ý đó, viết cụ thể (ví dụ "H là tâm đường tròn nội tiếp tam giác DEF"). Tự giải cẩn thận dựa vào đề và hình. Đề không có ý nào như vậy thì trả chuỗi rỗng. Chỉ trả JSON {"answer":string}.${FORMAT_RULE}`,
+    [{ role: "user", text: problemText(p) }], z.object({ answer: z.string().default("") }), { think: true, use: "answer", deadlineMs: o.deadlineMs, attemptMs: 12_000, models: [strong.model, PROVIDERS[cfg.provider].models[0]] })
+    .catch(swallow("trích đáp án đề chứng minh", {}));
+  return r ? r.answer.trim() : null;
 }

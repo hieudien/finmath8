@@ -16,7 +16,7 @@ import { askJson } from "../lib/llm";
 
 const quota = () => Promise.reject(new Error('429 RESOURCE_EXHAUSTED PerDay: You exceeded your current quota'));
 const schema = z.object({ a: z.number() });
-const FIRST = "gemini-3.5-flash-lite", SECOND = "gemini-3.1-flash-lite";
+const FIRST = "gemini-3.5-flash-lite", SECOND = "gemini-3.5-flash";
 
 beforeEach(() => { used.length = 0; });
 

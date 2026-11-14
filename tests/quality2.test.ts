@@ -7,7 +7,7 @@ import { trapReply } from "../lib/chat/traps";
 vi.mock("../lib/llm", () => ({ askJson: vi.fn() }));
 vi.mock("../lib/errors", () => ({ reportError: vi.fn(async () => {}) }));
 import { askJson } from "../lib/llm";
-import { makeStepGuides, withGuides } from "../lib/step-guides";
+
 
 const base = (over: Partial<Problem> = {}): Problem => problemSchema.parse({
   id: "T1", title: "Tiền", statement: "An có 300000 đồng, giảm 15%.", data: { budget: 300000, discount: 0.15 },
@@ -81,20 +81,4 @@ describe("trapReply", () => {
     expect(trapReply(q, checkpoints(q)[0], "15000 rồi 45000", [])).toBe("");
   });
   it("chỉ áp dụng đúng bước", () => expect(trapReply(p, checkpoints(p)[1], "15000", [])).toBe(""));
-});
-
-describe("makeStepGuides lọc đầu ra AI", () => {
-  it("bỏ kết quả bịa, bẫy trùng kết quả, giải thích lộ đáp án", async () => {
-    vi.mocked(askJson).mockResolvedValueOnce({ steps: [
-      { goal: "Tính tiền được giảm", hints: ["a", "b", "c"], result: "45000", accepts: ["45 nghìn"], traps: [{ wrong: "15000", why: "Bạn nhầm phần trăm, kiểm lại." }, { wrong: "45000", why: "trùng đáp án đúng" }, { wrong: "99", why: "ra 255000 mới đúng" }] },
-      { goal: "Tính số tiền phải trả", hints: ["a", "b", "c"], result: "777777", accepts: ["x"], traps: [] },
-    ] } as never);
-    const p = base();
-    const g = await makeStepGuides({ provider: "gemini", key: "k", model: "m", temperature: 0 }, p);
-    expect(g!.checks).toEqual([{ result: "45000", accepts: ["45 nghìn"] }, { result: "", accepts: [] }]);
-    expect(g!.traps).toEqual([{ step: 1, wrong: "15000", why: "Bạn nhầm phần trăm, kiểm lại." }]);
-    const w = withGuides(p, g);
-    expect(w.step_checks).toHaveLength(2);
-    expect(withGuides(w, null).step_checks).toEqual([]);
-  });
 });

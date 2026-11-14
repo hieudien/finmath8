@@ -1,13 +1,13 @@
+import { problemText } from "@/lib/figure";
 import { z } from "zod";
 import { askJson, type LlmCfg } from "@/lib/llm";
 import { missingAnswers, nums } from "@/lib/answer-check";
-import { hasGuides } from "@/lib/chat/goals";
-import { makeStepFormats, withGuides } from "@/lib/step-guides";
+import { hasChecks } from "@/lib/chat/goals";
+import { withGuides } from "@/lib/step-guides";
 import { guidesFor } from "@/lib/step-all";
-import { makeStepScaffold } from "@/lib/step-scaffold";
-import { lintProblem } from "@/lib/lint";
+import { blockers, descriptiveSteps, lintProblem } from "@/lib/lint";
 import { aboveGrade, gradeRule } from "@/lib/grade";
-import { checkSteps, crossCheck, substituteState } from "@/lib/verify-solution";
+import { checkKey, checkSteps, crossCheck, substituteState } from "@/lib/verify-solution";
 import { smartModel } from "@/lib/models";
 import { repairProblem } from "@/lib/repair";
 import { walk } from "@/lib/latex-fix";
@@ -21,24 +21,24 @@ import type { Problem } from "@/lib/schema/problem";
 export const SOLUTION_SYSTEM = `Giải bài Toán rồi trả đáp án chuẩn. Tự giải thật cẩn thận, đừng bịa số. Mỗi đáp án một phần tử {"name","value"}: số thì value là chuỗi số, ví dụ x = 3 là {"name":"x","value":"3"}; hệ hai ẩn x = 4, y = -3 là hai phần tử x và y; nhiều nghiệm đặt tên x1, x2; vô nghiệm hoặc đáp án chữ là {"name":"ket_luan","value":"vô nghiệm"}. Đáp án dạng điều kiện (tìm tham số, có nghiệm hay vô nghiệm) viết NGẮN GỌN một cụm, ví dụ {"name":"ket_luan","value":"m khác -4"}, không viết cả câu giải thích. Chỉ trả JSON {"answers":[{"name":string,"value":string}]}.`;
 
 // Lời giải chi tiết đã qua bước giải riêng, đưa cho makeSteps làm tham khảo để các bước viết gọn không đổi kết quả.
-export const referenceNote = (steps: string[]) => (steps.length ? `Lời giải tham khảo đã kiểm tra (viết gọn lại thành 3–8 bước, GIỮ ĐÚNG các kết quả):\n${steps.join("\n")}` : "");
+export const referenceNote = (steps: string[]) => (steps.length ? `Lời giải tham khảo đã kiểm tra (viết lại gọn theo từng việc có ý nghĩa, GIỮ ĐÚNG các kết quả):\n${steps.join("\n")}` : "");
 
-const MAKE_STEPS = `Viết lời giải 3–8 bước cho bài Toán. Mỗi bước là MỘT phần tử riêng của "steps" (không gộp, không xuống dòng trong chuỗi, không ghi "Bước N"), 1–2 câu đủ chủ vị, kết thúc bằng dấu chấm; nhiều ý trong một bước ngăn bằng dấu chấm phẩy. Nêu phép tính và kết quả trung gian CỤ THỂ mà học sinh tự làm được (không chép lại dữ kiện đề). Bước cuối là kết luận. Lời giải PHẢI ra đúng "solution".
+const MAKE_STEPS = `Viết lời giải từng bước cho bài Toán (thường 2–8 bước tùy độ dài bài). Mỗi bước là MỘT phần tử riêng của "steps" (không gộp bước khác nhau, không xuống dòng trong chuỗi, không ghi "Bước N") và làm MỘT việc có ý nghĩa mà học sinh viết gọn được trong một dòng: một công thức thay số rồi tính ra kết quả (viết liền một dòng, ví dụ "(12 + 8) nhân 2 = 40"), một phép biến đổi cả vế, hoặc một kết luận. KHÔNG tách phép tính trung gian nhỏ (cộng trong ngoặc, thay số, một lần rút gọn) thành bước riêng khi nó chỉ phục vụ phép tính liền sau; chỉ tách khi kết quả trung gian có tên và được dùng lại ở nhiều chỗ. Mỗi bước 1–2 câu đủ chủ vị, kết thúc bằng dấu chấm. MỖI bước phải chứa phép tính hoặc kết quả CỤ THỂ bằng số hoặc biểu thức mà học sinh tự làm và viết ra được (không chép lại dữ kiện đề); CẤM bước chỉ mô tả cách làm bằng lời kiểu "Ta tính chu vi bằng cách lấy tổng…". Bước đầu tiên là phép tính đầu tiên, không phải câu giới thiệu. Bài không có phép tính (chứng minh, giải thích) thì mỗi bước vẫn nêu một kết luận nhỏ cụ thể. Bước cuối là kết luận. Lời giải PHẢI ra đúng "solution".
 Đề nhiều ý a), b): lần lượt từng ý; bước đầu của ý a) mở đầu "a) ", ý b) mở đầu "b) " (tương tự c), d)). Bước cuối MỖI ý kết luận bằng công thức, ví dụ "Vậy $m = -6$ thì hệ có nghiệm duy nhất thỏa mãn đề."; không kết luận chung chung.
 Trong JSON, mỗi dấu \\ của LaTeX viết gấp đôi (\\\\frac, \\\\times, \\\\begin).${FORMAT_RULE} Không xuống dòng trong chuỗi JSON.`;
 
 // Viết lời giải từng bước khớp đáp án đã có. Trả mảng bước, hoặc chuỗi lỗi để báo giáo viên.
 export async function makeSteps(cfg: LlmCfg, p: Problem, note = "", deadlineMs?: number): Promise<string[] | string> {
-  const out = await askJson(cfg, MAKE_STEPS + gradeRule(p.grade), [{ role: "user", text: `${p.statement}
+  const out = await askJson(cfg, MAKE_STEPS + gradeRule(p.grade), [{ role: "user", text: `${problemText(p)}
 Dữ liệu: ${JSON.stringify(p.data)}
-Đáp án: ${JSON.stringify(p.solution)}${note ? `\n${note}` : ""}` }], z.object({ steps: z.array(z.string().min(3)).min(2).max(8) }), { think: "low", use: "solution_steps", deadlineMs });
+Đáp án: ${JSON.stringify(p.solution)}${note ? `\n${note}` : ""}` }], z.object({ steps: z.array(z.string().min(3)).min(2).max(20) }), { think: "low", use: "solution_steps", deadlineMs, attemptMs: 15_000 }); // model đầu treo thì đổi model khác, không chờ hết hạn
   // Mọi số lớn trong đáp án phải xuất hiện trong lời giải, nếu không thì không dùng (AI giải lệch đáp án).
   const steps = repairProblem({ ...p, solution_steps: out.steps }).solution_steps.map(stripStep); // tách phần tử nhiều dòng, sửa \ bị nuốt
   const missing = missingAnswers(p.solution, steps);
   return missing.length ? `AI viết lời giải chưa khớp đáp án của đề (thiếu ${missing.join(", ")}). Bấm thử lại, hoặc kiểm tra lại đáp án trong đề.` : steps;
 }
 
-// Nạp phần còn thiếu theo thứ tự: đáp án, lời giải từng bước, chỉ dẫn từng bước. Phần đã có thì giữ nguyên.
+// Nạp phần còn thiếu theo thứ tự: đáp án, lời giải chi tiết từng bước, kết quả chuẩn từng bước (để server chấm). Phần đã có thì giữ nguyên.
 export async function fillMissing(cfg: LlmCfg, p: Problem, ref = ""): Promise<Problem | string> {
   let q = p;
   let reference = ref; // lời giải có sẵn (từ tệp nạp) làm tham khảo cho makeSteps; bước giải riêng bên dưới ghi đè nếu phải tự giải
@@ -53,7 +53,7 @@ export async function fillMissing(cfg: LlmCfg, p: Problem, ref = ""): Promise<Pr
   if (!Object.keys(q.solution).length) {
     const ref = q.solution_steps.length ? `\nLời giải tham khảo:\n${q.solution_steps.join("\n")}` : "";
     // Dạng mảng {name,value}: khung JSON của Gemini bỏ additionalProperties nên đối tượng tự do hay bị trả rỗng.
-    const r = await askJson(cfg, SOLUTION_SYSTEM + gradeRule(q.grade), [{ role: "user", text: `${q.statement}\nDữ liệu: ${JSON.stringify(q.data)}${ref}` }],
+    const r = await askJson(cfg, SOLUTION_SYSTEM + gradeRule(q.grade), [{ role: "user", text: `${problemText(q)}\nDữ liệu: ${JSON.stringify(q.data)}${ref}` }],
       z.object({ answers: z.array(z.object({ name: z.string().min(1), value: z.string().min(1) })).min(1) }), { think: true, use: "answer" });
     const solution = Object.fromEntries(r.answers.map((a) => [a.name, /^-?\d+(\.\d+)?$/.test(a.value.trim()) ? Number(a.value) : a.value]));
     if (q.solution_steps.length && missingAnswers(solution, q.solution_steps).length) return "Đáp án AI tính chưa khớp lời giải đang có. Mở đề, nhập đáp án bằng tay.";
@@ -64,9 +64,9 @@ export async function fillMissing(cfg: LlmCfg, p: Problem, ref = ""): Promise<Pr
     if (typeof s === "string") return s;
     q = withGuides({ ...q, solution_steps: s }, null);
   }
-  if (!hasGuides(q)) {
+  if (!hasChecks(q) || q.step_goals.length || q.step_hints.length) {
     const r = await guidesFor(cfg, q);
-    if (!r) return "AI chưa viết được chỉ dẫn cho từng bước. Bấm thử lại.";
+    if (!r) return "AI chưa viết được kết quả chuẩn cho từng bước. Bấm thử lại.";
     q = r;
   }
   return q;
@@ -119,8 +119,8 @@ async function rebuildFromStatement(cfg: LlmCfg, p: Problem, keep: boolean): Pro
   // keep: đáp án đã có nên không giải lại (bỏ mục answers, bớt suy nghĩ), đưa đáp án vào để gợi ý và sai lầm khớp với nó.
   const smart = { ...cfg, model: smartModel(cfg.provider) };
   const ask = () => keep
-    ? askJson(smart, deriveSystem(true) + FORMAT_RULE + FORMAT_JSON + gradeRule(p.grade), [{ role: "user", text: `${p.statement}\nĐáp án: ${JSON.stringify(p.solution)}` }], derived.omit({ answers: true }), { think: "low", use: "answer" })
-    : askJson(smart, deriveSystem(false) + FORMAT_RULE + FORMAT_JSON + gradeRule(p.grade), [{ role: "user", text: p.statement }], derived, { think: true, use: "answer" });
+    ? askJson(smart, deriveSystem(true) + FORMAT_RULE + FORMAT_JSON + gradeRule(p.grade), [{ role: "user", text: `${problemText(p)}\nĐáp án: ${JSON.stringify(p.solution)}` }], derived.omit({ answers: true }), { think: "low", use: "answer" })
+    : askJson(smart, deriveSystem(false) + FORMAT_RULE + FORMAT_JSON + gradeRule(p.grade), [{ role: "user", text: problemText(p) }], derived, { think: true, use: "answer" });
   let r = await ask();
   if (unaccented(r)) r = await ask(); // thử lại một lần
   if (unaccented(r)) return "AI trả phần gợi ý, sai lầm thường gặp không có dấu tiếng Việt. Bấm chạy lại.";
@@ -146,7 +146,7 @@ export async function standardizeProblem(cfg: LlmCfg, p: Problem, ref = ""): Pro
   return typeof r !== "string" && q0.answer_locked && sub.state === "fail" ? { ...r, check_note: sub.msg } : r;
 }
 
-const stale = (q: Problem) => lintProblem(q).length > 0 || q.step_checks.length !== q.solution_steps.length;
+const stale = (q: Problem) => lintProblem(q).length > 0 || blockers(q).length > 0 || q.step_checks.length !== q.solution_steps.length;
 
 // Làm một đề đạt chuẩn để dùng luôn: kiểm chéo đáp án khớp, đủ lời giải và chỉ dẫn từng bước, lint sạch, đã duyệt.
 // Không đạt thì trả chuỗi lỗi (không lưu đề dở). Kiểm chéo chỉ chạy với đề AI mới tạo hoặc đang có cảnh báo; đề giáo viên đã duyệt thì giữ nguyên đáp án.
@@ -183,23 +183,25 @@ export async function finishProblem(cfg: LlmCfg, p0: Problem, trusted = false, r
     if (typeof r === "string") return r;
     q = r;
   }
-  // Chỉ dẫn lộ kết quả hoặc lệch số bước: viết lại, tối đa 2 lần.
+  // Bước chỉ mô tả cách làm (không có phép tính cụ thể): viết lại một lần kèm danh sách bước vi phạm. Vẫn còn thì giữ (không chặn lưu).
+  const vague = descriptiveSteps(q), cur = q;
+  if (vague.length) {
+    const s = await makeSteps(cfg, q, `Lời giải trước có bước chỉ mô tả cách làm, không có phép tính hay kết quả cụ thể (bước ${vague.map((i) => i + 1).join(", ")}: ${vague.slice(0, 2).map((i) => `"${cur.solution_steps[i]}"`).join("; ")}). Viết lại: MỖI bước phải chứa phép tính hoặc kết quả cụ thể bằng số hoặc biểu thức, bước đầu là phép tính đầu tiên, không có bước nào chỉ nói cách làm.`);
+    if (typeof s !== "string") {
+      const r = await fillMissing(cfg, withGuides({ ...q, solution_steps: s }, null));
+      if (typeof r !== "string") q = r;
+    }
+  }
+  // Kết quả chuẩn lệch số bước hoặc lint còn lỗi: viết lại, tối đa 2 lần.
   for (let t = 0; t < 2 && stale(q); t++) {
     const r = await guidesFor(cfg, q);
     if (!r) break;
     q = r;
   }
-  // Dạng cần viết + ví dụ từng bước: bổ sung nếu thiếu. Lỗi AI thì bỏ qua (bot vẫn chạy bằng mục tiêu của bước).
-  if (q.step_formats.length !== q.solution_steps.length) {
-    const f = await makeStepFormats(cfg, q).catch(swallow("tạo dạng cần viết từng bước", { teacherId: cfg.teacherId, actor: "teacher" }));
-    if (f) q = { ...q, step_formats: f.formats, step_examples: f.examples };
-  }
-  // Giàn đỡ cho học sinh kẹt: câu hỏi con + ví dụ tương tự. Lỗi AI thì bỏ qua (thang gợi ý rơi về gợi ý có sẵn).
-  if (q.step_subs.length !== q.solution_steps.length || q.step_analog.length !== q.solution_steps.length) {
-    const sc = await makeStepScaffold(cfg, q).catch(swallow("tạo giàn đỡ từng bước", { teacherId: cfg.teacherId, actor: "teacher" }));
-    if (sc) q = { ...q, step_subs: sc.subs, step_analog: sc.analogs };
-  }
-  const left = lintProblem(q);
-  if (left.length || q.step_checks.length !== q.solution_steps.length) return `AI chưa làm đề này đạt chuẩn: ${left.join(" ") || "chưa viết được chỉ dẫn từng bước."}`;
+  const left = [...blockers(q), ...lintProblem(q)];
+  if (left.length || q.step_checks.length !== q.solution_steps.length) return `AI chưa làm đề này đạt chuẩn: ${left.join(" ") || "chưa viết được kết quả chuẩn từng bước."}`;
+  // Duyệt đề: kết quả chuẩn dạng chữ phải thực sự là đáp án cần điền (một lượt AI nhỏ). Sai thì không duyệt, báo lý do để giáo viên sửa đáp án.
+  const key = await checkKey(cfg, q).catch(swallow("kiểm kết quả chuẩn", { teacherId: cfg.teacherId, actor: "teacher" }));
+  if (key) return `AI chưa làm đề này đạt chuẩn: ${key} Mở đề, sửa đáp án rồi chuẩn hóa lại.`;
   return { ...q, reviewed: true, check_note: "" };
 }

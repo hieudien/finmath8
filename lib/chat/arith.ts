@@ -30,6 +30,24 @@ export function calc(src: string): number | null {
   return v !== null && i === t.length && Number.isFinite(v) ? v : null;
 }
 
+// Giá trị của mọi phép tính số học học sinh VIẾT RA trong bài làm (nhóm trong ngoặc, hoặc "a ⊕ b"), kể cả khi chưa viết "= kết quả".
+// Dùng để ghi nhận phép tính trung gian nằm trong một biểu thức gộp, ví dụ "(12 + 8) × 2 = 40" có phép 12 + 8 (= 20).
+export function impliedNums(text: string): Set<string> {
+  const t = norm(text).replace(/(?<=[\d)])\s*[x×·*]\s*(?=[\d(])/gi, "*").replace(/(?<=[\d)])\s*[÷:]\s*(?=[\d(])/g, "/").replace(/[−–]/g, "-");
+  const out = new Set<string>();
+  const add = (src: string) => { const v = calc(src); if (v !== null && v >= 0) out.add(String(+v.toFixed(4))); };
+  for (const m of t.matchAll(/\(([\d.+\-*/\s()]+)\)/g)) add(m[1]);
+  for (const m of t.matchAll(/(\d+(?:\.\d+)?)\s*([+\-*/])\s*(\d+(?:\.\d+)?)/g)) add(m[0]);
+  return out;
+}
+
+// Câu báo cho một phần tử của badClaims. Đẳng thức mà vế phải không bằng giá trị vế trái là lỗi KẾT QUẢ: nói rõ để học sinh không hiểu là cách làm hay phép tính sai.
+// Không nêu giá trị đúng. RESULT_MARK dùng để nhận ra câu này ở các lượt sau (hỏi, gợi ý).
+export const RESULT_MARK = "kết quả sau dấu = không bằng";
+export const claimNote = (c: string) => /[<>]|nên/.test(c)
+  ? `Mình thấy "${c}" chưa đúng, bạn kiểm tra lại dòng đó nhé.`
+  : `Mình thấy "${c}" chưa khớp: ${RESULT_MARK} giá trị của phép tính bên trái, bạn tính lại kết quả nhé.`;
+
 // Dung sai rộng vì phân số (1/3) đã bị norm làm tròn 4 chữ số thập phân.
 const close = (a: number, b: number) => Math.abs(a - b) <= 2e-3 * Math.max(1, Math.abs(a), Math.abs(b));
 const isLetter = (c: string) => /[\p{L}^_]/u.test(c);
@@ -37,7 +55,9 @@ const isLetter = (c: string) => /[\p{L}^_]/u.test(c);
 // Phép so sánh và phép tính sai trong một đoạn bài làm: mỗi phần tử là đoạn trích của chính học sinh.
 export function badClaims(text: string): string[] {
   // x, ×, · giữa hai số là dấu nhân; ÷ và : giữa hai số là dấu chia.
-  const t = norm(text).replace(/(?<=[\d)])\s*[x×·*]\s*(?=[\d(])/gi, "*").replace(/(?<=[\d)])\s*[÷:]\s*(?=[\d(])/g, "/").replace(/[−–]/g, "-").replace(/≤/g, "<=").replace(/≥/g, ">=");
+  // Học sinh hay viết phép tính bằng chữ giữa hai số: "(12 + 8) nhân 2 = 41" phải được kiểm như "(12 + 8) × 2 = 41".
+  const t = norm(text).replace(/(?<=[\d)])\s+nhân\s+(?=[\d(])/gi, "*").replace(/(?<=[\d)])\s+chia\s+(?=[\d(])/gi, "/").replace(/(?<=[\d)])\s+cộng\s+(?=[\d(])/gi, "+").replace(/(?<=[\d)])\s+trừ\s+(?=[\d(])/gi, "-")
+    .replace(/(?<=[\d)])\s*[x×·*]\s*(?=[\d(])/gi, "*").replace(/(?<=[\d)])\s*[÷:]\s*(?=[\d(])/g, "/").replace(/[−–]/g, "-").replace(/≤/g, "<=").replace(/≥/g, ">=");
   const out: string[] = [];
   // So sánh: từng cặp số kề nhau qua dấu so sánh (chuỗi a < b < c xét từng cặp).
   for (const m of t.matchAll(/(\d+(?:\.\d+)?)(?=\s*(<=|>=|<|>)\s*(\d+(?:\.\d+)?))/g)) {

@@ -4,7 +4,6 @@ import type { LlmCfg } from "@/lib/llm";
 import { log } from "@/lib/log";
 import { kindOf, reportError } from "@/lib/errors";
 import { PROVIDERS, TEMPERATURE, type Provider } from "@/lib/models";
-import { isMode, type WorkMode } from "@/lib/modes";
 import { ttl } from "@/lib/ttl";
 
 type Row = { gemini_key_enc: string | null };
@@ -31,12 +30,17 @@ async function load(teacherId: string): Promise<LlmCfg | null> {
   };
 }
 
+// Ngữ cảnh của một lượt gọi AI để tính token theo đề và theo phiên: ghi vào meta của dòng ai_usage (session_id, problem) và cột link_id, anon_id.
+// cfg từ llmCfg được cache dùng chung giữa các request nên không gắn ngữ cảnh vào đó mà trả về bản sao riêng cho request này.
+export type UsageCtx = { sessionId?: string; problem?: string; linkId?: string; anonId?: string };
+export const withCtx = (cfg: LlmCfg, c: UsageCtx): LlmCfg => ({
+  ...cfg,
+  onUsage: (u) => void log({
+    actor: "system", action: "ai_usage", teacherId: cfg.teacherId, linkId: c.linkId, anonId: c.anonId,
+    meta: { ...u, ...(c.sessionId ? { session_id: c.sessionId } : {}), ...(c.problem ? { problem: c.problem } : {}) },
+  }),
+});
+
 // Cache 30 giây: mỗi tin nhắn chat không phải đọc DB và giải mã key lại. Lưu cài đặt thì gọi llmCfg.drop(id).
 export const llmCfg = ttl(30_000, load);
 
-// Chế độ làm bài giáo viên chọn (mặc định chat từng bước). Lưu cài đặt thì gọi teacherMode.drop(id).
-export const teacherMode = ttl(30_000, async (teacherId: string): Promise<WorkMode> => {
-  const { data } = await admin().from("teacher_settings").select("interaction_mode").eq("teacher_id", teacherId).maybeSingle();
-  const m = (data as { interaction_mode: string | null } | null)?.interaction_mode;
-  return isMode(m) ? m : "steps";
-});

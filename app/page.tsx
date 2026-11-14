@@ -1,26 +1,26 @@
 import Brand from "@/components/Brand";
 import { LinkButton } from "@/components/ui";
 
-const NUMS = [["3", "mức gợi ý riêng cho từng bước: chỉ rõ vấn đề, câu hỏi con, ví dụ tương tự"], ["4", "tiêu chí chấm: hiểu đề bài, lập kế hoạch giải, thực hiện kế hoạch, kiểm tra và đánh giá"], ["5", "bước giải quyết vấn đề theo Polya"]];
+const NUMS = [["3", "mức gợi ý tăng dần khi học sinh kẹt: nêu hướng, nêu cách làm, câu hỏi nhỏ"], ["4", "tiêu chí chấm: hiểu đề bài, lập kế hoạch giải, thực hiện kế hoạch, kiểm tra và đánh giá"], ["5", "bước giải quyết vấn đề theo Polya"]];
 
 const TEACHER = [
   ["Tạo đề nhanh", "Soạn đề trực tiếp, chụp ảnh đề để AI đọc, hoặc nạp cả tệp Word thành nhiều đề cùng lúc. Công thức soạn bằng bàn phím toán, không cần biết LaTeX."],
-  ["AI làm phần nặng", "AI tạo đáp án, lời giải từng bước, gợi ý từng bước và câu chào. Đề do AI tạo phải được thầy cô duyệt mới đưa vào liên kết."],
-  ["Làm bài từng bước", "Học sinh nộp một bước giải mỗi lần; kẹt thì có 3 mức gợi ý riêng cho từng bước, lấy từ đề."],
+  ["AI làm phần nặng", "AI tạo đáp án và lời giải chi tiết từng bước cơ bản nhất làm chuẩn để nhận xét bài làm. Đề do AI tạo phải được thầy cô duyệt mới đưa vào liên kết."],
+  ["Nộp bài làm tự do", "Học sinh viết một bước, nhiều bước hoặc cả bài; chatbot nhận xét và gợi ý dựa trên đề đã chuẩn hóa, không lấy nguồn ngoài."],
   ["Gửi một liên kết", "Chọn đề, tạo liên kết công khai, đặt nhãn nhóm và hạn dùng. Chạy bằng API key Gemini của chính thầy cô."],
 ];
 
 const STUDENT = [
   ["Vào bằng liên kết", "Nhập họ tên và lớp, không cần tài khoản."],
-  ["Được hỏi từng bước", "Đọc đề, nêu dữ kiện, chọn cách giải, tự tính. Bot không nói đáp án."],
-  ["Gợi ý khi kẹt", "Gợi ý tăng dần: định hướng, chỉ cách giải, nêu bước kế. Kẹt quá lâu thì bot hiện lời giải của bước đó, em gõ lại bước đó để đi tiếp."],
-  ["Nộp từng bước", "Mỗi lần một bước vào ô ngắn. Chưa rõ đề thì bấm Em chưa hiểu để mở khung Hỏi bài riêng."],
+  ["Tự giải theo cách của mình", "Đọc đề, nêu dữ kiện, chọn cách giải, tự tính. Bot không nói đáp án."],
+  ["Gợi ý khi kẹt", "Gợi ý tăng dần: định hướng, chỉ cách làm, câu hỏi nhỏ. Kẹt quá lâu thì bot hiện lời giải của phần đang kẹt, em gõ lại để đi tiếp."],
+  ["Nộp bài làm", "Viết một bước, nhiều bước hoặc cả bài vào ô bài làm. Chưa rõ đề thì bấm Em chưa hiểu để mở khung Hỏi bài riêng."],
   ["Gõ công thức dễ dàng", "Nút Công thức mở bàn phím toán: phân số, căn, số mũ."],
 ];
 
 const FEATURES = [
   ["Hồ sơ từng học sinh", "Điểm 4 tiêu chí, kỹ năng cần củng cố, lỗi hay mắc, kiến thức nền còn thiếu, các bài đã làm và bài bỏ dở."],
-  ["Chấm đúng phần tự làm", "Bước được giải hộ không được tính điểm. Điểm chỉ phản ánh phần học sinh tự làm."],
+  ["Chấm đúng phần tự làm", "Phần được giải hộ không được tính điểm. Điểm chỉ phản ánh phần học sinh tự làm."],
   ["AI đề xuất cải thiện", "Một bấm để có nhận định điểm yếu, việc nên làm và dạng bài nên luyện thêm."],
   ["Bước học sinh hay gặp khó", "Thấy ngay bước nào cả lớp hay vướng và bước nào từng em hay vướng, kèm gợi ý ôn tập theo bước."],
   ["Thống kê theo liên kết", "Số phiên, tỉ lệ hoàn thành, điểm trung bình, mức gợi ý, so sánh giữa các nhóm."],
@@ -62,9 +62,9 @@ export default function Home() {
       <main className="flex flex-col gap-10 py-4 md:gap-16 md:py-6">
         <section className="grid items-center gap-6 rounded-lg bg-primary-soft p-5 md:grid-cols-2 md:gap-8 md:p-10">
           <div className="flex flex-col gap-4">
-            <h1>Học sinh tự giải Toán, từng bước một</h1>
+            <h1>Học sinh tự giải Toán, chatbot nhận xét và gợi ý</h1>
             <p className="text-base text-text-muted md:text-lg">
-              MathStep AI không đưa đáp án. Chatbot hỏi từng bước theo cách giải của Polya và tăng gợi ý khi học sinh kẹt. Thầy cô theo dõi điểm mạnh, điểm yếu của từng em.
+              MathStep AI không đưa đáp án. Chatbot nhận xét bài làm theo cách giải của Polya và tăng gợi ý khi học sinh kẹt. Thầy cô theo dõi điểm mạnh, điểm yếu của từng em.
             </p>
             <div className="flex flex-col gap-2 sm:flex-row">
               <LinkButton href="/register" className="w-full sm:w-auto">Tạo tài khoản giáo viên</LinkButton>

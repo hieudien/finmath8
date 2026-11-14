@@ -6,7 +6,7 @@ export function ListSearch({ value, onChange, shown, total }: { value: string; o
   return (
     <div className="flex flex-col gap-1">
       <Field label="Tìm theo chữ" type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder="Mã, tiêu đề, chủ đề hoặc nội dung đề" autoComplete="off" />
-      <p aria-live="polite" className="text-sm text-text-muted">{value.trim() ? `Hiện ${shown}/${total}` : `${total} mục`}</p>
+      <p aria-live="polite" className="text-sm text-text-muted">{value.trim() || shown !== total ? `Hiện ${shown}/${total}` : `${total} mục`}</p>
     </div>
   );
 }

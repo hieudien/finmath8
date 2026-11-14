@@ -3,14 +3,16 @@ import { checkImageRead } from "@/lib/image-check";
 import { tidyLine, tidyStatement } from "@/lib/repair";
 import { stripStep } from "@/lib/chat/progress";
 import { FORMAT_RULE } from "@/lib/format-rule";
+import { parseFigureTags, type Box } from "@/lib/figure";
 
-export type ImageResult = { statement: string; solution: Record<string, unknown>; solution_steps: string[] };
+export type ImageFigure = { desc: string; box: Box | null }; // box null: AI không khoanh được hình, giáo viên tự khoanh
+export type ImageResult = { statement: string; solution: Record<string, unknown>; solution_steps: string[]; figure?: ImageFigure };
 export type ImageRead = ImageResult & { warnings: string[]; attempts: number };
 
 const BS = String.fromCharCode(92);
 
 // Không dùng JSON: JSON làm hỏng dấu \ của LaTeX (\begin thành ký tự điều khiển, \\ thành \). Model trả văn bản có thẻ, code tự tách.
-export const IMAGE_PROMPT = `Đây là ảnh chụp một đề Toán. Đọc và PHÂN LOẠI nội dung trong ảnh, chép NGUYÊN VĂN, không tự giải, bỏ qua hình vẽ.
+export const IMAGE_PROMPT = `Đây là ảnh chụp một đề Toán. Đọc và PHÂN LOẠI nội dung trong ảnh, chép NGUYÊN VĂN, không tự giải. Hình vẽ minh họa đề (nếu có) không chép vào <de>, chỉ xử lý ở thẻ <hinh> và <khung>.
 Chỉ trả văn bản đúng theo khung thẻ sau, không viết gì ngoài các thẻ, không dùng JSON, không dùng khối mã:
 <de>
 chỉ đề bài
@@ -21,12 +23,23 @@ mỗi đáp án một dòng dạng: tên = giá trị
 <cachgiai>
 mỗi bước một dòng
 </cachgiai>
+<hinh>
+mô tả hình vẽ của đề
+</hinh>
+<khung>
+ymin,xmin,ymax,xmax
+</khung>
 Quy tắc:
+- <hinh>: nếu ảnh có hình vẽ của đề (hình học, sơ đồ, đồ thị), mô tả bằng chữ đủ để người không thấy hình vẫn làm được bài: các điểm, đoạn thẳng, đường tròn, quan hệ vuông góc/song song/thuộc, góc, và MỌI số đo hoặc ký hiệu ghi trên hình (độ dài, số đo góc, dấu bằng nhau). Chỉ mô tả cái nhìn thấy trên hình, không suy diễn, không giải. Ảnh không có hình vẽ thì để thẻ rỗng.
+- <khung>: vị trí chữ nhật chứa riêng hình vẽ (không lấy chữ đề), bốn số nguyên từ 0 đến 1000 theo cỡ ảnh, thứ tự ymin,xmin,ymax,xmax (0,0 là góc trên trái). Không có hình thì để thẻ rỗng. Ảnh có nhiều hình thì chỉ lấy hình của đề đầu.
 - <de>: CHỈ đề bài (giả thiết, câu hỏi). KHÔNG chứa đáp án, lời giải, "Giải", "ĐS", "Đáp số", "Hướng dẫn".
 - <dapan>: đáp án cuối nếu ảnh có ghi đáp số hoặc có kết luận cuối lời giải (chép lại, KHÔNG tự tính). Mỗi dòng một đáp án: x = 3 viết "x = 3"; nhiều nghiệm đặt tên x1, x2; đáp án chữ hoặc vô nghiệm viết "ket_luan = vô nghiệm" ngắn gọn. Ảnh không có đáp án thì để thẻ rỗng.
 - <cachgiai>: các bước cách giải nếu ảnh có ghi, mỗi bước một dòng, bỏ chữ "Bước N:". Ảnh không có cách giải thì để thẻ rỗng.
 Ảnh nhiều đề thì chỉ lấy đề đầu. Đề nhiều ý thì xuống dòng giữa các ý, mỗi ý bắt đầu bằng a), b), c) (hoặc 1), 2)), dòng đầu là phần dẫn chung. Hệ phương trình nằm cùng dòng với câu dẫn nếu trong ảnh như vậy; số hiệu như (I) viết ngay sau hệ. Chép đúng dấu chấm phẩy của đề.
 Trong công thức, hệ phương trình dùng cases, mỗi phương trình một hàng, các hàng ngăn nhau bằng ${BS}${BS} của LaTeX, cả hệ nằm trên MỘT dòng.${FORMAT_RULE}`;
+
+// Mô tả riêng một hình vẽ (giáo viên tự thêm hình): cùng quy tắc với thẻ <hinh> của IMAGE_PROMPT.
+export const DESCRIBE_FIGURE = `Đây là hình vẽ của một đề Toán. Mô tả bằng chữ tiếng Việt đủ để người không thấy hình vẫn làm được bài: các điểm, đoạn thẳng, đường tròn, quan hệ vuông góc/song song/thuộc, góc, và MỌI số đo hoặc ký hiệu ghi trên hình (độ dài, số đo góc, dấu bằng nhau). Chỉ mô tả cái nhìn thấy trên hình, không suy diễn, không giải, không dùng khối mã. Công thức đặt trong $...$ theo LaTeX. Viết 1 đến 4 câu.${FORMAT_RULE}`;
 
 const MATH = /\$\$[\s\S]+?\$\$|\$[^$]+?\$/g;
 
@@ -34,7 +47,7 @@ const MATH = /\$\$[\s\S]+?\$\$|\$[^$]+?\$/g;
 export function parseTagged(text: string): { de: string; dapan: string; cachgiai: string } | null {
   const t = text.replace(/```[a-z]*\n?|```/gi, "");
   const get = (tag: string) => {
-    const m = t.match(new RegExp(`<${tag}>([\\s\\S]*?)(?:</${tag}>|(?=<(?:de|dapan|cachgiai)>)|$)`, "i"));
+    const m = t.match(new RegExp(`<${tag}>([\\s\\S]*?)(?:</${tag}>|(?=<(?:de|dapan|cachgiai|hinh|khung)>)|$)`, "i"));
     return m ? m[1].trim() : null;
   };
   const de = get("de");
@@ -102,7 +115,9 @@ export async function readExamImage(
     const statement = normalizeText(parsed.de);
     const steps = lines(parsed.cachgiai).map((l) => normalizeText(stripStep(l))).filter(Boolean);
     const problems = checkImageRead({ statement, steps });
-    const cur = { statement: tidyStatement(statement), solution: parseAnswers(normalizeText(parsed.dapan)), solution_steps: steps.map(tidyLine).filter((s) => s.trim()), problems };
+    const fg = parseFigureTags(raw);
+    const figure = fg.desc || fg.box ? { desc: normalizeText(fg.desc), box: fg.box } : undefined;
+    const cur = { figure, statement: tidyStatement(statement), solution: parseAnswers(normalizeText(parsed.dapan)), solution_steps: steps.map(tidyLine).filter((s) => s.trim()), problems };
     if (!best || problems.length < best.problems.length) best = cur;
     if (!problems.length) break;
     turns = [...first, { role: "model", text: raw }, { role: "user", text: `Lần đọc trước có lỗi: ${problems.join("; ")}. Đọc lại ảnh và trả lại đầy đủ các thẻ, sửa các lỗi đó.` }];

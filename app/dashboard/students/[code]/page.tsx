@@ -33,8 +33,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   if (!prof) notFound();
   const shown = prof.attempts.filter((a, i) => all || i < SHOW || a.id === phien);
   const msgs = await studentMsgs(sb, shown.map((a) => a.id));
-  const notes = new Map<string, string[]>(); // phiên -> các bước gặp khó trong phiên đó
-  for (const w of prof.weakSteps) for (const x of w.sessions) (notes.get(x.id) ?? notes.set(x.id, []).get(x.id)!).push(`Bước ${w.step} · ${w.label}${x.helped ? " (giải hộ)" : ""}`);
+  const notes = new Map<string, string[]>(); // phiên -> ghi chú gặp khó của phiên đó
+  for (const w of prof.weakProblems) for (const x of w.sessions) (notes.get(x.id) ?? notes.set(x.id, []).get(x.id)!).push(x.helped ? "Gặp khó, bot phải hiện lời giải" : "Gặp khó (gợi ý, hỏi hoặc nộp sai)");
   const advice = adv.data as Advice | null;
   const fmt = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" });
   return (
@@ -54,14 +54,14 @@ export default async function Page({ params, searchParams }: { params: Promise<{
         )}
       </Section>
 
-      {prof.weakSteps.length > 0 && (
-        <Section title="Bước yếu">
+      {prof.weakProblems.length > 0 && (
+        <Section title="Đề yếu">
           <ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-surface">
-            {prof.weakSteps.map((w) => (
-              <li key={`${w.code}-${w.step}`}>
+            {prof.weakProblems.map((w) => (
+              <li key={w.code}>
                 <details className="group">
                   <summary className="flex min-h-11 cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-primary-soft">
-                    <span className="min-w-0"><span className="text-sm text-text-muted">{w.title}</span><span className="block"><span className="font-medium">Bước {w.step}</span>: {w.label}</span></span>
+                    <span className="min-w-0"><span className="text-sm text-text-muted">{w.code}</span><span className="block font-medium">{w.title}</span></span>
                     <span className="tnum flex flex-wrap items-center gap-2 text-sm text-text-muted">Gặp khó {w.struggled}/{w.of} phiên{w.revealed > 0 && <Badge tone="warn">Giải hộ {w.revealed}</Badge>}<span className="group-open:hidden">▾</span><span className="hidden group-open:inline">▴</span></span>
                   </summary>
                   <ul className="flex max-h-56 flex-col gap-1 overflow-y-auto border-t border-border px-4 py-2 text-sm">

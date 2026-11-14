@@ -12,7 +12,7 @@ export function trapReply(p: Problem, cp: Cp, text: string, known: unknown[]): s
   // Chỉ bước server kiểm được bằng số/chữ mới dùng bẫy: bước lập biến, giải thích do AI phán, bẫy ở đó không thay được phán đoán và dễ bắn nhầm lời đúng.
   if (!cp.must.length && !cp.words?.length) return "";
   const own = canon(stripStep(cp.label)); // lời giải đúng của bước
-  const given = new Set(numsIn(JSON.stringify([p.data, p.statement ?? ""])));
+  const given = new Set(numsIn(JSON.stringify([p.data, p.statement ?? "", p.figure?.desc ?? ""])));
   for (const t of p.error_traps) {
     if (t.step !== cp.id + 1) continue;
     const ns = numsIn(t.wrong);
@@ -20,7 +20,7 @@ export function trapReply(p: Problem, cp: Cp, text: string, known: unknown[]): s
     if (num ? ns.every((n) => given.has(n)) : canon(t.wrong).length < 2) continue;
     if (!num && own.includes(canon(t.wrong))) continue; // "kết quả sai" nằm ngay trong lời giải đúng (vd "x > 0" của bước đặt điều kiện): không phải bẫy
     if (!(num ? ns.every((n) => hasNum(text, n)) : hasWord(text, canon(t.wrong)))) continue;
-    if (leaks(t.why, p.solution, [p.data, p.statement, text, known], p.solution_steps)) continue;
+    if (leaks(t.why, p.solution, [p.data, p.statement, p.figure?.desc, text, known], p.solution_steps)) continue;
     return t.why;
   }
   return "";

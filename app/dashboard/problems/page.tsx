@@ -4,8 +4,9 @@ import { ProblemList, type ProblemItem } from "@/components/ProblemList";
 import { Badge, Empty } from "@/components/ui";
 import { missingInfo, readiness } from "@/lib/ready";
 import { ProblemsTabs } from "@/components/ProblemsTabs";
+import { BRANCHES, isBranch } from "@/lib/taxonomy";
 
-type Row = { id: string; code: string; version: number; updated_at: string; content: { title: string; statement?: string; grade?: number; topic?: string; solution_steps?: string[] } };
+type Row = { id: string; code: string; version: number; updated_at: string; content: { title: string; statement?: string; grade?: number; topic?: string; branch?: string; solution_steps?: string[] } };
 
 export default async function Page() {
   const sb = await supabaseServer();
@@ -17,9 +18,9 @@ export default async function Page() {
   const todo = rd.filter((x) => !x.bad && !x.ok).length; // khớp needsWork: số đề nút "Chuẩn hóa" sẽ làm
   const stat: [string, string, number, boolean][] = [["Đạt chuẩn", `${n("ok")}/${rows.length}`, n("ok"), n("ok") === rows.length], ["Cần hoàn thiện", "", todo, todo === 0], ["Lỗi định dạng", "", n("bad"), n("bad") === 0]];
   const items: ProblemItem[] = rows.map((r, i) => ({
-    id: r.id, code: r.code, title: r.content.title, grade: r.content.grade ?? 8, topic: r.content.topic ?? "", version: r.version, updated: fmt.format(new Date(r.updated_at)),
+    id: r.id, code: r.code, title: r.content.title, grade: r.content.grade ?? 8, topic: r.content.topic ?? "", branch: isBranch(r.content.branch) ? r.content.branch : undefined, version: r.version, updated: fmt.format(new Date(r.updated_at)),
     unconfirmed: rd[i].unconfirmed, lint: rd[i].lint, needGuides: rd[i].needGuides, pending: rd[i].pending, missing: missingInfo(r.content),
-    hay: `${r.code} ${r.content.title} ${r.content.topic ?? ""} lop ${r.content.grade ?? 8} ${r.content.statement ?? ""}`,
+    hay: `${r.code} ${r.content.title} ${r.content.topic ?? ""} lop ${r.content.grade ?? 8} ${isBranch(r.content.branch) ? BRANCHES[r.content.branch] : ""} ${r.content.statement ?? ""}`,
   }));
   const unconfirmed = rd.filter((x) => x.unconfirmed).length;
   if (unconfirmed) stat.splice(1, 0, ["Chưa xác nhận đáp án", "", unconfirmed, false]);

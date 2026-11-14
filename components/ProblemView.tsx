@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
-import { hasGuides } from "@/lib/chat/goals";
+import { hasChecks } from "@/lib/chat/goals";
 import { problemSchema } from "@/lib/schema/problem";
-import { lintProblem } from "@/lib/lint";
+import { blockers, lintProblem } from "@/lib/lint";
 import { entries, fmtValue, labelOf } from "@/lib/problem-text";
 import { groupAnswers } from "@/lib/answers";
 import { Alert, Badge } from "@/components/ui";
 import { MathText } from "@/components/MathText";
+import FigureImg from "@/components/FigureImg";
+import { figureUrl } from "@/lib/figure";
 import { wrapMath } from "@/lib/math-wrap";
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -52,9 +54,9 @@ export async function ProblemView({ id, inPanel = false }: { id: string; inPanel
     );
   }
   const p = parsed.data;
-  const guided = hasGuides(p);
+  const guided = hasChecks(p);
   const hints = [...p.hints].sort((a, b) => a.level - b.level);
-  const lint = [...(p.check_note ? [p.check_note] : []), ...lintProblem(p)];
+  const lint = [...(p.check_note ? [p.check_note] : []), ...blockers(p), ...lintProblem(p)];
 
   return (
     <article className="flex max-w-3xl flex-col gap-6">
@@ -74,6 +76,13 @@ export async function ProblemView({ id, inPanel = false }: { id: string; inPanel
         </Alert>
       )}
 
+      {p.figure && (
+        <Section title="Hình vẽ">
+          <FigureImg src={figureUrl(p.figure.path)} />
+          <p className="mt-2 max-w-prose text-sm text-text-muted">Mô tả cho AI: <MathText text={p.figure.desc || "(chưa có mô tả)"} /></p>
+        </Section>
+      )}
+
       <Section title="Đề bài">
         {p.statement ? <p className="max-w-prose"><MathText text={p.statement} /></p> : <Alert tone="warning">Đề chưa có phần nội dung bài (statement). Chatbot sẽ tự nêu tình huống từ dữ kiện.</Alert>}
       </Section>
@@ -89,8 +98,6 @@ export async function ProblemView({ id, inPanel = false }: { id: string; inPanel
                   <span className="tnum w-14 shrink-0 font-medium text-primary">Bước {i + 1}</span>
                   <div>
                     <MathText text={s} />
-                    {hasGuides(p) && p.step_goals[i] && <p className="text-sm text-text-muted">Học sinh thấy: <MathText text={p.step_goals[i]} /></p>}
-                    {p.step_formats.length === p.solution_steps.length && p.step_formats[i] && <p className="text-sm text-text-muted">Bot nhắc học sinh viết ra: <MathText text={p.step_formats[i]} />{p.step_examples[i] && <> (ví dụ ô nhập: <MathText text={p.step_examples[i]} />)</>}</p>}
                     {p.step_checks.length === p.solution_steps.length && p.step_checks[i].result && <p className="text-sm text-text-muted">Kết quả chuẩn (server chấm theo đây): <MathText text={p.step_checks[i].result} /></p>}
                     {p.error_traps.filter((e) => e.step === i + 1).map((e, k) => <p key={k} className="text-sm text-text-muted">Nếu học sinh nộp <MathText text={e.wrong} />: <MathText text={e.why} /></p>)}
                   </div>
@@ -98,11 +105,11 @@ export async function ProblemView({ id, inPanel = false }: { id: string; inPanel
               ))}
             </ol>
             {!guided && (
-              <Alert tone="info">Chưa đủ chỉ dẫn cho từng bước (việc cần làm, gợi ý), nên học sinh chỉ thấy lời nhắc chung và gợi ý chung của đề. Vào Sửa đề, bấm &quot;AI giải và chuẩn hóa&quot; để AI viết chỉ dẫn cho từng bước. Sửa lời giải xong thì bấm lại.</Alert>
+              <Alert tone="info">Chưa có kết quả chuẩn cho từng bước của lời giải nên server chưa chấm chính xác được. Vào Sửa đề, bấm &quot;AI giải và chuẩn hóa&quot;. Sửa lời giải xong thì bấm lại.</Alert>
             )}
           </>
         ) : (
-          <Alert tone="warning">Đề này chưa có lời giải từng bước nên học sinh chưa làm được (liên kết cũ giữ đề cũ, cần tạo liên kết mới). Vào Sửa đề, bấm &quot;AI giải và chuẩn hóa&quot; để AI viết giúp; lời giải được kiểm tra khớp đáp án trước khi lưu.</Alert>
+          <Alert tone="warning">Đề này chưa có lời giải chi tiết nên học sinh chưa làm được (liên kết cũ giữ đề cũ, cần tạo liên kết mới). Vào Sửa đề, bấm &quot;AI giải và chuẩn hóa&quot; để AI viết giúp; lời giải được kiểm tra khớp đáp án trước khi lưu.</Alert>
         )}
       </Section>
 
@@ -114,7 +121,7 @@ export async function ProblemView({ id, inPanel = false }: { id: string; inPanel
         <Section title="Sai lầm thường gặp"><ul className="list-disc space-y-1 pl-5">{p.common_errors.map((e, i) => <li key={i}><MathText text={e} /></li>)}</ul></Section>
       )}
 
-      <Section title="Gợi ý cho học sinh">
+      <Section title="Gợi ý chung của đề">
         <ol className="flex flex-col gap-2">
           {hints.map((h) => <li key={h.level} className="flex gap-3"><span className="tnum w-14 shrink-0 font-medium text-primary">Mức {h.level}</span><MathText text={h.text} /></li>)}
         </ol>

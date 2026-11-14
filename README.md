@@ -1,27 +1,27 @@
 # MathStep AI
 
-Chatbot gợi mở giúp học sinh tự giải Toán từng bước, cho mọi lớp và mọi dạng đề (giải phương trình, hình học, tỉ lệ, bài toán thực tế, tình huống tài chính...).
+Chatbot gợi mở giúp học sinh tự giải Toán, cho mọi lớp và mọi dạng đề (giải phương trình, hình học, tỉ lệ, bài toán thực tế, tình huống tài chính...).
 
-Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải quyết vấn đề của Polya, tăng gợi ý theo mức khi học sinh kẹt, và chỉ kết thúc bài khi học sinh đã nêu kết quả cùng cách làm. Giáo viên tạo đề, gửi liên kết công khai và theo dõi điểm mạnh, điểm yếu của từng học sinh. Học sinh vào bằng liên kết, chỉ nhập họ tên và lớp, không cần tài khoản.
+Chatbot **không đưa đáp án**. Nó nhận xét bài làm của học sinh (một bước, nhiều bước hoặc cả bài) theo cách giải quyết vấn đề của Polya, tăng gợi ý theo mức khi học sinh kẹt, và chỉ kết thúc bài khi học sinh đã nêu kết quả cùng cách làm. Giáo viên tạo đề, gửi liên kết công khai và theo dõi điểm mạnh, điểm yếu của từng học sinh. Học sinh vào bằng liên kết, chỉ nhập họ tên và lớp, không cần tài khoản.
 
 ## Cách hoạt động
 
 1. Giáo viên đăng ký, nhập API key của Google Gemini trong Cài đặt (key được mã hóa AES-256-GCM, không trả về trình duyệt).
-2. Giáo viên tạo đề: soạn trực tiếp, chụp ảnh đề hoặc tạo hàng loạt từ tệp Word (tab "Tạo đề hàng loạt"). AI điền đáp án, lời giải, gợi ý và câu chào đầu tiên; giáo viên kiểm tra rồi lưu. Giáo viên bấm "Chuẩn hóa đề" để AI viết lời giải (nếu thiếu), việc cần làm, 3 mức gợi ý, câu hỏi con và ví dụ tương tự cho từng bước.
-3. Giáo viên chọn một hoặc nhiều đề (đề cần có lời giải từng bước, thiếu thì học sinh chưa làm được), tạo liên kết công khai và gửi cho học sinh.
+2. Giáo viên tạo đề: soạn trực tiếp, chụp ảnh đề hoặc tạo hàng loạt từ tệp Word (tab "Tạo đề hàng loạt"). AI điền đáp án, lời giải, gợi ý và câu chào đầu tiên; giáo viên kiểm tra rồi lưu. Giáo viên bấm "Chuẩn hóa đề" để AI viết lời giải chi tiết từng bước cơ bản nhất (mỗi bước một phép biến đổi hoặc tính toán nhỏ) cùng kết quả chuẩn từng bước để server chấm. Học sinh không thấy các bước này.
+3. Giáo viên chọn một hoặc nhiều đề (đề cần có lời giải chi tiết, thiếu thì học sinh chưa làm được), tạo liên kết công khai và gửi cho học sinh.
 4. Học sinh mở liên kết, nhập họ tên và lớp (không nhớ, mở lại là nhập lại), chọn đề, làm bài theo kiểu đã chọn, tự đánh giá mức hiểu bài và mức hài lòng cuối bài.
 5. Hệ thống chấm theo 4 tiêu chí (hiểu đề bài, lập kế hoạch giải, thực hiện kế hoạch, kiểm tra và đánh giá). Giáo viên xem thống kê theo liên kết, hồ sơ từng học sinh và nội dung hội thoại.
 
 ## Tính năng
 
 **Giáo viên**
-- Trình tạo và sửa đề: tiêu đề, lớp, chủ đề, kỹ năng, đề bài, đáp án (JSON), lời giải từng bước, 3 mức gợi ý, sai lầm thường gặp, câu chào.
+- Trình tạo và sửa đề: tiêu đề, lớp, chủ đề, kỹ năng, đề bài, đáp án (JSON), lời giải chi tiết, 3 mức gợi ý chung của đề, sai lầm thường gặp, câu chào.
 - Đọc đề từ ảnh (chụp hoặc dán Ctrl+V) bằng AI; tạo hàng loạt từ tệp Word (bản nháp, xác nhận mới lưu, có lịch sử các đợt). Đề mẫu có sẵn trong `de-mau-10.json`.
 - Soạn công thức bằng bàn phím toán MathLive, xem trước KaTeX ngay trong ô nhập.
 - Đề do AI tạo có cờ `reviewed = false`: phải mở đề, tick xác nhận đáp án đúng rồi lưu mới được đưa vào liên kết.
-- AI tạo lời giải từng bước và kiểm tra lời giải khớp đáp án.
-- Cách làm bài duy nhất là **Từng bước**: học sinh nộp một bước mỗi lần. Đề thiếu lời giải từng bước thì API trả lỗi "Bài này chưa sẵn sàng". Phiên cũ kiểu Chat hoặc Trắc nghiệm vẫn xem được trong lịch sử.
-- Chỉ dẫn từng bước do AI viết sẵn khi chuẩn hóa đề: việc cần làm, 3 mức gợi ý riêng từng bước (mức 1 chỉ rõ vấn đề, mức 2 câu hỏi con `step_subs`, mức 3 ví dụ tương tự với số khác `step_analog`). Nút "Chuẩn hóa đề" ở trang từng đề, "Chuẩn hóa N đề" ở danh sách đề.
+- AI tạo lời giải chi tiết từng bước cơ bản và kiểm tra lời giải khớp đáp án.
+- Cách làm bài duy nhất là chat nhận xét bài làm: học sinh viết một bước, nhiều bước hoặc cả bài mỗi lần nộp; giao diện không có yêu cầu hay gợi ý theo bước. Đề thiếu lời giải chi tiết thì API trả lỗi "Bài này chưa sẵn sàng". Phiên cũ kiểu Chat hoặc Trắc nghiệm vẫn xem được trong lịch sử.
+- Chuẩn hóa đề chỉ tạo lời giải chi tiết (`solution_steps`), kết quả chuẩn từng bước (`step_checks`) và sai lầm gắn bước (`error_traps`); không còn việc cần làm, gợi ý, câu hỏi con, ví dụ theo bước (các trường `step_goals`, `step_hints`, `step_subs`, `step_analog`, `step_formats`, `step_examples` chỉ còn để đọc đề cũ). Nhận xét và gợi ý do AI viết lúc chạy, chỉ dựa trên đề đã chuẩn hóa. Nút "Chuẩn hóa đề" ở trang từng đề, "Chuẩn hóa N đề" ở danh sách đề.
 - Liên kết công khai: bật/tắt, hạn dùng, nhãn nhóm (trước, sau, thực nghiệm, đối chứng).
 - Trang **Học sinh**: gom theo tên và lớp; điểm trung bình 4 tiêu chí, kỹ năng cần củng cố, lỗi hay mắc, kiến thức nền còn thiếu (khi được giải hộ), danh sách bài đã làm (kể cả bài bỏ dở) và nút **AI phân tích và đề xuất cải thiện**. Mở từng phiên (ở Thống kê hoặc hồ sơ học sinh) có nút **AI phân tích phiên này**: nhận xét điểm tốt, điểm yếu và việc nên làm, lưu lại để xem lại.
 - Thống kê theo liên kết: số phiên, tỉ lệ hoàn thành, điểm, mức gợi ý, thời gian, so sánh giữa các nhóm, xem hội thoại từng phiên.- Bước học sinh hay gặp khó (bấm Gợi ý, hỏi, làm sai, được giải hộ; cột `chat_sessions.struggled`): hiện ở Thống kê (cả lớp), hồ sơ học sinh, dòng "Hay vướng" ở danh sách Học sinh; AI đề xuất cải thiện có thêm "Ôn tập theo bước".
@@ -30,23 +30,23 @@ Chatbot **không đưa đáp án**. Nó hỏi từng bước theo cách giải q
 
 **Học sinh**
 - Không cần tài khoản. Nhập họ tên và lớp (tối đa 10 ký tự); thông tin không lưu trong trình duyệt, mở liên kết hay tải lại là nhập lại; có nút Đổi thông tin. Server sinh khóa nội bộ `student_code` từ tên bỏ dấu + lớp (vd `NGUYENVANA.8A1`): cùng tên cùng lớp là một học sinh.
-- Câu chào hiện ngay khi mở bài; đề bài ghim phía trên; bot hỏi một câu cụ thể mỗi lượt.
+- Câu chào hiện ngay khi mở bài; đề bài ghim phía trên; bot nhận xét bài làm mỗi lượt.
 - Nút **Công thức** để gõ phân số, căn, số mũ; công thức hiển thị bằng KaTeX.
-- Gợi ý: 3 mức riêng cho từng bước, lấy từ đề, không gọi AI.
-- Ô nhập ngắn, nút **Em chưa hiểu** để hỏi (có giới hạn lượt).
-- Hết gợi ý mà vẫn kẹt (5 lượt kẹt) thì bot hiện lời giải bước đó; bước được giải hộ không được tính điểm.
+- Gợi ý: 3 mức tăng dần (nêu hướng, nêu cách làm bằng lời, câu hỏi nhỏ), AI viết lúc bấm từ đề đã chuẩn hóa; không qua rào chống lộ đáp án thì dùng gợi ý chung của đề.
+- Một ô bài làm chung, nút **Em chưa hiểu** để hỏi.
+- Hết gợi ý mà vẫn kẹt (5 lượt kẹt) thì bot hiện lời giải của phần đang kẹt; phần được giải hộ không được tính điểm.
 
 **Chat engine** ([lib/chat](lib/chat))
-- `steps.ts`: lượt làm bài từng bước (server tự xác minh bước có số, AI nhỏ chỉ viết nhận xét cho một bước). `engine.ts`: phần dùng chung (ghi tin của bot, chấm điểm cuối phiên). `prompt.ts`: kiểm tra lộ đáp án và prompt chấm điểm. `canned.ts`: câu cố định của bot (nhiều biến thể, không gọi AI) cho trường hợp học sinh nói không biết, nộp lại tin cũ, lạc đề, hết lượt hỏi. `intent.ts`: đoán tin là câu hỏi hay bước giải (client và server dùng chung). `assist.ts`: thang gợi ý, hiện lời giải khi kẹt, trần điểm theo phần tự làm.
+- `steps.ts`: lượt nộp bài làm (server tự xác minh mốc có số, AI nhỏ viết nhận xét; học sinh có thể nộp một bước, nhiều bước hoặc cả bài). `engine.ts`: phần dùng chung (ghi tin của bot, chấm điểm cuối phiên). `prompt.ts`: kiểm tra lộ đáp án và prompt chấm điểm. `canned.ts`: câu cố định của bot (nhiều biến thể, không gọi AI) cho trường hợp học sinh nói không biết, nộp lại tin cũ, lạc đề, hết lượt hỏi. `intent.ts`: đoán tin là câu hỏi hay bước giải (client và server dùng chung). `assist.ts`: thang gợi ý, hiện lời giải khi kẹt, trần điểm theo phần tự làm.
 - Tiến độ theo mốc lời giải; server tự xác minh mốc có số, mốc còn lại cần trích dẫn nguyên văn từ tin của học sinh.
 - Câu chép lại nguyên văn từ đề bị gỡ trước khi chấm; đáp án trơn mà chưa thấy cách làm các bước trước thì không ghi nhận; bước vừa ghi nhận bằng số được AI soát lại lập luận; học sinh nộp cả lời giải thì một lần gọi AI duyệt gộp các mốc không có số (server vẫn kiểm bằng chứng từng mốc).
-- Giao diện nhập có hai ô riêng: **Nộp bước** (viền xanh) và khay **Hỏi bài** (viền vàng, mở bằng nút Em chưa hiểu); gõ nhầm sẽ có gợi ý chuyển ô.
-- Gợi ý có thang 3 mức mỗi bước; hiện lời giải của bước thì học sinh phải tự gõ lại mới qua bước.
+- Giao diện nhập có hai ô riêng: **Bài làm** (viền xanh) và khay **Hỏi bài** (viền vàng, mở bằng nút Em chưa hiểu); gõ nhầm sẽ có gợi ý chuyển ô.
+- Gợi ý có thang 3 mức; hiện lời giải của phần đang kẹt thì học sinh phải tự gõ lại mới được ghi nhận.
 - Công thức LaTeX trong tin nhắn được chuẩn hóa (ví dụ `\frac{1}{2}` thành 0.5) trước khi so với đáp án.
 - Chỉ kết thúc khi đủ mốc và học sinh đã trình bày cách làm. Lời chúc mừng hoặc lời kết sớm của AI bị thay bằng câu hỏi tiếp.
 - Chặn lộ đáp án và chặn bot tự giải hộ bước học sinh phải làm; chặn đổi vai và lấy prompt.
 - Lọc thông tin cá nhân trước khi lưu và trước khi gửi AI.
-- Tự đổi sang model khác của cùng nhà cung cấp khi hết lượt hoặc quá tải; giới hạn tốc độ và số phiên mỗi ngày.
+- Tự đổi sang model khác của cùng nhà cung cấp khi hết lượt hoặc quá tải; giới hạn tốc độ (chống gửi dồn), không giới hạn số phiên hay số lượt.
 
 ## Công nghệ
 
@@ -71,8 +71,8 @@ lib/
   schema/problem.ts         schema Zod của đề
   students.ts               hồ sơ học sinh
   llm.ts, models.ts         gọi AI (kể cả ảnh), danh sách model, tự đổi model
-  step-guides.ts            AI viết chỉ dẫn và gợi ý từng bước
-  step-scaffold.ts          AI viết câu hỏi con và ví dụ tương tự cho từng bước (gợi ý mức 2 và 3)
+  step-all.ts               AI viết kết quả chuẩn và sai lầm theo bước lúc chuẩn hóa (học sinh không thấy)
+  step-guides.ts            hàm dùng chung của việc viết kết quả chuẩn và sai lầm theo bước
   import-batch.ts           đợt nạp đề hàng loạt từ tệp Word (bản nháp, xác nhận, lịch sử)
   batch.ts                  chạy hàng loạt theo lượt: tách đề thô, mã đề mới, song song có hạn giờ
   pii.ts, crypto.ts, log.ts lọc thông tin cá nhân, mã hóa key, nhật ký
