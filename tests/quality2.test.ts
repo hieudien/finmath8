@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { problemSchema, type Problem } from "../lib/schema/problem";
 import { checkpoints, hasWord, markByNumbers, met } from "../lib/chat/progress";
 import { leaks, leaksExpr } from "../lib/chat/prompt";
-import { trapReply } from "../lib/chat/traps";
 
 vi.mock("../lib/llm", () => ({ askJson: vi.fn() }));
 vi.mock("../lib/errors", () => ({ reportError: vi.fn(async () => {}) }));
@@ -65,20 +64,3 @@ describe("leaksExpr", () => {
   });
 });
 
-describe("trapReply", () => {
-  const p = base({ error_traps: [{ step: 1, wrong: "15000", why: "Bạn nhầm 15% với 15 nghìn, kiểm lại phép nhân." }, { step: 1, wrong: "255000", why: "Chưa tới đó đâu." }] });
-  const cp = checkpoints(p)[0];
-  it("nộp đúng kết quả sai đã biết thì trả lời giải thích", () => {
-    expect(trapReply(p, cp, "300000 x 0,05 = 15000", [])).toContain("nhầm 15%");
-    expect(trapReply(p, cp, "mình nghĩ là 20000", [])).toBe("");
-  });
-  it("lời giải thích lộ kết quả thì bị bỏ", () => {
-    const q = base({ error_traps: [{ step: 1, wrong: "15000", why: "Đúng ra phải là 45000." }] });
-    expect(trapReply(q, checkpoints(q)[0], "15000", [])).toBe("");
-  });
-  it("tin có cả kết quả đúng thì bỏ qua", () => {
-    const q = base({ solution: { saved: 45000, cost: 255000 }, error_traps: p.error_traps });
-    expect(trapReply(q, checkpoints(q)[0], "15000 rồi 45000", [])).toBe("");
-  });
-  it("chỉ áp dụng đúng bước", () => expect(trapReply(p, checkpoints(p)[1], "15000", [])).toBe(""));
-});

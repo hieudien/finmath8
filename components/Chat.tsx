@@ -7,11 +7,36 @@ import FigureImg from "@/components/FigureImg";
 import { StepInput } from "@/components/ChatInputs";
 import { shortId } from "@/lib/sid";
 
-type P = { id: string; title: string; statement: string; figure?: string | null; greeting: string; total: number }; // figure: địa chỉ ảnh hình vẽ của đề (nếu có)
+type P = { id: string; title: string; statement: string; figure?: string | null; greeting: string }; // figure: địa chỉ ảnh hình vẽ của đề (nếu có)
 type M = { role: "student" | "bot"; text: string };
-type Prog = { done: number; total: number }; // chỉ để biết tiến bộ giữa các lượt, không hiện cho học sinh
-type Resume = { sessionId: string; progress: Prog; lastAt: string };
-type R = { sessionId?: string; msgs?: M[]; resume?: Resume; reply?: string; step?: number; done?: boolean; progress?: Prog; misrouted?: boolean };
+type Resume = { sessionId: string; lastAt: string };
+type R = { sessionId?: string; msgs?: M[]; resume?: Resume; reply?: string; step?: number; done?: boolean; wrong?: boolean };
+
+// Gửi tin và đọc câu trả lời dần dần (NDJSON do /api/chat trả): onDelta nhận từng đoạn chữ, kết quả là sự kiện kết thúc.
+async function postStream(body: unknown, onDelta: (x: string) => void): Promise<{ ok: boolean; data: R & { error?: string } }> {
+  const fail = (error: string) => ({ ok: false, data: { error } });
+  let r: Response;
+  try {
+    r = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(90_000) });
+  } catch { return fail("Không kết nối được máy chủ. Kiểm tra mạng Internet rồi thử lại."); }
+  if (!r.ok || !r.body) { const j = (await r.json().catch(() => ({}))) as { error?: string }; return fail(j.error ?? "Có lỗi. Bạn thử gửi lại nhé."); }
+  const rd = r.body.getReader(), dec = new TextDecoder();
+  let buf = "", fin: R | null = null;
+  try {
+    for (;;) {
+      const { done, value } = await rd.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      for (let i = buf.indexOf("\n"); i >= 0; i = buf.indexOf("\n")) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 1);
+        if (!line.trim()) continue;
+        const e = JSON.parse(line) as { t: string; x?: string; error?: string } & R;
+        if (e.t === "d") onDelta(e.x ?? ""); else if (e.t === "f") fin = e; else if (e.t === "e") return fail(e.error ?? "Có lỗi. Bạn thử gửi lại nhé.");
+      }
+    }
+  } catch { if (!fin) return fail("Kết nối bị ngắt giữa chừng. Bạn thử gửi lại nhé."); }
+  return fin ? { ok: true, data: fin } : fail("Máy chủ không trả lời đầy đủ. Bạn thử gửi lại nhé.");
+}
 
 function ago(iso: string) {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -27,7 +52,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   const [err, setErr] = useState("");
   const [done, setDone] = useState(false);
   const [text, setText] = useState("");
-  const [prog, setProg] = useState<Prog | null>(null);
+  const [typing, setTyping] = useState(false); // đã có chữ đầu tiên của câu trả lời đang hiện dần
   const [askOpen, setAskOpen] = useState(false); // khay "Hỏi bài" (ô gõ riêng, tách khỏi ô bài làm)
   const [askText, setAskText] = useState("");
   const [wrong, setWrong] = useState(0); // số lần nộp liên tiếp chưa qua bước, từ 2 thì nhắc bấm Gợi ý
@@ -85,13 +110,13 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
 
   async function resume() {
     if (!pending) return;
-    const my = ++tok.current, { p, sessionId } = pending;
+    const my = ++tok.current, { sessionId } = pending;
     setBusy(true);
     const { ok, data } = await post<R>("/api/chat", { action: "resume", slug, sessionId, studentName: who?.name, studentClass: who?.cls });
     if (my !== tok.current) return;
     if (!ok || !data.sessionId) { setBusy(false); setErr(data.error ?? "Không mở lại được bài dở. Bạn thử lại hoặc chọn làm lại mới."); return; }
     setPending(null); setBusy(false); setErr(""); setWrong(0); setDone(false); setAskOpen(false); setAskText("");
-    setMsgs(data.msgs ?? []); setSid(data.sessionId); setProg(data.progress ?? { done: 0, total: p.total });
+    setMsgs(data.msgs ?? []); setSid(data.sessionId);
   }
 
   async function restart() {
@@ -104,14 +129,13 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
   }
 
   async function begin(p: P, my: number) {
-    setProb(p); setBusy(false); setErr(""); setAskOpen(false); setAskText(""); setWrong(0); setProg({ done: 0, total: p.total });
+    setProb(p); setBusy(false); setErr(""); setAskOpen(false); setAskText(""); setWrong(0);
     setMsgs([{ role: "bot", text: p.greeting }]); // hiện lời chào ngay; server tạo phiên song song, có sid thì mở ô nhập
     const { ok, data } = await post<R>("/api/chat", { action: "start", slug, problemCode: p.id, studentName: who?.name, studentClass: who?.cls });
     if (my !== tok.current) return;
     setBusy(false);
     if (!ok) { setErr(data.error ?? "Có lỗi."); started.current = false; setMsgs([]); if (problems.length > 1) setProb(null); return; } // lỗi: bỏ lời chào đã hiện, nhiều đề thì về danh sách (lỗi hiện ở đó)
     setSid(data.sessionId);
-    if (data.progress) setProg(data.progress);
   }
 
   useEffect(() => {
@@ -130,22 +154,27 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
 
   function changeWho() {
     started.current = false; tok.current++; setPending(null);
-    setWho(null); setProb(null); setSid(undefined); setMsgs([]); setDone(false); setErr(""); setProg(null); setAskOpen(false); setAskText(""); setWrong(0);
+    setWho(null); setProb(null); setSid(undefined); setMsgs([]); setDone(false); setErr(""); setAskOpen(false); setAskText(""); setWrong(0);
   }
 
   // Nộp bài làm (ô chính) hoặc gửi câu hỏi (khay Hỏi bài): hai ô gõ riêng, cùng đường gửi.
   async function submit(raw: string, ask: boolean) {
     const t = raw.trim();
     if (!t || !sid || busy) return;
-    (ask ? setAskText : setText)(""); setErr(""); setBusy(true);
+    (ask ? setAskText : setText)(""); setErr(""); setBusy(true); setTyping(false);
     setMsgs((m) => [...m, { role: "student", text: ask ? `❓ ${t}` : t }]);
-    const { ok, data } = await post<R>("/api/chat", { action: "message", slug, sessionId: sid, text: t, ...(ask && { ask: true }) });
-    setBusy(false);
-    if (!ok) { setMsgs((m) => m.slice(0, -1)); (ask ? setAskText : setText)(t); return setErr(data.error ?? "Có lỗi. Bạn thử gửi lại nhé."); } // trả tin về ô nhập để không mất
-    setMsgs((m) => [...m, { role: "bot", text: data.reply ?? "" }]);
-    if (ask) { setAskOpen(false); if (data.misrouted) setText(t); } // gửi nhầm lời giải vào khay hỏi: chuyển nguyên văn sang ô bài làm, bấm Nộp bài làm là xong
-    else if (data.progress) setWrong(data.progress.done > (prog?.done ?? 0) ? 0 : (w) => w + 1);
-    if (data.progress) setProg(data.progress);
+    let started = false;
+    const { ok, data } = await postStream({ action: "message", slug, sessionId: sid, text: t, ...(ask && { ask: true }) }, (x) => {
+      setTyping(true);
+      const first = !started; started = true; // đọc trước: hàm cập nhật state chạy trễ, lúc đó started đã đổi
+      setMsgs((m) => first ? [...m, { role: "bot", text: x }] : [...m.slice(0, -1), { role: "bot", text: m[m.length - 1].text + x }]);
+    });
+    setBusy(false); setTyping(false);
+    const had = started;
+    if (!ok) { setMsgs((m) => m.slice(0, had ? -2 : -1)); (ask ? setAskText : setText)(t); return setErr(data.error ?? "Có lỗi. Bạn thử gửi lại nhé."); } // trả tin về ô nhập để không mất
+    setMsgs((m) => had ? [...m.slice(0, -1), { role: "bot", text: data.reply ?? "" }] : [...m, { role: "bot", text: data.reply ?? "" }]);
+    if (ask) setAskOpen(false);
+    else setWrong(data.wrong ? (w) => w + 1 : 0);
     if (data.done) setDone(true);
   }
   const send = (e: React.FormEvent) => { e.preventDefault(); return submit(text, false); };
@@ -159,14 +188,12 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
     setBusy(false);
     if (!ok) return setErr(data.error ?? "Có lỗi. Bạn thử lại nhé.");
     setMsgs((m) => [...m, { role: "bot", text: data.reply ?? "" }]);
-    if (data.progress) setProg(data.progress);
-    if (data.done) setDone(true); // hết gợi ý mà kẹt đủ lượt: server hiện lời giải bước cuối và kết thúc bài
   }
 
   // Quay lại danh sách đề. Phiên đang làm dở để nguyên ("Bỏ dở"), giống khi học sinh đóng tab.
   function back() {
     tok.current++; setPending(null);
-    setProb(null); setSid(undefined); setMsgs([]); setDone(false); setText(""); setErr(""); setBusy(false); setShowStmt(false); setProg(null); setAskOpen(false); setAskText(""); setWrong(0);
+    setProb(null); setSid(undefined); setMsgs([]); setDone(false); setText(""); setErr(""); setBusy(false); setShowStmt(false); setAskOpen(false); setAskText(""); setWrong(0);
   }
 
   if (!who) {
@@ -265,7 +292,7 @@ export default function Chat({ slug, label, problems }: { slug: string; label: s
               <span className="sr-only">{m.role === "bot" ? "Chatbot: " : "Em: "}</span><MathText text={m.text} />
             </li>
           ))}
-          {busy && <li className="self-start"><div className="skeleton h-9 w-40" aria-label={sid ? "Chatbot đang trả lời" : "Đang mở bài"} /></li>}
+          {busy && !typing && <li className="self-start"><div className="skeleton h-9 w-40" aria-label={sid ? "Chatbot đang trả lời" : "Đang mở bài"} /></li>}
         </ul>
         <div ref={end} />
       </div>

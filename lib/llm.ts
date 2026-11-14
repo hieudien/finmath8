@@ -1,6 +1,6 @@
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { z } from "zod";
-import { PROVIDERS, fallbackChain, type Provider } from "@/lib/models";
+import { fallbackChain, type Provider } from "@/lib/models";
 
 export type LlmCfg = {
   provider: Provider;
@@ -109,6 +109,62 @@ export async function askText(cfg0: LlmCfg, system: string, turns: Turn[], opts:
       last = e;
       dead.set(deadKey(cfg, chain[i]), Date.now() + (isLongQuota(e) ? 3_600_000 : quota || /AI_SLOW/.test(String(e)) ? 20_000 : 60_000));
       if (i + 1 < chain.length) cfg.onFallback?.(chain[i], chain[i + 1], String(e).slice(0, 120));
+    }
+  }
+  throw last;
+}
+
+// Trả văn bản DẦN DẦN (streaming): onText nhận từng đoạn chữ mới, trả false thì dừng luồng ngay (hủy request).
+// Chỉ đổi model khi lỗi xảy ra TRƯỚC chữ đầu tiên (hết quota, quá tải, quá chậm): đã có chữ ra màn hình thì không đổi giữa chừng.
+export async function streamText(cfg0: LlmCfg, system: string, turns: Turn[], onText: (t: string) => boolean | void, opts: { think?: boolean | "low"; maxTokens?: number; deadlineMs?: number; attemptMs?: number; use?: string; temperature?: number; seed?: number; models?: string[] } = {}): Promise<string> {
+  const cfg = { ...cfg0, ...opts };
+  const deadline = Date.now() + (opts.deadlineMs ?? 40_000);
+  const all = opts.models?.length ? opts.models : fallbackChain(cfg.provider, cfg.model);
+  const alive = all.filter((m) => (dead.get(deadKey(cfg, m)) ?? 0) < Date.now());
+  const chain = alive.length ? alive : [cfg.model];
+  const contents = turns.map((t) => ({ role: t.role, parts: [{ text: t.text }] }));
+  let last: unknown;
+  for (let i = 0; i < chain.length; i++) {
+    const left = deadline - Date.now();
+    if (left <= 0) throw last ?? new Error("AI_TIMEOUT: quá thời gian chờ AI");
+    const cap = i + 1 < chain.length ? Math.min(left, opts.attemptMs ?? 8000) : left; // chờ chữ đầu tiên tối đa cap
+    const ac = new AbortController();
+    let got = false, full = "", timedOut = "";
+    const timer = setTimeout(() => { timedOut = cap < left ? "AI_SLOW: model trả lời quá chậm" : "AI_TIMEOUT: quá thời gian chờ AI"; ac.abort(); }, cap);
+    const t0 = Date.now();
+    try {
+      const ai = new GoogleGenAI({ apiKey: cfg.key });
+      const base = { systemInstruction: system, responseMimeType: "text/plain", temperature: cfg.temperature, seed: cfg.seed, maxOutputTokens: cfg.maxTokens, abortSignal: ac.signal };
+      const open = (extra: object) => ai.models.generateContentStream({ model: chain[i], contents, config: { ...base, ...extra } });
+      let stream;
+      try {
+        stream = await open(cfg.think === true ? {} : { thinkingConfig: { thinkingLevel: cfg.think === "low" ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL } });
+      } catch (e) {
+        if (cfg.think === true || !/thinking/i.test(String(e))) throw e;
+        stream = await open({});
+      }
+      let usage;
+      for await (const ch of stream) {
+        usage = ch.usageMetadata ?? usage;
+        const t = ch.text ?? "";
+        if (!got && t) { got = true; clearTimeout(timer); }
+        if (!t) continue;
+        full += t;
+        if (onText(t) === false) { ac.abort(); break; }
+      }
+      clearTimeout(timer);
+      if (usage) cfg.onUsage?.({ provider: "gemini", model: chain[i], input: usage.promptTokenCount ?? 0, cached: usage.cachedContentTokenCount ?? 0, output: usage.candidatesTokenCount ?? 0, thoughts: usage.thoughtsTokenCount ?? 0, use: cfg.use, ms: Date.now() - t0 });
+      return full;
+    } catch (e) {
+      clearTimeout(timer);
+      const err = timedOut ? new Error(timedOut) : e;
+      if (got) return full; // lỗi giữa chừng khi đã có chữ: giữ phần đã nhận
+      if (/AI_TIMEOUT/.test(String(err))) throw last && isQuota(last) ? last : err;
+      const quota = isQuota(err);
+      if (!quota && !isOverload(err)) throw err;
+      last = err;
+      dead.set(deadKey(cfg, chain[i]), Date.now() + (isLongQuota(err) ? 3_600_000 : quota || /AI_SLOW/.test(String(err)) ? 20_000 : 60_000));
+      if (i + 1 < chain.length) cfg.onFallback?.(chain[i], chain[i + 1], String(err).slice(0, 120));
     }
   }
   throw last;

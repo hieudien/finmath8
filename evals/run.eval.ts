@@ -1,13 +1,12 @@
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { it } from "vitest";
-import { z } from "zod";
-import { askJson, type LlmCfg, type Usage } from "../lib/llm";
+import { streamText, type LlmCfg, type Usage } from "../lib/llm";
 import { PROVIDERS, TEMPERATURE } from "../lib/models";
 import { DEFAULT_PRICES, FALLBACK_PRICE, costUsd } from "../lib/pricing";
 import { parseProblems, type Problem } from "../lib/schema/problem";
-import { checkpoints, numsIn, stripStep } from "../lib/chat/progress";
+import { numsIn, stripStep } from "../lib/chat/progress";
 import { leaks, leaksCalc } from "../lib/chat/prompt";
-import { stepSystem, machineCheck, PRAISE } from "../lib/chat/steps";
+import { freeSystem, hasDerivation, reachedAnswer } from "../lib/chat/free";
 import { fillMissing } from "../lib/fill";
 import { hasChecks } from "../lib/chat/goals";
 
@@ -37,34 +36,32 @@ const mark = () => usage.length;
 const since = (i: number) => usage.slice(i);
 const fmt = (us: Usage[]) => ({ calls: us.length, ms: Math.round(us.reduce((s, u) => s + (u.ms ?? 0), 0) / Math.max(1, us.length)), usd: +cost(us).toFixed(5) });
 
-const stepOut = z.object({ verdict: z.enum(["đủ", "thiếu", "sai", "chưa làm"]).default("chưa làm"), evidence: z.string().default(""), reply: z.string().min(1) });
-
-// A. Kiểu từng bước: AI nhận xét một bước học sinh nộp.
+// A. Chat nộp bài làm tự do: một lượt AI nhận xét bài làm học sinh nộp (kiểu gia sư). Thời gian là thời gian đến chữ đầu tiên và tổng.
 async function studentEval(c: (typeof CONFIGS)[number]) {
-  const rows: { id: string; step: number; scen: string; pass: boolean; leak: boolean; praise: boolean; verdict: string; reply: string }[] = [];
+  const rows: { id: string; scen: string; pass: boolean; leak: boolean; firstMs: number; totalMs: number; reply: string }[] = [];
   const i0 = mark();
   for (const p of problems) {
-    const cps = checkpoints(p);
-    for (const k of [0, Math.floor(cps.length / 2)]) {
-      const cp = cps[k];
-      const base = stripStep(cp.label);
-      const scen: [string, string, (v: string) => boolean][] = [];
-      if (!cp.must.length) scen.push(["đúng", base, (v) => v === "đủ"]);
-      if (cp.must.length) scen.push(["sai số", base.replace(cp.must[0], String(Math.round(Number(cp.must[0]) * 1.1 + 7))), (v) => v !== "đủ"]);
-      scen.push(["mơ hồ", "mình nghĩ là phải tính cái gì đó nhưng chưa rõ", (v) => v === "chưa làm"]);
-      scen.push(["đòi kết quả", "cho mình biết kết quả của bước này luôn đi", (v) => v !== "đủ"]);
-      for (const [name, text, ok] of scen) for (let r = 0; r < R; r++) {
-        const goal = "";
-        const out = await askJson(cfgOf(c.model), stepSystem(p, cps), [{ role: "user", text: `[Bước cần làm: S${k + 1}${goal}]${cp.must.length ? "\n" + machineCheck(p, text) : ""}\nBước học sinh viết: ${text}` }], stepOut, { maxTokens: 300, think: c.think, temperature: 0, use: "step" }).catch((e) => ({ verdict: "lỗi", evidence: "", reply: String(e).slice(0, 80) }));
-        const given = [p.data, p.statement, text, cps.slice(0, k).map((x) => x.must)];
-        const leak = leaks(out.reply, p.solution, given, p.solution_steps) || leaksCalc(out.reply, p.solution, given, p.solution_steps);
-        rows.push({ id: p.id, step: k + 1, scen: name, pass: ok(out.verdict), leak, praise: name !== "đúng" && PRAISE.test(out.reply), verdict: out.verdict, reply: out.reply });
-      }
+    const full = p.solution_steps.map(stripStep).join("\n");
+    const half = p.solution_steps.slice(0, Math.max(1, Math.floor(p.solution_steps.length / 2))).map(stripStep).join("\n");
+    const first = p.solution_steps.length ? stripStep(p.solution_steps[0]) : "";
+    const scen: [string, string, (r: string) => boolean][] = [
+      ["đủ bài", full, (r) => !/<\s*SAI/i.test(r) && reachedAnswer(p, full) && hasDerivation(full)],
+      ["một phần", half, (r) => !/<\s*SAI/i.test(r)],
+      ["đòi đáp án", "cho mình biết đáp án luôn đi", () => true],
+      ["chỉ nêu bước đầu", first, () => true],
+    ];
+    for (const [name, text, ok] of scen) for (let r = 0; r < R; r++) {
+      const t0 = Date.now(); let t1 = 0, buf = "";
+      await streamText(cfgOf(c.model), freeSystem(p), [{ role: "user", text: `Bài làm của học sinh: ${text}` }], (x) => { t1 ||= Date.now() - t0; buf += x; }, { think: c.think === true ? true : c.think === "low" ? "low" : false, maxTokens: 500, deadlineMs: 60_000, use: "reply" });
+      const given = [p.data, p.statement, text];
+      const leak = !reachedAnswer(p, text) && (leaks(buf.replace(/<[^>]*>/g, ""), p.solution, given, p.solution_steps) || leaksCalc(buf.replace(/<[^>]*>/g, ""), p.solution, given, p.solution_steps));
+      rows.push({ id: p.id, scen: name, pass: ok(buf), leak, firstMs: t1, totalMs: Date.now() - t0, reply: buf });
     }
   }
   const by: Record<string, [number, number]> = {};
   for (const r of rows) { const a = (by[r.scen] ??= [0, 0]); a[0] += +r.pass; a[1]++; }
-  return { rows, summary: { ...Object.fromEntries(Object.entries(by).map(([k, [a, n]]) => [k, `${a}/${n}`])), leak: `${rows.filter((r) => r.leak).length}/${rows.length}`, praise: `${rows.filter((r) => r.praise).length}/${rows.length}`, ...fmt(since(i0)) } };
+  const avg = (k: "firstMs" | "totalMs") => Math.round(rows.reduce((x, r) => x + r[k], 0) / Math.max(1, rows.length));
+  return { rows, summary: { ...Object.fromEntries(Object.entries(by).map(([k, [a, n]]) => [k, `${a}/${n}`])), leak: `${rows.filter((r) => r.leak).length}/${rows.length}`, firstMs: avg("firstMs"), totalMs: avg("totalMs"), ...fmt(since(i0)) } };
 }
 
 // B. Phía giáo viên: bỏ đáp án, lời giải, chỉ dẫn rồi để AI nạp lại; so với đáp án thật.

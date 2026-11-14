@@ -9,17 +9,16 @@ import { friendly, kindOf } from "../lib/errors";
 import { describe as describe_, ERR_KIND } from "../lib/log-labels";
 import { plain } from "../lib/plain";
 import { missingInfo, needsWork, readiness } from "../lib/ready";
-import { ladder, revealCap, revealLine, STALL_LIMIT } from "../lib/chat/assist";
+import { revealCap } from "../lib/chat/assist";
 import { ASK_METHOD, ASK_NEXT, keepOrAsk, earlyClose, checkpoints, countDone, hasEq, hasNum, markByNumbers, needsEq, offStreak, OFF_REPLIES, shapeOk, sim, stepOf, tighten, verdict, verify } from "../lib/chat/progress";
 import { SEED } from "../lib/seed";
 import { tidyLine, tidyStatement } from "../lib/repair";
 import { badClaims, claimNote, RESULT_MARK } from "../lib/chat/arith";
 import { hardProblems, studentKey, weakProblems } from "../lib/stats";
 import { leaksCalc } from "../lib/chat/prompt";
-import { cannedStuck, looksLikeStep, misses, NOT_JUDGE, offReply, PRAISE } from "../lib/chat/steps";
-import { ASK_ANSWER, ASK_IS_STEP, ASK_LEAK, ASK_NOT_JUDGE, CLOSINGS, CLOSINGS_HELP, isOff, OFF_AGAIN, OFF_FIRST, pick, REPEAT, RETRY, STEP_LEAK, STUCK_HINT, STUCK_NOHINT } from "../lib/chat/canned";
+import { offReply } from "../lib/chat/free";
+import { isOff, OFF_AGAIN, OFF_FIRST, pick } from "../lib/chat/canned";
 import { hasChecks, stepCue, stepGoal, stepLead, stepsGreeting } from "../lib/chat/goals";
-import { machineCheck, recent } from "../lib/chat/steps";
 
 describe("pii", () => {
   it("che sdt, email, ten", () => {
@@ -210,19 +209,8 @@ describe("buoc khong co so", () => {
 });
 
 describe("thang goi y: hien loi giai khi ket", () => {
-  const cp = (id: number) => ({ id, label: `Bước ${id + 1}: làm việc ${id}`, anchors: [], must: [] });
-  it("ladder chi dem khi het goi y, qua moc thi reset, du luot thi hien", () => {
-    expect(ladder("steps", 1, 0, false)).toEqual({ stall: 0, reveal: false }); // chua het goi y: khong dem
-    expect(ladder("steps", 3, 0, false)).toEqual({ stall: 1, reveal: false });
-    expect(ladder("steps", 3, STALL_LIMIT - 1, false)).toEqual({ stall: STALL_LIMIT, reveal: true });
-    expect(ladder("steps", 3, 4, true)).toEqual({ stall: 0, reveal: false });
-  });
   it("revealCap: moi lan giai ho tru tran 1, khong phu thuoc so buoc", () => {
     expect([0, 1, 2, 3, 5].map(revealCap)).toEqual([3, 2, 1, 0, 0]);
-  });
-  it("revealLine bo tien to Buoc N", () => {
-    expect(revealLine(cp(1))).toContain("làm việc 1");
-    expect(revealLine(cp(1))).not.toMatch(/Bước [0-9]/);
   });
 });
 
@@ -331,34 +319,6 @@ describe("chi dan tung buoc", () => {
     expect(sec("Cộng 3x + 2x")).toBe(false);
     expect(sec("Ví dụ 2 + 3 = 5")).toBe(false);
   });
-  it("looksLikeStep: tin hoi that khong bi chan, buoc giai bi bat", () => {
-    const q = { ...p, statement: "Giải 3x + 2y = 6", data: {} };
-    expect(looksLikeStep(q, "Hệ số của y là gì vậy?")).toBe(false);
-    expect(looksLikeStep(q, "em không hiểu hệ số")).toBe(false);
-    expect(looksLikeStep(q, "5x = 20")).toBe(true);
-    expect(looksLikeStep(q, "Hệ số của y là 2 và -2, hai số đối nhau")).toBe(true);
-    expect(NOT_JUDGE.test("Đúng rồi bạn! cộng vế")).toBe(true);
-  });
-  it("misses: dem tin nop lien tiep chua tien them moc (tu tin bot meta.kind right/open/done), bo qua cau hoi", () => {
-    const m = (role: "bot" | "student", content: string, kind?: string) => ({ role, content, hint_level: 0, meta: kind ? { kind } : null });
-    const all = [m("bot", "chào", "open"), m("student", "x"), m("bot", "Đúng rồi", "right"), m("student", "y"), m("student", "[Hỏi] gì"), m("bot", "sai", "wrong"), m("student", "z")];
-    expect(misses(all)).toBe(2); // y, z kể từ tin right gần nhất; câu hỏi không tính
-    expect(misses(all.slice(0, 2))).toBe(1);
-    expect(misses([m("student", "a"), m("bot", "sai", "wrong"), m("student", "b")])).toBe(2); // chưa có mốc nào: đếm từ đầu
-    expect(misses([])).toBe(0);
-  });
-  it("cannedStuck: khong biet / doi dap an / lap tin thi tra cau cung, tin lam bai thi de AI", () => {
-    const q = { ...p, step_goals: ["Tìm 2x", "Tìm x"], step_hints: [["a"], ["b"]] };
-    const c = (t: string, prior: string[] = [], hl = 0) => cannedStuck({ hint_level: hl }, t, prior);
-    const has = (out: string, arr: readonly string[]) => arr.some((x) => out.includes(x));
-    expect(has(c("không biết"), STUCK_HINT)).toBe(true);
-    expect(c("không biết")).not.toMatch(/Việc cần làm|bước d/);
-    expect(has(c("cho em đáp án"), ASK_ANSWER)).toBe(true);
-    expect(has(c("bó tay", [], 3), STUCK_NOHINT)).toBe(true);
-    expect(has(c("2x = 5", ["2x = 5", "2x = 5"]), REPEAT)).toBe(true);
-    expect(c("2x = 5", ["2x = 5", "[Hỏi] gì", "2x = 6"])).toBe("");
-    expect(c("Tính 2x bằng cách chia")).toBe("");
-  });
   it("offReply: khong nem buoc nao, lan 2 doi cau", () => {
     const r1 = offReply([]);
     expect(OFF_FIRST.some((x) => r1.startsWith(x))).toBe(true);
@@ -369,9 +329,8 @@ describe("chi dan tung buoc", () => {
     const r3 = offReply([{ role: "bot", content: r1, hint_level: 0 }, { role: "bot", content: r2, hint_level: 0 }]);
     expect(OFF_AGAIN.some((x) => r3.startsWith(x))).toBe(true); // lạc đề liên tiếp vẫn nhận ra, không quay về câu lần 1
   });
-  it("canned: moi nhom 5 bien the khac nhau, pick tranh lap tin truoc", () => {
-    for (const a of [STUCK_HINT, STUCK_NOHINT, ASK_ANSWER, REPEAT, OFF_FIRST, OFF_AGAIN, ASK_IS_STEP, ASK_NOT_JUDGE, ASK_LEAK, STEP_LEAK, RETRY, CLOSINGS, CLOSINGS_HELP]) expect(new Set(a).size).toBe(5);
-    for (let i = 0; i < 30; i++) expect(pick(RETRY, RETRY[2])).not.toBe(RETRY[2]);
+  it("canned: pick tranh lap tin truoc, isOff nhan ra cau lac de", () => {
+    for (let i = 0; i < 30; i++) expect(pick(OFF_FIRST, OFF_FIRST[2])).not.toBe(OFF_FIRST[2]);
     expect(pick(["a"], "a")).toBe("a"); // chỉ còn một biến thể thì vẫn dùng được
     expect(isOff(OFF_FIRST[3])).toBe(true);
     expect(isOff("Bước 1/5: a")).toBe(false);
@@ -406,23 +365,6 @@ describe("chi dan tung buoc", () => {
   });
 });
 
-describe("steps: may kiem va lich su", () => {
-  const p = { ...parseProblems(SEED).ok.find((x) => x.id === "TC02")!, statement: "Mua 3 cái giá 20", data: { n: 3 } };
-  it("chi bao KHONG khop khi hoc sinh co nêu so moi", () => {
-    expect(machineCheck(p, "mình tính 60")).toBe("[Máy kiểm: KHÔNG khớp]");
-    expect(machineCheck(p, "ok")).toBe("[Máy kiểm: bạn chưa nêu kết quả]");
-    expect(machineCheck(p, "có 3 cái")).toBe("[Máy kiểm: bạn chưa nêu kết quả]"); // chi nhac lai so cua de
-  });
-  it("recent lay 4 tin cuoi, cat dai", () => {
-    expect(recent([])).toBe("");
-    const m = Array.from({ length: 6 }, (_, i) => ({ role: i % 2 ? "bot" as const : "student" as const, content: "x".repeat(300) + i, hint_level: null }));
-    const r = recent(m);
-    expect(r.split("\n").length).toBe(6); // "", tiêu đề, 4 tin
-    expect(r).toContain("Bot: ");
-    expect(r).not.toContain("x".repeat(201));
-  });
-});
-
 describe("nhat ky loi va hoat dong", () => {
   it("kindOf phan loai loi AI va he thong", () => {
     expect(kindOf("429 RESOURCE_EXHAUSTED quota")).toBe("quota");
@@ -445,10 +387,6 @@ describe("nhat ky loi va hoat dong", () => {
 
 describe("sua chat luong tung buoc", () => {
   const tc05 = parseProblems(JSON.parse(readFileSync("de-mau-10.json", "utf8"))).ok.find((x) => x.id === "TC05")!;
-  it("loi khen khi buoc chua qua bi nhan ra; 'chua dung' va 'dung huong' thi khong", () => {
-    for (const t of ["Bạn đã tính đúng số tiền là $320.000$ đồng.", "Bạn tính rất chính xác.", "Giỏi lắm!", "Tuyệt vời, đúng rồi!"]) expect(PRAISE.test(t)).toBe(true);
-    for (const t of ["Mình thấy chưa đúng, bạn kiểm tra lại.", "Kết quả chưa chính xác.", "Bạn đang đúng hướng, còn thiếu một vế.", "Không đúng phép tính nào."]) expect(PRAISE.test(t)).toBe(false);
-  });
   it("buoc ket qua trung gian co must tu dau = cuoi", () => {
     const cps = checkpoints(tc05);
     expect(cps[1].must).toEqual(["53000000"]);

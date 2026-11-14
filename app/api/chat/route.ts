@@ -1,4 +1,5 @@
 import { check } from "@/lib/db";
+import { after } from "next/server";
 import { createHash, randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import { sweep } from "@/lib/sweep";
@@ -7,8 +8,8 @@ import { admin } from "@/lib/supabase/admin";
 import { llmCfg, withCtx } from "@/lib/teacher";
 import { getLink } from "@/lib/links";
 import { finish, type Session, type Tm } from "@/lib/chat/engine";
-import { progress, stepAsk, stepHint, stepsOpening, stepTurn } from "@/lib/chat/steps";
-import { checkpoints } from "@/lib/chat/progress";
+import { freeHint, freeOpening, freeTurn } from "@/lib/chat/free";
+import { stepsGreeting } from "@/lib/chat/goals";
 import { parseProblems, type Problem } from "@/lib/schema/problem";
 import { log } from "@/lib/log";
 import { failResponse, reportError, swallow, watchdog, type Trace } from "@/lib/errors";
@@ -81,21 +82,21 @@ async function handle(req: Request, tr: Trace) {
   // Làm tiếp bài dở: khớp theo tên + lớp (không cần cùng trình duyệt), phiên "active" hoặc "abandoned" đều làm tiếp được.
   if (b.action === "resume_check" || b.action === "resume" || b.action === "abandon") {
     const code = studentKey(b.studentName.replace(/\s+/g, " "), b.studentClass.replace(/\s+/g, "").toUpperCase());
-    const q = db.from("chat_sessions").select("id,problem_code,problem_snapshot,progress,step,status,started_at").eq("link_id", link.id).eq("student_code", code).neq("mode", "worksheet").in("status", ["active", "abandoned"]).eq("restarted", false);
+    const q = db.from("chat_sessions").select("id,problem_code,problem_snapshot,step,status,started_at").eq("link_id", link.id).eq("student_code", code).neq("mode", "worksheet").in("status", ["active", "abandoned"]).eq("restarted", false);
     if (b.action === "resume_check") {
       // Phiên mới nhất có tin của học sinh (phiên mở rồi bỏ, chưa nộp gì thì không có gì để làm tiếp); xem tối đa 5 phiên gần nhất.
       const { data } = await q.eq("problem_code", b.problemCode).order("started_at", { ascending: false }).limit(5);
-      for (const s of (data ?? []) as { id: string; problem_snapshot?: unknown; progress: number; started_at: string }[]) {
+      for (const s of (data ?? []) as { id: string; problem_snapshot?: unknown; started_at: string }[]) {
         const { data: ms } = await db.from("messages").select("role,ts").eq("session_id", s.id).order("id", { ascending: false });
         const rows = (ms ?? []) as { role: string; ts: string }[];
         const pr = (s.problem_snapshot ? parseProblems([s.problem_snapshot]).ok[0] : undefined) ?? problems.find((x) => x.id === b.problemCode);
         if (!pr || !rows.some((m) => m.role === "student")) continue;
-        return Response.json({ resume: { sessionId: s.id, progress: progress(pr, checkpoints(pr), s.progress ?? 0), lastAt: rows[0].ts } });
+        return Response.json({ resume: { sessionId: s.id, lastAt: rows[0].ts } });
       }
       return Response.json({});
     }
     const { data } = await q.eq("id", b.sessionId).maybeSingle();
-    const s = data as { id: string; problem_snapshot?: unknown; problem_code: string; progress: number } | null;
+    const s = data as { id: string; problem_snapshot?: unknown; problem_code: string } | null;
     if (!s) return err("Không tìm thấy bài làm dở.", 404);
     if (b.action === "abandon") {
       check(await db.from("chat_sessions").update({ restarted: true } as never).eq("id", s.id)); // không gợi ý làm tiếp nữa
@@ -106,7 +107,7 @@ async function handle(req: Request, tr: Trace) {
     if (!pr) return err("Không tìm thấy bài.", 404);
     check(await db.from("chat_sessions").update({ status: "active", ended_at: null } as never).eq("id", s.id));
     const { data: ms } = await db.from("messages").select("role,content").eq("session_id", s.id).order("id");
-    return Response.json({ sessionId: s.id, msgs: ((ms ?? []) as { role: "student" | "bot"; content: string }[]).map((m) => ({ role: m.role, text: m.content })), progress: progress(pr, checkpoints(pr), s.progress ?? 0) });
+    return Response.json({ sessionId: s.id, msgs: ((ms ?? []) as { role: "student" | "bot"; content: string }[]).map((m) => ({ role: m.role, text: m.content })) });
   }
 
   if (b.action === "start") {
@@ -116,7 +117,7 @@ async function handle(req: Request, tr: Trace) {
     if (!(await llmCfg(link.teacher_id))) return notReady(link, anon);
     sweep(); // dọn phiên bỏ dở và nhật ký lỗi cũ sau khi trả phản hồi
     const { data: seq } = await db.rpc("next_seq", { p_link: link.id } as never); // sau khi qua mọi kiểm tra, để số thứ tự không bị hụt
-    if (!prob.solution_steps.length) return err("Bài này chưa sẵn sàng. Báo giáo viên của em.", 409); // đề cũ thiếu lời giải từng bước
+    if (!prob.solution_steps.length && !Object.keys(prob.solution ?? {}).length) return err("Bài này chưa sẵn sàng. Báo giáo viên của em.", 409); // đề thiếu cả đáp án lẫn lời giải
     const mode = "steps"; // cột mode giữ lại cho phiên cũ (chat, quiz)
     const name = b.studentName.replace(/\s+/g, " "), cls = b.studentClass.replace(/\s+/g, "").toUpperCase(), code = studentKey(name, cls);
     const { data: s, error } = await db.from("chat_sessions").insert({ link_id: link.id, anon_id: anon, seq: (seq as number | null) ?? 1, problem_code: prob.id, student_code: code, student_name: name, student_class: cls, mode, hint_level: 0, problem_snapshot: prob } as never).select("*").single();
@@ -127,7 +128,7 @@ async function handle(req: Request, tr: Trace) {
     const sess = s as Session & { seq: number };
     try {
       const [r] = await Promise.all([
-        stepsOpening(sess, prob),
+        freeOpening(sess, stepsGreeting()),
         log({ actor: "student", action: "chat_session_started", teacherId: link.teacher_id, anonId: anon, linkId: link.id, meta: { problem: prob.id, seq: sess.seq, mode } }),
       ]);
       return Response.json({ sessionId: sess.id, ...r });
@@ -163,14 +164,40 @@ async function handle(req: Request, tr: Trace) {
     if (sess.status !== "active") return err("Bài này đã kết thúc.", 409);
     // Một lần đọc (ở trên) cho cả chống gửi dồn và ngữ cảnh của lượt này (gợi ý cũng cần xem bài làm vừa nộp).
     const all = (msgs ?? []) as { role: "student" | "bot"; content: string; hint_level: number | null; ts: string; meta?: { kind?: string } | null }[];
-    if (b.action === "hint") return Response.json(await stepHint(cfg, sess, prob, link.teacher_id, all));
+    if (b.action === "hint") return Response.json(await freeHint(cfg, sess, prob, link.teacher_id, all));
     const said = all.filter((m) => m.role === "student");
     // Chống gửi dồn: cách tin trước ít nhất 2 giây trong cùng phiên.
     const last = said.at(-1);
     if (last && Date.now() - new Date(last.ts).getTime() < 2000) return denied("too_fast", b.slug, anon, "Bạn gửi nhanh quá. Chờ một chút rồi gửi lại nhé.", link);
-    const r = await (b.ask ? stepAsk : stepTurn)(cfg, sess, prob, b.text, link.teacher_id, all, tm);
-    tm.total = Date.now() - t0;
-    return Response.json(r, { headers: { "Server-Timing": Object.entries(tm).map(([k, v]) => `${k};dur=${v}`).join(", ") } });
+    // Trả lời dần dần (NDJSON, mỗi dòng một sự kiện): {t:"d",x} chữ mới; {t:"f",reply,done,wrong} kết thúc; {t:"e",error} lỗi giữa chừng.
+    // Chấm điểm (finish) chạy ngầm sau khi luồng đóng, học sinh không phải đợi.
+    let settle!: (r: { done: boolean } | null) => void;
+    const settled = new Promise<{ done: boolean } | null>((res) => { settle = res; });
+    const teacherId = link.teacher_id, linkId = link.id, ask = !!b.ask, text = b.text;
+    after(async () => {
+      const r = await settled;
+      if (r?.done) await finish(cfg, sess, prob, teacherId).catch((e) => reportError(e, "chấm điểm (finish)", { teacherId, linkId, anonId: anon, actor: "system" }));
+    });
+    const enc = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      async start(ctl) {
+        const send = (e: object) => { try { ctl.enqueue(enc.encode(JSON.stringify(e) + "\n")); } catch { /* học sinh đã đóng trang: vẫn chạy tiếp để lưu tin bot */ } };
+        try {
+          const r = await freeTurn(cfg, sess, prob, text, teacherId, all, ask, tm, (x) => send({ t: "d", x }));
+          tm.total = Date.now() - t0;
+          send({ t: "f", reply: r.reply, done: r.done, wrong: r.wrong, step: r.step });
+          settle({ done: r.done });
+        } catch (e) {
+          const res = await geminiFail(e, teacherId, anon, linkId);
+          const j = (await res.json().catch(() => ({}))) as { error?: string };
+          send({ t: "e", error: j.error ?? "Có lỗi. Bạn thử gửi lại nhé." });
+          settle(null);
+        } finally {
+          try { ctl.close(); } catch { /* đã đóng */ }
+        }
+      },
+    });
+    return new Response(stream, { headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no" } });
   } catch (e) {
     return geminiFail(e, link.teacher_id, anon, link.id);
   }

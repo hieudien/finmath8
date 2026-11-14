@@ -5,7 +5,6 @@ import Chat from "@/components/Chat";
 import Brand from "@/components/Brand";
 import { stepsGreeting } from "@/lib/chat/goals";
 import { figureUrl } from "@/lib/figure";
-import { checkpoints } from "@/lib/chat/progress";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +32,7 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   const linkId = l.id;
   after(async () => { await admin().rpc("bump_visit", { p_link: linkId } as never); }); // không chặn việc hiển thị trang
   const live = await liveProblems(l.teacher_id, l.problems_snapshot);
-  // greeting: lời chào cố định hiện ngay khi bấm chọn bài; total = số mốc lời giải (ẩn với học sinh, chỉ để theo dõi tiến bộ).
-  const problems = live.map((p) => ({ id: p.id, title: p.title, statement: p.statement ?? "", figure: p.figure ? figureUrl(p.figure.path) : null, total: checkpoints(p).length, greeting: stepsGreeting() }));
+  // greeting: lời chào cố định hiện ngay khi bấm chọn bài.
+  const problems = live.map((p) => ({ id: p.id, title: p.title, statement: p.statement ?? "", figure: p.figure ? figureUrl(p.figure.path) : null, greeting: stepsGreeting() }));
   return <Chat slug={slug} label={l.label} problems={problems} />;
 }
