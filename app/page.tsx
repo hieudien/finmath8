@@ -4,7 +4,7 @@ import { LinkButton } from "@/components/ui";
 const NUMS = [["3", "mức gợi ý tăng dần khi học sinh kẹt: nêu hướng, nêu cách làm, câu hỏi nhỏ"], ["4", "tiêu chí chấm: hiểu đề bài, lập kế hoạch giải, thực hiện kế hoạch, kiểm tra và đánh giá"], ["5", "bước giải quyết vấn đề theo Polya"]];
 
 const TEACHER = [
-  ["Tạo đề nhanh", "Soạn đề trực tiếp, chụp ảnh đề để AI đọc, hoặc nạp cả tệp Word thành nhiều đề cùng lúc. Công thức soạn bằng bàn phím toán, không cần biết LaTeX."],
+  ["Tạo đề nhanh", "Soạn đề trực tiếp, chụp ảnh đề để AI đọc, hoặc nạp cả tệp Word thành nhiều đề cùng lúc. Đề hình học có hình vẽ: AI cắt hình từ ảnh đề và mô tả bằng chữ. Đề được phân loại đại số, hình học theo lớp và chủ đề để lọc nhanh. Công thức soạn bằng bàn phím toán, không cần biết LaTeX."],
   ["AI làm phần nặng", "AI tạo đáp án và lời giải chi tiết từng bước cơ bản nhất làm chuẩn để nhận xét bài làm. Đề do AI tạo phải được thầy cô duyệt mới đưa vào liên kết."],
   ["Nộp bài làm tự do", "Học sinh viết một bước, nhiều bước hoặc cả bài; chatbot nhận xét và gợi ý dựa trên đề đã chuẩn hóa, không lấy nguồn ngoài."],
   ["Gửi một liên kết", "Chọn đề, tạo liên kết công khai, đặt nhãn nhóm và hạn dùng. Chạy bằng API key Gemini của chính thầy cô."],
@@ -12,21 +12,21 @@ const TEACHER = [
 
 const STUDENT = [
   ["Vào bằng liên kết", "Nhập họ tên và lớp, không cần tài khoản."],
-  ["Tự giải theo cách của mình", "Đọc đề, nêu dữ kiện, chọn cách giải, tự tính. Bot không nói đáp án."],
-  ["Gợi ý khi kẹt", "Gợi ý tăng dần: định hướng, chỉ cách làm, câu hỏi nhỏ. Kẹt quá lâu thì bot hiện lời giải của phần đang kẹt, em gõ lại để đi tiếp."],
+  ["Tự giải theo cách của mình", "Đọc đề rồi tự làm theo cách của em. Bot nhận xét bài làm và không nói đáp án."],
+  ["Gợi ý khi kẹt", "Bấm Gợi ý để nhận gợi ý tăng dần: định hướng, chỉ cách làm, câu hỏi nhỏ, bám vào phần em đã làm."],
   ["Nộp bài làm", "Viết một bước, nhiều bước hoặc cả bài vào ô bài làm. Chưa rõ đề thì bấm Em chưa hiểu để mở khung Hỏi bài riêng."],
   ["Gõ công thức dễ dàng", "Nút Công thức mở bàn phím toán: phân số, căn, số mũ."],
 ];
 
 const FEATURES = [
-  ["Hồ sơ từng học sinh", "Điểm 4 tiêu chí, kỹ năng cần củng cố, lỗi hay mắc, kiến thức nền còn thiếu, các bài đã làm và bài bỏ dở."],
-  ["Chấm đúng phần tự làm", "Phần được giải hộ không được tính điểm. Điểm chỉ phản ánh phần học sinh tự làm."],
+  ["Hồ sơ từng học sinh", "Điểm 4 tiêu chí (thang 10), kỹ năng cần củng cố, lỗi hay mắc, các bài đã làm và bài bỏ dở."],
+  ["Gửi phụ huynh", "Một liên kết riêng cho từng học sinh để phụ huynh xem kết quả, thầy cô thu hồi được bất cứ lúc nào."],
   ["AI đề xuất cải thiện", "Một bấm để có nhận định điểm yếu, việc nên làm và dạng bài nên luyện thêm."],
   ["Bước học sinh hay gặp khó", "Thấy ngay bước nào cả lớp hay vướng và bước nào từng em hay vướng, kèm gợi ý ôn tập theo bước."],
-  ["Thống kê theo liên kết", "Số phiên, tỉ lệ hoàn thành, điểm trung bình, mức gợi ý, so sánh giữa các nhóm."],
+  ["Thống kê", "Theo liên kết, theo đề và theo học sinh: số phiên, tỉ lệ hoàn thành, điểm trung bình, mức gợi ý, so sánh giữa các nhóm."],
   ["Xóa an toàn", "Xóa liên kết hay học sinh chỉ là ẩn đi. Bài làm, tin nhắn và điểm vẫn được giữ."],
   ["Xem lại hội thoại", "Đọc từng phiên chat để xem học sinh làm bài thế nào."],
-  ["Chống lộ đáp án", "Server kiểm tra từng lượt: bot không nêu kết quả, không xác nhận đáp án sai. Tin chỉ chép lại đề, hay đáp án trơn không có cách làm, không được tính."],
+  ["Chống lộ đáp án", "Server kiểm tra từng lượt: bot không nêu kết quả, không xác nhận đáp án sai. Tin chỉ chép lại đề thì không được tính."],
   ["Riêng tư có kiểm soát", "Tự che số điện thoại, email trong tin nhắn. API key mã hóa AES-256-GCM."],
 ];
 

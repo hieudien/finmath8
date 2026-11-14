@@ -1,16 +1,19 @@
 const BLOCKS: [string, string[]][] = [
   ["Chuẩn bị bài học", [
     "Vào Cài đặt, nhập API key Google Gemini (mục đó có hướng dẫn lấy key). Chưa có key thì AI và chatbot chưa chạy được.",
-    "Chọn 2–3 tình huống phù hợp nội dung sắp dạy, nạp vào mục Đề bài.",
+    "Chọn 2–3 đề phù hợp nội dung sắp dạy: nhập trực tiếp, chụp ảnh đề hoặc nạp tệp Word ở mục Đề bài.",
     "Giới thiệu chatbot: \"Chatbot nhận xét bài làm và gợi ý, em cố gắng tự làm trước khi xin gợi ý\".",
     "Mỗi học sinh tự làm riêng trên thiết bị của mình.",
   ]],
   ["Cách học sinh làm bài", [
     "Học sinh viết bài làm vào một ô: một bước, nhiều bước hoặc cả bài đều được, không có yêu cầu hay gợi ý theo bước nào. Có nút Gợi ý và nút Em chưa hiểu. Bấm Em chưa hiểu sẽ mở khung Hỏi bài riêng (viền vàng), tách khỏi ô bài làm, để hỏi khi chưa rõ đề hoặc cách bắt đầu.",
+    "Nếu học sinh làm dở rồi mở lại liên kết, em chọn Làm tiếp hoặc Làm lại mới.",
   ]],
   ["Chuẩn bị đề", [
     "Đề cần có lời giải chi tiết, nếu thiếu thì học sinh chưa làm được (bổ sung rồi tạo liên kết mới). Nếu chưa có, bấm \"Chuẩn hóa đề\" ở trang đề.",
     "Bấm \"Chuẩn hóa đề\" (ở trang từng đề, hoặc nút Chuẩn hóa N đề ở danh sách đề) để AI sửa công thức hỏng và viết lại lời giải chi tiết từng bước cơ bản nhất. Lời giải này là nguồn duy nhất để chatbot nhận xét và gợi ý, học sinh không thấy. Đề đã chuẩn hóa kiểu cũ nên chuẩn hóa lại.",
+    "Đề hình học có hình vẽ: sau khi đọc ảnh, kiểm tra hình AI cắt và dòng mô tả hình (chatbot chỉ đọc phần mô tả, nên ghi đủ dữ kiện như độ dài, góc vuông). Có thể khoanh lại hình nếu cắt lệch.",
+    "Mỗi đề được phân loại Đại số hoặc Hình học, kèm lớp và chủ đề; dùng bộ lọc ở danh sách đề để tìm nhanh.",
     "Đọc lại lời giải và đáp án AI viết. Khi sửa đề, tick xác nhận đáp án đúng thì đáp án được khóa; bấm Mở khóa nếu cần sửa lại.",
     "Nhiều đề cùng lúc: trong Cài đặt, \"Xác nhận đáp án hàng loạt\" cho tự giải rồi tick các đề đúng để khóa. \"Kiểm tra đề\" nhờ AI giải lại và rà phép tính (đề có vấn đề được gắn \"Cần xem lại\" ở trang Đề bài). \"Chuẩn hóa tất cả đề\" làm lại mọi đề một lần.",
   ]],
@@ -20,9 +23,11 @@ const BLOCKS: [string, string[]][] = [
   ]],
   ["Hỗ trợ và điều chỉnh", [
     "Xem Thống kê: lỗi thường gặp, bước học sinh hay kẹt, mức gợi ý. Nếu nhiều em sai ở bước lập phương trình, giảng lại bước đó.",
-    "Xem hồ sơ từng học sinh ở mục Học sinh: kỹ năng cần củng cố, lỗi hay mắc và kiến thức nền còn thiếu (ghi khi em được giải hộ bước).",
+    "Xem hồ sơ từng học sinh ở mục Học sinh: điểm 4 tiêu chí (thang 10), kỹ năng cần củng cố và lỗi hay mắc.",
+    "Thống kê có thể xem theo liên kết, theo đề (đề nào em nào làm được) và theo học sinh.",
+    "Muốn phụ huynh xem kết quả: mở hồ sơ học sinh, bấm nút chia sẻ để tạo liên kết riêng. Ai có liên kết đều xem được, nên chỉ gửi cho phụ huynh; có thể thu hồi bất cứ lúc nào.",
     "Mở một phiên (ở Thống kê hoặc hồ sơ học sinh) rồi bấm \"AI phân tích phiên này\" để có nhận xét riêng cho phiên đó: làm tốt ở đâu, yếu ở bước nào, nên làm gì tiếp. Kết quả được lưu, bấm \"Phân tích lại\" khi cần.",
-    "Thống kê, hồ sơ và danh sách Học sinh cho biết bước nào học sinh hay gặp khó (bấm Gợi ý, hỏi, làm sai hoặc được giải hộ). AI đề xuất cải thiện có thêm mục Ôn tập theo bước.",
+    "Thống kê, hồ sơ và danh sách Học sinh cho biết bước nào học sinh hay gặp khó (bấm Gợi ý, hỏi hoặc làm sai). AI đề xuất cải thiện có thêm mục Ôn tập theo bước.",
     "Cài đặt có Nhật ký lỗi để xem lúc nào học sinh gặp lỗi.",
     "Xóa liên kết hoặc xóa học sinh chỉ ẩn đi, dữ liệu vẫn được giữ. Học sinh vào lại bằng cùng họ tên và lớp thì hiện lại.",
     "Chỉnh lời giải hoặc gợi ý chung trong đề rồi tạo liên kết mới (liên kết cũ giữ bản đề cũ).",
@@ -46,11 +51,8 @@ export default function Page() {
         </section>
       ))}
       <section className="flex flex-col gap-2">
-        <h2>Quy trình học sinh thấy</h2>
-        <ol className="list-decimal space-y-1 pl-5">
-          <li>Khám phá tình huống</li><li>Phân tích dữ kiện</li><li>Đề xuất phương án</li><li>Thực hiện giải quyết</li><li>Đánh giá kết quả</li>
-        </ol>
-        <p className="text-text-muted">Gợi ý tăng dần khi học sinh kẹt, gồm 3 mức: nêu hướng, nêu cách làm bằng lời, câu hỏi nhỏ. Gợi ý và nhận xét chỉ dựa trên đề đã chuẩn hóa, không lấy nguồn ngoài. Hết gợi ý mà vẫn kẹt thì chatbot hiện lời giải của phần đang kẹt và em phải tự gõ lại mới được ghi nhận; phần được giải hộ không được tính điểm. Học sinh có thể nộp một bước, nhiều bước hoặc cả lời giải một lần, chatbot ghi nhận mọi phần đã đủ cách làm và kết quả.</p>
+        <h2>Chatbot nhận xét thế nào</h2>
+        <p className="text-text-muted">Học sinh có thể nộp một bước, nhiều bước hoặc cả lời giải một lần; chatbot nhận xét đúng phần vừa nộp theo cách giải quyết vấn đề của Polya. Bấm Gợi ý có 3 mức tăng dần: nêu hướng, nêu cách làm bằng lời, câu hỏi nhỏ, bám vào phần em đã làm. Gợi ý và nhận xét chỉ dựa trên đề đã chuẩn hóa, không lấy nguồn ngoài, và chatbot không nêu đáp án.</p>
       </section>
     </div>
   );
