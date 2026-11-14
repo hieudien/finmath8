@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 import { parseMulti, readExamItems, stripLabel } from "../lib/read-multi";
 import { blocks, chunkText, readDocx, TEXT_MAX } from "../lib/docx-read";
-import { answersToLines, holdAnswer, linesToAnswers, releaseAnswer, summary, viewOf, type BatchItem } from "../lib/import-batch";
+import { answersToLines } from "../lib/answers";
+import { holdAnswer, looseAnswers, releaseAnswer, summary, viewOf, type BatchItem } from "../lib/import-batch";
 import type { Problem } from "../lib/schema/problem";
 import type { LlmCfg } from "../lib/llm";
 
@@ -94,10 +95,10 @@ describe("giữ đáp số mà không khóa", () => {
 
 describe("import-batch", () => {
   it("đáp số dòng <-> bản ghi", () => {
-    const a = linesToAnswers("x1 = 15\nx2 = 36\nket_luan = vô nghiệm\nrác");
+    const a = looseAnswers("x1 = 15\nx2 = 36\nket_luan = vô nghiệm\nrác");
     expect(a).toEqual({ x1: 15, x2: 36, ket_luan: "vô nghiệm" });
-    expect(linesToAnswers(answersToLines(a))).toEqual(a);
-    expect(linesToAnswers("")).toEqual({});
+    expect(looseAnswers(answersToLines(a))).toEqual(a);
+    expect(looseAnswers("")).toEqual({});
   });
   it("summary và viewOf", () => {
     const it = (status: BatchItem["status"], answers: Record<string, unknown> = {}, code?: string): BatchItem => ({ statement: "s", answers, steps: [], status, code });

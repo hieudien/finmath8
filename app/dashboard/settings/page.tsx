@@ -17,7 +17,6 @@ const tail = (enc: string | null | undefined) => {
   try { return enc ? decrypt(enc).slice(-4) : null; } catch { return null; }
 };
 
-// Phần "Token đã dùng" đang ẩn. Bật lại: render <AiCost rows range problems sessions /> (components/AiCost.tsx), lấy rows từ rpc ai_usage_summary, problems và sessions là số đề và phiên tạo trong khoảng RANGES (lib/pricing.ts).
 export default async function Page() {
   const u = (await currentUser())!;
   const { data } = await (await supabaseServer()).from("teacher_settings").select("*").eq("teacher_id", u.id).maybeSingle();

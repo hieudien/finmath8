@@ -130,18 +130,18 @@ Báo lỗi: ${err}` }],
 
 const CONFIRM = `Một người rà soát báo lỗi trong lời giải Toán. Tự tính lại bước bị nêu. Nếu bước đó thực sự sai về phép tính hoặc suy luận, real = true. Nếu bước đúng, hoặc báo lỗi tự mâu thuẫn, hoặc chỉ khác cách diễn đạt, real = false. Chỉ trả JSON {"real":boolean}.`;
 
-const KEY = `Bạn kiểm tra "kết quả chuẩn" của một đề Toán dạng điền khuyết hoặc trả lời ngắn. Tự làm đề trước, KHÔNG dựa vào kết quả chuẩn, rồi so.
-Kết quả chuẩn SAI nếu: không phải thứ đề yêu cầu điền/trả lời, thiếu ý quan trọng (vd thiếu "lớn nhất", "độ dài"), thừa hoặc sai ý, hoặc chỉ là phần đề đã cho sẵn.
-Chỉ báo sai khi CHẮC CHẮN. Chỉ trả JSON {"ok":boolean,"reason":string (1 câu, nêu bước nào và đúng phải là gì)}.`;
+const KEY = `Bạn kiểm tra "đáp án chữ" của một đề Toán dạng điền khuyết hoặc trả lời ngắn. Tự làm đề trước, KHÔNG dựa vào đáp án đã cho, rồi so.
+Đáp án SAI nếu: không phải thứ đề yêu cầu điền/trả lời, thiếu ý quan trọng (vd thiếu "lớn nhất", "độ dài"), thừa hoặc sai ý, hoặc chỉ là phần đề đã cho sẵn.
+Chỉ báo sai khi CHẮC CHẮN. Chỉ trả JSON {"ok":boolean,"reason":string (1 câu, nêu đáp án nào sai và đúng phải là gì)}.`;
 
-// Kiểm kết quả chuẩn từng bước có thực sự là đáp án cần điền không (lỗi CBBM03: chuẩn "bình phương một cạnh" thay vì "cạnh lớn nhất" nên bot khen sai).
-// Chỉ chạy với đề có kết quả chuẩn dạng chữ (số đã có kiểm chéo bằng code). Trả mô tả lỗi, rỗng = ổn.
+// Kiểm đáp án dạng chữ có thực sự là đáp án cần điền không (lỗi CBBM03: đáp án "bình phương một cạnh" thay vì "cạnh lớn nhất" nên bot khen sai).
+// Chỉ chạy với đề có đáp án chữ (số đã có kiểm chéo bằng code). Trả mô tả lỗi, rỗng = ổn.
 export async function checkKey(cfg: LlmCfg, p: Problem): Promise<string> {
-  const words = p.step_checks.map((c, i) => ({ step: i + 1, result: c.result })).filter((c) => /\p{L}{2,}/u.test(c.result.replace(/\[a-z]+/g, "")));
+  const words = texts(p.solution).filter((t) => /\p{L}{2,}/u.test(t.replace(/\[a-z]+/g, "")));
   if (!words.length) return "";
-  if (/chứng minh/i.test(p.statement)) return ""; // đề chứng minh: kết quả chuẩn từng bước là mệnh đề, không có "đáp án cần điền" để đối chiếu
+  if (/chứng minh/i.test(p.statement)) return ""; // đề chứng minh: đáp án chữ là mệnh đề, không có "đáp án cần điền" để đối chiếu
   const smart = { ...cfg, model: smartModel(cfg.provider) };
-  const r = await askJson(smart, KEY + gradeRule(p.grade), [{ role: "user", text: `${problemText(p)}\nKết quả chuẩn từng bước:\n${words.map((c) => `Bước ${c.step}: ${c.result}`).join("\n")}` }],
+  const r = await askJson(smart, KEY + gradeRule(p.grade), [{ role: "user", text: `${problemText(p)}\nĐáp án chữ:\n${words.map((t) => `- ${t}`).join("\n")}` }],
     z.object({ ok: z.boolean(), reason: z.string().default("") }), { think: true, use: "cross_check", temperature: 0 });
-  return r.ok || !r.reason.trim() ? "" : `Kiểm kết quả chuẩn: ${r.reason.trim().slice(0, 300)}`;
+  return r.ok || !r.reason.trim() ? "" : `Kiểm đáp án chữ: ${r.reason.trim().slice(0, 300)}`;
 }

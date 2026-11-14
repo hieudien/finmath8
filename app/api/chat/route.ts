@@ -8,7 +8,7 @@ import { admin } from "@/lib/supabase/admin";
 import { llmCfg, withCtx } from "@/lib/teacher";
 import { getLink } from "@/lib/links";
 import { finish, type Session, type Tm } from "@/lib/chat/engine";
-import { freeHint, freeOpening, freeTurn } from "@/lib/chat/free";
+import { ASK, freeHint, freeOpening, freeTurn } from "@/lib/chat/free";
 import { stepsGreeting } from "@/lib/chat/goals";
 import { parseProblems, type Problem } from "@/lib/schema/problem";
 import { log } from "@/lib/log";
@@ -82,7 +82,7 @@ async function handle(req: Request, tr: Trace) {
   // Làm tiếp bài dở: khớp theo tên + lớp (không cần cùng trình duyệt), phiên "active" hoặc "abandoned" đều làm tiếp được.
   if (b.action === "resume_check" || b.action === "resume" || b.action === "abandon") {
     const code = studentKey(b.studentName.replace(/\s+/g, " "), b.studentClass.replace(/\s+/g, "").toUpperCase());
-    const q = db.from("chat_sessions").select("id,problem_code,problem_snapshot,step,status,started_at").eq("link_id", link.id).eq("student_code", code).neq("mode", "worksheet").in("status", ["active", "abandoned"]).eq("restarted", false);
+    const q = db.from("chat_sessions").select("id,problem_code,problem_snapshot,step,status,started_at").eq("link_id", link.id).eq("student_code", code).in("status", ["active", "abandoned"]).eq("restarted", false);
     if (b.action === "resume_check") {
       // Phiên mới nhất có tin của học sinh (phiên mở rồi bỏ, chưa nộp gì thì không có gì để làm tiếp); xem tối đa 5 phiên gần nhất.
       const { data } = await q.eq("problem_code", b.problemCode).order("started_at", { ascending: false }).limit(5);
@@ -107,7 +107,7 @@ async function handle(req: Request, tr: Trace) {
     if (!pr) return err("Không tìm thấy bài.", 404);
     check(await db.from("chat_sessions").update({ status: "active", ended_at: null } as never).eq("id", s.id));
     const { data: ms } = await db.from("messages").select("role,content").eq("session_id", s.id).order("id");
-    return Response.json({ sessionId: s.id, msgs: ((ms ?? []) as { role: "student" | "bot"; content: string }[]).map((m) => ({ role: m.role, text: m.content })) });
+    return Response.json({ sessionId: s.id, msgs: ((ms ?? []) as { role: "student" | "bot"; content: string }[]).map((m) => ({ role: m.role, text: m.role === "student" && m.content.startsWith(ASK) ? `❓ ${m.content.slice(ASK.length)}` : m.content })) }); // giống tin hỏi lúc chat trực tiếp
   }
 
   if (b.action === "start") {
@@ -118,9 +118,8 @@ async function handle(req: Request, tr: Trace) {
     sweep(); // dọn phiên bỏ dở và nhật ký lỗi cũ sau khi trả phản hồi
     const { data: seq } = await db.rpc("next_seq", { p_link: link.id } as never); // sau khi qua mọi kiểm tra, để số thứ tự không bị hụt
     if (!prob.solution_steps.length && !Object.keys(prob.solution ?? {}).length) return err("Bài này chưa sẵn sàng. Báo giáo viên của em.", 409); // đề thiếu cả đáp án lẫn lời giải
-    const mode = "steps"; // cột mode giữ lại cho phiên cũ (chat, quiz)
     const name = b.studentName.replace(/\s+/g, " "), cls = b.studentClass.replace(/\s+/g, "").toUpperCase(), code = studentKey(name, cls);
-    const { data: s, error } = await db.from("chat_sessions").insert({ link_id: link.id, anon_id: anon, seq: (seq as number | null) ?? 1, problem_code: prob.id, student_code: code, student_name: name, student_class: cls, mode, hint_level: 0, problem_snapshot: prob } as never).select("*").single();
+    const { data: s, error } = await db.from("chat_sessions").insert({ link_id: link.id, anon_id: anon, seq: (seq as number | null) ?? 1, problem_code: prob.id, student_code: code, student_name: name, student_class: cls, hint_level: 0, problem_snapshot: prob } as never).select("*").single();
     if (error || !s) throw new Error("Không tạo được phiên chat: " + (error?.message ?? "rỗng"));
     // Học sinh có bảng riêng, sống sót khi xóa liên kết. Vào lại bằng cùng mã thì hiện lại (deleted_at = null).
     const up = await db.from("students").upsert({ teacher_id: link.teacher_id, code, name, class: cls, last_seen_at: new Date().toISOString(), deleted_at: null } as never);
@@ -129,7 +128,7 @@ async function handle(req: Request, tr: Trace) {
     try {
       const [r] = await Promise.all([
         freeOpening(sess, stepsGreeting()),
-        log({ actor: "student", action: "chat_session_started", teacherId: link.teacher_id, anonId: anon, linkId: link.id, meta: { problem: prob.id, seq: sess.seq, mode } }),
+        log({ actor: "student", action: "chat_session_started", teacherId: link.teacher_id, anonId: anon, linkId: link.id, meta: { problem: prob.id, seq: sess.seq } }),
       ]);
       return Response.json({ sessionId: sess.id, ...r });
     } catch (e) {

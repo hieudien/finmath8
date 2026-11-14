@@ -12,7 +12,7 @@ export type ImageRead = ImageResult & { warnings: string[]; attempts: number };
 const BS = String.fromCharCode(92);
 
 // Không dùng JSON: JSON làm hỏng dấu \ của LaTeX (\begin thành ký tự điều khiển, \\ thành \). Model trả văn bản có thẻ, code tự tách.
-export const IMAGE_PROMPT = `Đây là ảnh chụp một đề Toán. Đọc và PHÂN LOẠI nội dung trong ảnh, chép NGUYÊN VĂN, không tự giải. Hình vẽ minh họa đề (nếu có) không chép vào <de>, chỉ xử lý ở thẻ <hinh> và <khung>.
+const IMAGE_PROMPT = `Đây là ảnh chụp một đề Toán. Đọc và PHÂN LOẠI nội dung trong ảnh, chép NGUYÊN VĂN, không tự giải. Hình vẽ minh họa đề (nếu có) không chép vào <de>, chỉ xử lý ở thẻ <hinh> và <khung>.
 Chỉ trả văn bản đúng theo khung thẻ sau, không viết gì ngoài các thẻ, không dùng JSON, không dùng khối mã:
 <de>
 chỉ đề bài

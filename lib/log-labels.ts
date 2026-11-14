@@ -3,7 +3,7 @@ import { toTen } from "@/lib/score";
 export type Meta = Record<string, unknown>;
 type Info = { label: string; group: string; warn?: boolean; text?: (m: Meta) => string };
 
-const MODE: Record<string, string> = { chat: "Chat", steps: "Từng bước", quiz: "Trắc nghiệm" };
+const MODE: Record<string, string> = { chat: "Chat", steps: "Từng bước", quiz: "Trắc nghiệm" }; // chỉ để đọc nhật ký cũ (đổi cài đặt kiểu tương tác)
 const PROVIDER: Record<string, string> = { gemini: "Google Gemini" };
 const s = (v: unknown) => (v == null ? "" : String(v));
 
@@ -43,7 +43,7 @@ export const LOG: Record<string, Info> = {
   link_toggled: { label: "Bật/tắt liên kết", group: PROB, text: (m) => (m.active ? "Đã bật" : "Đã tắt") },
   link_deleted: { label: "Xóa liên kết", group: PROB },
 
-  chat_session_started: { label: "Học sinh bắt đầu bài", group: STU, text: (m) => `Đề ${s(m.problem)}${m.mode ? `, kiểu ${MODE[s(m.mode)] ?? s(m.mode)}` : ""}` },
+  chat_session_started: { label: "Học sinh bắt đầu bài", group: STU, text: (m) => `Đề ${s(m.problem)}` },
   chat_session_ended: { label: "Học sinh kết thúc bài", group: STU },
   survey_submitted: { label: "Học sinh tự đánh giá", group: STU, text: (m) => `Hiểu bài ${s(m.confidence)}/5, hài lòng ${s(m.likert)}/5` },
   session_analysis: { label: "AI phân tích một phiên", group: STU, text: (m) => (m.problem ? `Đề ${s(m.problem)}` : "") },

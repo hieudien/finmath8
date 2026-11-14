@@ -13,16 +13,8 @@ describe("lintProblem", () => {
     const p = base({ solution: { saved: 45000, cost: 255000 } });
     expect(lintProblem(p)).toEqual([]);
   });
-  it("chỉ dẫn theo bước kiểu cũ không còn bị cảnh báo (runtime bỏ qua)", () => {
-    const p = base({ solution: { saved: 45000, cost: 255000 }, step_goals: ["Tính tiền giảm, ra 45000"], step_hints: [["Ra 255000 nhé"]] });
-    expect(lintProblem(p)).toEqual([]);
-  });
   it("lời giải chỉ 1 bước thì nhắc chuẩn hóa lại", () => {
     expect(lintProblem(base({ solution_steps: ["Phải trả 255000."] })).join("|")).toContain("chuẩn hóa lại");
-  });
-  it("đáp án chữ mà chưa có step_checks thì cảnh báo", () => {
-    expect(lintProblem(base({ solution: { cost: 255000, best: "B" } })).join("|")).toContain("phần chữ");
-    expect(lintProblem(base({ solution: { cost: 255000, best: "B" }, step_checks: [{ result: "45000", accepts: [] }, { result: "255000", accepts: [] }] })).join("|")).not.toContain("phần chữ");
   });
 });
 

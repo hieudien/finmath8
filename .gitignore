@@ -49,3 +49,8 @@ dev.err
 /evals/progress.log
 
 /evals/out/
+
+# tài liệu và kết quả đánh giá cục bộ
+/*.docx
+/evals-*.log
+/evals/out/

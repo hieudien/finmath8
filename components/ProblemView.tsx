@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
-import { hasChecks } from "@/lib/chat/goals";
 import { problemSchema } from "@/lib/schema/problem";
 import { blockers, lintProblem } from "@/lib/lint";
 import { entries, fmtValue, labelOf } from "@/lib/problem-text";
@@ -54,7 +53,6 @@ export async function ProblemView({ id, inPanel = false }: { id: string; inPanel
     );
   }
   const p = parsed.data;
-  const guided = hasChecks(p);
   const hints = [...p.hints].sort((a, b) => a.level - b.level);
   const lint = [...(p.check_note ? [p.check_note] : []), ...blockers(p), ...lintProblem(p)];
 
@@ -98,15 +96,10 @@ export async function ProblemView({ id, inPanel = false }: { id: string; inPanel
                   <span className="tnum w-14 shrink-0 font-medium text-primary">Bước {i + 1}</span>
                   <div>
                     <MathText text={s} />
-                    {p.step_checks.length === p.solution_steps.length && p.step_checks[i].result && <p className="text-sm text-text-muted">Kết quả chuẩn (server chấm theo đây): <MathText text={p.step_checks[i].result} /></p>}
-                    {p.error_traps.filter((e) => e.step === i + 1).map((e, k) => <p key={k} className="text-sm text-text-muted">Nếu học sinh nộp <MathText text={e.wrong} />: <MathText text={e.why} /></p>)}
                   </div>
                 </li>
               ))}
             </ol>
-            {!guided && (
-              <Alert tone="info">Chưa có kết quả chuẩn cho từng bước của lời giải nên server chưa chấm chính xác được. Vào Sửa đề, bấm &quot;AI giải và chuẩn hóa&quot;. Sửa lời giải xong thì bấm lại.</Alert>
-            )}
           </>
         ) : (
           <Alert tone="warning">Đề này chưa có lời giải chi tiết nên học sinh chưa làm được (liên kết cũ giữ đề cũ, cần tạo liên kết mới). Vào Sửa đề, bấm &quot;AI giải và chuẩn hóa&quot; để AI viết giúp; lời giải được kiểm tra khớp đáp án trước khi lưu.</Alert>
@@ -127,7 +120,6 @@ export async function ProblemView({ id, inPanel = false }: { id: string; inPanel
         </ol>
       </Section>
 
-      {p.extension && <Section title="Câu hỏi mở rộng"><p className="max-w-prose"><MathText text={p.extension} /></p></Section>}
     </article>
   );
 }

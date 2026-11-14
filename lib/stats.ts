@@ -1,10 +1,10 @@
-import { mean, standardDeviation, sampleVariance } from "simple-statistics";
+import { fold } from "@/lib/search";
 import type { supabaseServer } from "@/lib/supabase/server";
 
 export type Sess = { id: string; link_id: string; seq: number; status: string; started_at: string; problem_code: string; student_code: string | null; student_name: string | null; student_class?: string | null; revealed?: number; struggled?: number };
 export const bits = (n: number) => n.toString(2).replace(/0/g, "").length; // số bit 1 của mặt nạ (số bước được giải hộ)
 // Khóa nội bộ của học sinh: tên bỏ dấu + lớp, in hoa. Cùng tên cùng lớp là một học sinh.
-export const studentKey = (name: string, cls: string) => `${name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/gi, "d").replace(/[^A-Za-z0-9]/g, "").toUpperCase()}.${cls.replace(/[^A-Za-z0-9]/g, "").toUpperCase()}`;
+export const studentKey = (name: string, cls: string) => `${fold(name).replace(/[^a-z0-9]/g, "").toUpperCase()}.${cls.replace(/[^A-Za-z0-9]/g, "").toUpperCase()}`;
 // Học sinh cũ chưa có lớp thì hiện mã cũ trong ngoặc.
 export const who = (x: { seq: number; student_code: string | null; student_name: string | null; student_class?: string | null }) => x.student_name ? `${x.student_name} (${x.student_class || x.student_code})` : `Ẩn danh (cũ) #${x.seq}`;
 export type Ev = { session_id: string; identify: number; plan: number; calculate: number; explain: number; total: number; final_correct: boolean; max_hint_level: number; hint_count: number; errors: string[]; duration_s: number };
@@ -34,10 +34,6 @@ export function compareStats(a: G | undefined, b: G | undefined) {
   return { meanA: r1(a.mean), sdA: r1(a.sd), nA: a.n, meanB: r1(b.mean), sdB: r1(b.sd), nB: b.n, t: Number.isFinite(t) ? r1(t) : null };
 }
 
-export function compare(a: number[], b: number[]) {
-  const g = (x: number[]): G | undefined => x.length < 2 ? undefined : { n: x.length, mean: mean(x), sd: standardDeviation(x), v: sampleVariance(x) };
-  return compareStats(g(a), g(b));
-}
 
 // Số tin học sinh đã gửi theo phiên (không tính lời chào của bot). Đếm bản ghi con trong DB nên không dính giới hạn 1000 dòng.
 // Lỗi đọc thì trả map thiếu: phiên không có trong map là "chưa biết", không gắn nhãn "Chưa trả lời".

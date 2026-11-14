@@ -12,7 +12,7 @@ import { dropRedundantSummary } from "@/lib/answers";
 
 // Bước GIẢI riêng: một lần gọi chỉ để giải, trả lời giải và đáp án cùng lúc (khỏi lệch nhau), làm trước đáp án sau, tự thay số kiểm.
 // Cùng model với các bước khác; khác ở chỗ chỉ làm một việc, nhiệt độ thấp, văn bản có thẻ (không JSON, khỏi hỏng dấu \).
-export const SOLVE_PROMPT = `Bạn là giáo viên Toán. CHỈ giải bài, trả lời giải và đáp án; không viết gợi ý.
+const SOLVE_PROMPT = `Bạn là giáo viên Toán. CHỈ giải bài, trả lời giải và đáp án; không viết gợi ý.
 Cách làm:
 1. Xác định ẩn, tham số, điều kiện, từng ý a), b)...
 2. Giải lần lượt từng ý, mỗi bước một phép biến đổi, viết đủ phép tính trung gian, cẩn thận dấu và hệ số. Ý sau dùng kết quả ý trước.
@@ -71,66 +71,12 @@ export async function solveOnce(cfg: LlmCfg, p: P, o: Opts = {}): Promise<Solved
   return parseSolved(raw);
 }
 
-const VERIFY_PROMPT = `Bạn kiểm tra một đáp án Toán bằng cách THAY SỐ, không giải lại bài từ đầu.
-Nhận: đề bài và đáp án ứng viên. Việc cần làm: thay đáp án vào điều kiện của đề. Đề có tham số thì thay giá trị tham số vào hệ hoặc phương trình, giải ra các ẩn bằng số, rồi kiểm tra từng điều kiện của đề. Tính bằng số cụ thể, từng bước ngắn.
-Chỉ trả văn bản đúng khung sau, không dùng JSON:
-<tinh>
-các phép thay số ngắn gọn
-</tinh>
-<ket_qua>
-dung nếu đáp án thỏa MỌI điều kiện của đề, sai nếu có điều kiện không thỏa
-</ket_qua>`;
-
-// Kiểm đáp án bằng thay số trong một lần gọi mới (không thấy lời giải nên không bị neo vào lập luận).
-export async function verifyBySubstitution(cfg: LlmCfg, p: P, answers: Record<string, unknown>, o: { deadlineMs?: number } = {}): Promise<{ ok: boolean; note: string }> {
-  const raw = await askText(cfg, VERIFY_PROMPT + gradeRule(p.grade), [{ role: "user", text: `${problemText(p)}\nĐáp án ứng viên: ${JSON.stringify(answers)}` }],
-    { think: true, temperature: 0, use: "cross_check", deadlineMs: o.deadlineMs });
-  const t = tagged(raw, ["tinh", "ket_qua"]);
-  // Bỏ dấu tiếng Việt rồi lấy từ đầu tiên: "Đúng", "đúng.", "dung" đều là đạt; "sai", "không thỏa" là không.
-  const first = (t.ket_qua ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").match(/[a-z]+/)?.[0] ?? "";
-  return { ok: first === "dung", note: (t.tinh ?? "").slice(0, 300) };
-}
-
 // Hai bộ đáp án cùng kết luận: cùng các số (không kể thứ tự, sai số 0,5%), hoặc cùng chữ chính tắc khi không có số.
 export function sameAnswers(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
   const x = nums(a).sort((m, n) => m - n), y = nums(b).sort((m, n) => m - n);
   if (x.length || y.length) return x.length === y.length && x.every((v, i) => Math.abs(v - y[i]) <= Math.abs(y[i]) * 0.005 + 1e-9);
   const s = texts(a).map(canon).sort(), t = texts(b).map(canon).sort();
   return s.length > 0 && s.length === t.length && s.every((v, i) => v === t[i]);
-}
-
-export type Reliable = { solved: Solved | null; flagged: boolean; calls: number; why: string };
-export type Mode = "once" | "verify" | "vote";
-
-// Giải có kiểm. once: một lần. verify: giải, thay số kiểm bằng lần gọi riêng, không đạt thì giải lại một lần khác cách rồi kiểm tiếp.
-// vote: hai lần giải độc lập chạy song song; trùng thì nhận, lệch thì giải lần ba và lấy đa số. flagged = chưa tin được, cần giáo viên xem.
-export async function solveReliable(cfg: LlmCfg, p: P, mode: Mode, o: { deadlineMs?: number } = {}): Promise<Reliable> {
-  const base = { deadlineMs: o.deadlineMs };
-  const sw = swallow("giải đề (bỏ phiếu)", { teacherId: cfg.teacherId, actor: "teacher" });
-  if (mode === "once") {
-    const a = await solveOnce(cfg, p, base);
-    return { solved: a, flagged: !a, calls: 1, why: a ? "" : "model không trả đáp án" };
-  }
-  if (mode === "verify") {
-    const a = await solveOnce(cfg, p, base);
-    let calls = 1;
-    if (!a) return { solved: null, flagged: true, calls, why: "model không trả đáp án" };
-    const v = await verifyBySubstitution(cfg, p, a.answers, base); calls++;
-    if (v.ok) return { solved: a, flagged: false, calls, why: "" };
-    const b = await solveOnce(cfg, p, { ...base, temperature: 0.4, hint: "chọn cách giải khác lần trước nếu có (ví dụ phương pháp thế thay cho cộng đại số, hoặc ngược lại)" }); calls++;
-    if (b) { const v2 = await verifyBySubstitution(cfg, p, b.answers, base); calls++; if (v2.ok) return { solved: b, flagged: false, calls, why: "" }; }
-    return { solved: a, flagged: true, calls, why: `thay số không đạt: ${v.note}` };
-  }
-  const [a, b] = await Promise.all([
-    solveOnce(cfg, p, base).catch(sw),
-    solveOnce(cfg, p, { ...base, temperature: 0.4, hint: "chọn cách giải khác nếu có (phương pháp thế hoặc cộng đại số)" }).catch(sw),
-  ]);
-  let calls = 2;
-  if (a && b && sameAnswers(a.answers, b.answers)) return { solved: a, flagged: false, calls, why: "" };
-  const c = await solveOnce(cfg, p, { ...base, temperature: 0.7 }).catch(sw); calls++;
-  const pool = [a, b, c].filter((s): s is Solved => !!s);
-  const win = pool.find((s, i) => pool.some((t, j) => j !== i && sameAnswers(s.answers, t.answers)));
-  return win ? { solved: win, flagged: false, calls, why: "" } : { solved: pool[0] ?? null, flagged: true, calls, why: "ba lần giải không có hai lần trùng nhau" };
 }
 
 // Đề chứng minh: đáp án chỉ có nghĩa với ý "tìm/xác định". Một đáp án chữ thì đặt tên ket_luan; câu kiểu "đã chứng minh xong" không phải đáp án nên bỏ.

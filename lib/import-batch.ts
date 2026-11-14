@@ -29,9 +29,8 @@ export function summary(items: BatchItem[]) {
 export const holdAnswer = (p: Problem, hasAnswer: boolean): Problem => ({ ...p, answer_locked: hasAnswer });
 export const releaseAnswer = (p: Problem): Problem => ({ ...p, answer_locked: false });
 
-// Đáp số dạng dòng "tên = giá trị" <-> bản ghi, dùng ở bước xem trước.
-export const answersToLines = (a: Record<string, unknown>) => Object.entries(a).map(([k, v]) => `${k} = ${v}`).join("\n");
-export function linesToAnswers(s: string): Record<string, unknown> {
+// Đọc dòng "tên = giá trị" ở bước xem trước, bỏ qua dòng sai (khác linesToAnswers của lib/answers: chặt chẽ, báo lỗi theo dòng).
+export function looseAnswers(s: string): Record<string, unknown> {
   const o: Record<string, unknown> = {};
   for (const l of s.split(/\r?\n/)) {
     const m = l.trim().match(/^([A-Za-z_]\w*)\s*[=:]\s*(.+)$/);

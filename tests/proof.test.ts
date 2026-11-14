@@ -13,7 +13,7 @@ import type { LlmCfg } from "../lib/llm";
 const cfg = { provider: "gemini", key: "k", model: "m", temperature: 0 } as unknown as LlmCfg;
 const proof = (solution: Record<string, unknown>) => problemSchema.parse({
   id: "BT", title: "t", grade: 9, statement: "Chứng minh rằng tứ giác CEHD nội tiếp. Xác định tâm đường tròn.", solution,
-  step_checks: [{ result: "Tứ giác CEHD nội tiếp", accepts: [] }], hints: [1, 2, 3].map((level) => ({ level, text: "g" })),
+  hints: [1, 2, 3].map((level) => ({ level, text: "g" })),
 });
 
 describe("đề chứng minh", () => {

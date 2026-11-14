@@ -1,4 +1,3 @@
-import { withGuides } from "@/lib/step-guides";
 import { stripStep } from "@/lib/chat/progress";
 import { walk } from "@/lib/latex-fix";
 import type { Problem } from "@/lib/schema/problem";
@@ -81,7 +80,7 @@ export const tidyLine = (s: string) => onText(s, (t) => wrapBare(t).split(NL).ma
   .replace(/([\p{L}\d)]|[^$.?!,;:]\$)$/u, "$1."); // công thức cuối dòng đã kết thúc bằng dấu câu ("...(2; 1).$") thì không thêm dấu chấm nữa
 
 const tidyAll = (p: Problem): Problem => {
-  const q = { ...p, statement: tidyStatement(p.statement), solution_steps: p.solution_steps.map(tidyLine), common_errors: p.common_errors.map(tidyLine), extension: tidyLine(p.extension), hints: p.hints.map((h) => ({ ...h, text: tidyLine(h.text) })) };
+  const q = { ...p, statement: tidyStatement(p.statement), solution_steps: p.solution_steps.map(tidyLine), common_errors: p.common_errors.map(tidyLine), hints: p.hints.map((h) => ({ ...h, text: tidyLine(h.text) })) };
   return JSON.stringify(q) === JSON.stringify(p) ? p : q;
 };
 
@@ -97,8 +96,7 @@ function repairSteps(p: Problem): Problem {
   const q0 = walk({ ...p, solution_steps: steps }) as Problem;
   // Một phần tử chứa nhiều dòng (model gộp cả lời giải vào một chuỗi): mỗi dòng ngoài $...$ là một bước. Sau walk nên "\neq" đã được trả về đúng.
   const q = { ...q0, solution_steps: q0.solution_steps.flatMap((s) => onText(s, (t) => t.replace(/[ \t]*\n\s*/g, SEP)).split(SEP).filter((x) => x.trim())) };
-  // Lưu chữ sạch, không "Bước N:": giao diện và bot tự đánh số. Chỉ đổi số bước hoặc chữ thật mới làm chỉ dẫn cũ lệch; bỏ tiền tố thì giữ chỉ dẫn.
+  // Lưu chữ sạch, không "Bước N:": giao diện và bot tự đánh số.
   const clean = { ...q, solution_steps: q.solution_steps.map(stripStep) };
-  if (JSON.stringify(clean) === JSON.stringify(p)) return p;
-  return JSON.stringify(q.solution_steps) === JSON.stringify(p.solution_steps) ? clean : withGuides(clean, null);
+  return JSON.stringify(clean) === JSON.stringify(p) ? p : clean;
 }

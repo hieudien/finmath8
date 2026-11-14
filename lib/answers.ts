@@ -21,7 +21,7 @@ function parseValue(v: string): unknown {
   return t;
 }
 
-export const showValue = (v: unknown) => (typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(v));
+const showValue = (v: unknown) => (typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(v));
 
 // Đối tượng đáp án thành các dòng "tên = giá trị".
 export function answersToLines(o: Record<string, unknown>): string {

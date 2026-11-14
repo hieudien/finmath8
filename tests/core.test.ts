@@ -9,16 +9,15 @@ import { friendly, kindOf } from "../lib/errors";
 import { describe as describe_, ERR_KIND } from "../lib/log-labels";
 import { plain } from "../lib/plain";
 import { missingInfo, needsWork, readiness } from "../lib/ready";
-import { revealCap } from "../lib/chat/assist";
-import { ASK_METHOD, ASK_NEXT, keepOrAsk, earlyClose, checkpoints, countDone, hasEq, hasNum, markByNumbers, needsEq, offStreak, OFF_REPLIES, shapeOk, sim, stepOf, tighten, verdict, verify } from "../lib/chat/progress";
+import { hasNum, sim } from "../lib/chat/progress";
 import { SEED } from "../lib/seed";
 import { tidyLine, tidyStatement } from "../lib/repair";
-import { badClaims, claimNote, RESULT_MARK } from "../lib/chat/arith";
+import { badClaims } from "../lib/chat/arith";
 import { hardProblems, studentKey, weakProblems } from "../lib/stats";
 import { leaksCalc } from "../lib/chat/prompt";
 import { offReply } from "../lib/chat/free";
 import { isOff, OFF_AGAIN, OFF_FIRST, pick } from "../lib/chat/canned";
-import { hasChecks, stepCue, stepGoal, stepLead, stepsGreeting } from "../lib/chat/goals";
+import { stepsGreeting } from "../lib/chat/goals";
 
 describe("pii", () => {
   it("che sdt, email, ten", () => {
@@ -56,56 +55,10 @@ describe("seed", () => {
   it("hop le", () => expect(parseProblems(SEED).errors).toEqual([]));
 });
 
-describe("progress", () => {
-  const p = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
-  const cps = checkpoints(p);
-  it("moc tu solution_steps", () => {
-    expect(cps).toHaveLength(5);
-    expect(cps[2].must).toEqual(["9"]); // buoc giai ra x = 9
-    expect(cps[0].must).toEqual([]);
-  });
-  it("xac minh bang chung", () => {
-    const said = "sau x tuần mình có 120000 + 40000x";
-    expect(verify(cps[0], "120000 + 40000x", said)).toBe(true);
-    expect(verify(cps[0], "câu bịa không có trong tin", said)).toBe(false); // evidence phai la trich nguyen van
-    expect(verify(cps[2], "x = 9", "x = 9")).toBe(true);
-    expect(verify(cps[2], "sau x tuần", "sau x tuần mình có 120000")).toBe(false); // thieu so 9
-  });
-  it("tien do", () => {
-    expect(countDone(0b10101)).toBe(3);
-    expect(stepOf(0, 5)).toBe(1);
-    expect(stepOf(5, 5)).toBe(5);
-  });
-});
-
-describe("may kiem so hoc sinh", () => {
-  const p = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
-  const cps = checkpoints(p);
-  it("khop va khong khop", () => {
-    const v = verdict("x = 9 va con 7777", p, cps);
-    expect(v.match).toContain("9");
-    expect(v.miss).toContain("7777");
-    expect(verdict("em khong biet", p, cps)).toEqual({ match: [], miss: [] });
-  });
-});
-
 describe("giao tiep: dai, lap, lac de", () => {
-  it("tighten giu cau dau va cau hoi cuoi, khong cat so thap phan", () => {
-    const long = "Đúng rồi, lãi suất là 0.85 phần trăm. " + "Từ này chỉ để làm dài thêm câu trả lời của bạn. ".repeat(6) + "Bạn tính tiếp số tiền lãi nhé?";
-    const t = tighten(long);
-    expect(t.startsWith("Đúng rồi, lãi suất là 0.85 phần trăm.")).toBe(true);
-    expect(t.endsWith("nhé?")).toBe(true);
-    expect(tighten("Ngắn thôi. Bạn tính nhé?")).toBe("Ngắn thôi. Bạn tính nhé?");
-  });
   it("sim bat cau lap", () => {
     expect(sim("Bạn viết phép tính ra số tiền còn thiếu nhé?", "Bạn viết phép tính ra số tiền còn thiếu nhé?")).toBe(1);
     expect(sim("Bạn viết phép tính số tiền còn thiếu?", "Giải phương trình để tìm x nào?")).toBeLessThan(0.3);
-  });
-  it("thang lac de dem lien tiep", () => {
-    const m = (role: string, content: string) => ({ role, content });
-    expect(offStreak([m("bot", "x"), m("student", "a")])).toBe(0);
-    expect(offStreak([m("bot", OFF_REPLIES[0]), m("student", "hi"), m("bot", OFF_REPLIES[1]), m("student", "hi")])).toBe(2);
-    expect(offStreak([m("bot", OFF_REPLIES[0]), m("student", "ok"), m("bot", "binh thuong"), m("student", "hi")])).toBe(0);
   });
 });
 
@@ -113,17 +66,6 @@ describe("plain", () => {
   it("bo LaTeX", () => {
     expect(plain("dạng $Ay = B$ và $m^2 - 4 \\neq 0$")).toBe("dạng Ay = B và m² - 4 ≠ 0");
     expect(plain("$$\\begin{cases} mx - 4y = 6 \\\\ x - my = m + 2 \\end{cases}$$")).toBe("Hệ: mx - 4y = 6; x - my = m + 2");
-  });
-});
-
-describe("tien do khong ket", () => {
-  const p = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
-  const cps = checkpoints(p);
-  it("so o nhieu tin van tinh, k = nghin", () => {
-    const said = "1800000\n90k";
-    expect(hasNum(said, "90000")).toBe(true);
-    expect(hasNum("21800000", "1800000")).toBe(false);
-    expect(cps.filter((c) => c.must.length && c.must.every((n) => hasNum("x = 9", n))).length).toBeGreaterThan(0);
   });
 });
 
@@ -177,71 +119,22 @@ describe("trinh bay chu", () => {
   });
 });
 
-describe("loi ket som", () => {
-  it("chan loi chuc mung khi chua xong", () => {
-    expect(earlyClose("Bài toán đã được giải xong. Chúc mừng bạn!")).toBe(true);
-    expect(earlyClose("Chúc mừng! Bạn đã đúng, giờ giải thích cách làm?")).toBe(true);
-    expect(earlyClose("Bạn viết bước tiếp theo nhé?")).toBe(false);
-  });
-});
-
-describe("buoc khong co so", () => {
-  const base = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
-  const p = { ...base, statement: "Giải hệ 3x + 2y = 6, 2x - 2y = 14", data: {}, solution: { x: 4 }, solution_steps: ["Bước 1: Hệ số của $y$ là $2$ và $-2$, đối nhau.", "Bước 2: Cộng vế ta được $5x = 20$, suy ra $x = 4$."] };
-  it("anchors bo so thu tu buoc; tra loi bang chu van duoc xac minh", () => {
-    const cps = checkpoints(p);
-    expect(cps[0].anchors).not.toContain("1");
-    expect(cps[0].must).toEqual([]);
-    expect(verify(cps[0], "đối nhau", "đối nhau")).toBe(true);
-    expect(verify(cps[0], "không có trong tin", "đối nhau")).toBe(false);
-  });
-  it("buoc ra phuong trinh: bat buoc co dau =, khong nhan loi noi hay hai tong roi nhau", () => {
-    const cps = checkpoints({ ...p, solution_steps: ["Bước 1: Hệ số của $y$ đối nhau.", "Bước 2: Cộng vế ta được $(3x+2x)+(2y-2y)=6+14$."] });
-    expect(needsEq(cps[0])).toBe(false);
-    expect(needsEq(cps[1])).toBe(true);
-    expect(shapeOk(cps[0], "đối nhau")).toBe(true); // bước nhận xét: chữ thuần vẫn được
-    expect(shapeOk(cps[1], "(3x+2y)+(2x-2y)=6+14")).toBe(true);
-    expect(shapeOk(cps[1], "(3x+2y) + (2x - 2y) và 6 + 14")).toBe(false); // thiếu "="
-    expect(shapeOk(cps[1], "cộng hai vế lại với nhau")).toBe(false);
-    expect(shapeOk(cps[1], "= cộng hai vế")).toBe(false); // có "=" nhưng không có số
-    expect(hasEq("5x ＝ 20")).toBe(true);
-  });
-});
-
-describe("thang goi y: hien loi giai khi ket", () => {
-  it("revealCap: moi lan giai ho tru tran 1, khong phu thuoc so buoc", () => {
-    expect([0, 1, 2, 3, 5].map(revealCap)).toEqual([3, 2, 1, 0, 0]);
-  });
-});
-
-describe("keepOrAsk", () => {
-  it("giu loi AI co cau hoi, noi cau hoi khi thieu, dung cau mau khi la loi ket", () => {
-    expect(keepOrAsk("Cách nhân hệ số của bạn hợp lý! Sau khi trừ vế, bạn được gì?", false)).toContain("hợp lý");
-    expect(keepOrAsk("Cách của bạn hợp lý.", false)).toMatch(/hợp lý\. Bạn thử viết bước tiếp/);
-    expect(keepOrAsk("Chúc mừng bạn!", false)).toBe(ASK_NEXT);
-    expect(keepOrAsk("Chúc mừng bạn!", true)).toBe(ASK_METHOD);
-  });
-});
-
 describe("missingInfo", () => {
   const base = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
-  const full = { ...base, solution: { x: 4 }, solution_steps: ["a", "b"], step_goals: [], step_hints: [], step_checks: [{ result: "", accepts: [] }, { result: "", accepts: [] }] };
+  const full = { ...base, solution: { x: 4 }, solution_steps: ["a", "b"] };
   it("du thi rong, thieu thi liet ke", () => {
     expect(missingInfo(full)).toEqual([]);
     expect(missingInfo({ ...full, solution: {} })).toEqual(["đáp án"]);
-    expect(missingInfo({ ...full, solution_steps: [], step_checks: [] })).toEqual(["lời giải từng bước", "kết quả chuẩn từng bước (chuẩn hóa đề)"]);
-    expect(missingInfo({ ...full, step_checks: [] })).toEqual(["kết quả chuẩn từng bước (chuẩn hóa đề)"]);
+    expect(missingInfo({ ...full, solution_steps: [] })).toEqual(["lời giải từng bước"]);
     expect(missingInfo({ nonsense: 1 })).toEqual(["đề lưu sai định dạng"]);
   });
 });
 
 describe("readiness", () => {
   const base = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
-  const full = { ...base, solution: { x: 4 }, solution_steps: ["a", "b"], step_goals: [], step_hints: [], step_checks: [{ result: "", accepts: [] }, { result: "", accepts: [] }], reviewed: true };
+  const full = { ...base, solution: { x: 4 }, solution_steps: ["a", "b"], reviewed: true };
   it("dem tung nhom", () => {
-    expect(readiness(full)).toMatchObject({ ok: true, needGuides: false, pending: false, lint: [] });
-    expect(readiness({ ...full, step_goals: ["a", "b"], step_hints: [["h"], ["h"]] })).toMatchObject({ ok: false, needGuides: true }); // còn chỉ dẫn theo bước kiểu cũ: cần chuẩn hóa lại
-    expect(readiness({ ...full, step_checks: [] })).toMatchObject({ ok: false, needGuides: true }); // đề cũ chưa có kết quả chuẩn từng bước
+    expect(readiness(full)).toMatchObject({ ok: true, pending: false, lint: [] });
     expect(readiness({ ...full, reviewed: false })).toMatchObject({ ok: false, pending: true });
     expect(readiness({ ...full, check_note: "lệch" })).toMatchObject({ ok: false }); // có cảnh báo thì không được tính đạt chuẩn
     expect(needsWork({ ...full, check_note: "lệch" })).toBe(true);
@@ -258,57 +151,11 @@ describe("badClaims: phep tinh viet bang chu va cau bao loi ket qua", () => {
     expect(badClaims("7 cộng 5 = 13")).toEqual(["7+5 = 13"]);
     expect(badClaims("tổng cộng 20")).toEqual([]);
   });
-  it("claimNote: đẳng thức sai nói rõ lỗi kết quả, không nêu số đúng, không nói 'phép đó sai'", () => {
-    const n = claimNote("(12 + 8) × 2 = 41");
-    expect(n).toContain(RESULT_MARK);
-    expect(n).not.toMatch(/40|phép đó/);
-    expect(claimNote("5 < 3")).toBe('Mình thấy "5 < 3" chưa đúng, bạn kiểm tra lại dòng đó nhé.');
-  });
-});
-
-describe("kieu tuong tac", () => {
-  it("markByNumbers: dung thu tu, nhay coc khong ghi nhan, gop buoc", () => {
-    const cp = (id: number, must: string[]) => ({ id, label: "", anchors: must, must });
-    const cps = [cp(0, ["8"]), cp(1, ["4"]), cp(2, [])];
-    expect(markByNumbers("chưa biết", cps, 0)).toBe(0);
-    expect(markByNumbers("2x = 8", cps, 0)).toBe(0b001); // buoc 1 xong
-    expect(markByNumbers("x = 4", cps, 0)).toBe(0); // nhay coc: buoc 1 chua xong thi khong ghi nhan buoc 2
-    expect(markByNumbers("2x = 8 nên x = 4", cps, 0)).toBe(0b011); // gop 2 buoc
-    expect(markByNumbers("x = 4", cps, 0b001)).toBe(0b011);
-    expect(markByNumbers("mọi số", cps, 0b011)).toBe(0b011); // buoc 3 khong co so: cho AI, server khong tu xac nhan
-  });
-  it("markByNumbers: phep tinh trung gian nam trong bieu thuc gop duoc ghi nhan khi muc sau co bang chung", () => {
-    const cp = (id: number, must: string[]) => ({ id, label: "", anchors: must, must });
-    const cps = [cp(0, ["20"]), cp(1, ["40"])];
-    expect(markByNumbers("(12 + 8) × 2 = 40", cps, 0)).toBe(0b11); // co phep 12 + 8 (= 20) va ket qua 40
-    expect(markByNumbers("12 + 8 nhân 2 = 40", cps, 0)).toBe(0b11);
-    expect(markByNumbers("(12 + 8) × 2", cps, 0)).toBe(0); // chua co ket qua nao: khong ghi nhan
-    expect(markByNumbers("(12 + 9) × 2 = 40", cps, 0)).toBe(0); // phep 12 + 9 = 21, khong phai 20
-    expect(markByNumbers("20", cps, 0)).toBe(0b01); // khong doi hanh vi cu
-  });
 });
 
 describe("chi dan tung buoc", () => {
   const base = parseProblems(SEED).ok.find((x) => x.id === "TC02")!;
-  const p = { ...base, statement: "Tìm x", data: {}, solution: { x: 4321 }, solution_steps: ["Tính 2x = 8642", "Vậy x = 4321"], step_goals: [] as string[], step_hints: [] as string[][] };
-  it("hasChecks chi khi ket qua chuan khop so buoc", () => {
-    const ck = (n: number) => Array.from({ length: n }, () => ({ result: "", accepts: [] as string[] }));
-    expect(hasChecks({ ...p, step_checks: [] })).toBe(false);
-    expect(hasChecks({ ...p, step_checks: ck(2) })).toBe(true);
-    expect(hasChecks({ ...p, step_checks: ck(1) })).toBe(false);
-  });
-  it("stepGoal: uu tien muc tieu, thieu thi goi y muc 1, lech thi rong", () => {
-    expect(stepGoal({ ...p, step_goals: ["Tìm 2x", "Tìm x"], step_hints: [["g1"], ["g2"]] }, 0)).toBe("Tìm 2x");
-    expect(stepGoal({ ...p, step_goals: [], step_hints: [["Nhìn vào vế trái"], ["g2"]] }, 0)).toBe("Nhìn vào vế trái");
-    expect(stepGoal({ ...p, step_goals: ["chỉ một"], step_hints: [] }, 0)).toBe("");
-    expect(stepGoal(p, 0)).toBe("");
-  });
-  it("stepGoal chan muc tieu lo dap an, cho nhac so hoc sinh da tim", () => {
-    const q = { ...p, step_goals: ["Tìm x, kết quả là 4321", "Dùng 8642 để tìm x"], step_hints: [["a"], ["b"]] };
-    expect(stepGoal(q, 0)).toBe("");
-    expect(stepGoal(q, 1)).toBe("");
-    expect(stepGoal(q, 1, [["8642"]])).toBe("Dùng 8642 để tìm x");
-  });
+  const p = { ...base, statement: "Tìm x", data: {}, solution: { x: 4321 }, solution_steps: ["Tính 2x = 8642", "Vậy x = 4321"] };
   it("leaksCalc: bat phep tinh ra thang ket qua bi mat, khong bat so cua de", () => {
     const q = { ...p, statement: "Cho 6 và 14", data: {}, solution: { x: 4 }, solution_steps: ["Cộng được 20", "Vậy x = 4"] };
     const sec = (r: string) => leaksCalc(r, q.solution, [q.data, q.statement], q.solution_steps);
@@ -340,16 +187,6 @@ describe("chi dan tung buoc", () => {
     expect(g).not.toMatch(/Bước d/);
     expect(g).toContain("nhiều bước");
     expect(g).toContain("cả lời giải");
-  });
-  it("stepCue luon co noi dung: thieu muc tieu thi lay loi giai da che so", () => {
-    expect(stepCue(p, 0)).toBe("Tính 2x = …");
-    expect(stepCue({ ...p, solution_steps: [] }, 0)).toBe("");
-    expect(stepCue({ ...p, step_goals: ["Tìm 2x", "Tìm x"], step_hints: [["a"], ["b"]] }, 0)).toBe("Tìm 2x");
-  });
-  it("stepLead: goi y muc 1 khac muc tieu, chan lo dap an", () => {
-    expect(stepLead({ ...p, step_goals: ["Tìm 2x", "Tìm x"], step_hints: [["Nhìn vế trái"], ["x = 4321"]] }, 0)).toBe("Nhìn vế trái");
-    expect(stepLead({ ...p, step_goals: ["Tìm 2x", "Tìm x"], step_hints: [["Nhìn vế trái"], ["x = 4321"]] }, 1)).toBe("");
-    expect(stepLead(p, 0)).toBe("");
   });
   it("hardProblems dem hoc sinh theo de, nhieu nhat truoc", () => {
     const probs = new Map([["A", { title: "ta" }], ["B", { title: "tb" }]]);
@@ -387,13 +224,6 @@ describe("nhat ky loi va hoat dong", () => {
 
 describe("sua chat luong tung buoc", () => {
   const tc05 = parseProblems(JSON.parse(readFileSync("de-mau-10.json", "utf8"))).ok.find((x) => x.id === "TC05")!;
-  it("buoc ket qua trung gian co must tu dau = cuoi", () => {
-    const cps = checkpoints(tc05);
-    expect(cps[1].must).toEqual(["53000000"]);
-    expect(cps[2].must).toEqual(["56180000"]);
-    expect(markByNumbers("50.000.000 × 1,06 = 53.000.000", cps, 1) & 2).toBe(2);
-    expect(markByNumbers("mình tính ra 54.000.000", cps, 1) & 2).toBe(0);
-  });
   it("he so nho chi la toan hang khong bi coi la lo dap an; ket qua van bi chan", () => {
     const g = [tc05.data, tc05.statement];
     expect(leaks("Hãy nhân số tiền gốc với $1,06$.", tc05.solution, g, tc05.solution_steps)).toBe(false);

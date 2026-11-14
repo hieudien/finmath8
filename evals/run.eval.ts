@@ -2,13 +2,11 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { it } from "vitest";
 import { streamText, type LlmCfg, type Usage } from "../lib/llm";
 import { PROVIDERS, TEMPERATURE } from "../lib/models";
-import { DEFAULT_PRICES, FALLBACK_PRICE, costUsd } from "../lib/pricing";
 import { parseProblems, type Problem } from "../lib/schema/problem";
 import { numsIn, stripStep } from "../lib/chat/progress";
 import { leaks, leaksCalc } from "../lib/chat/prompt";
 import { freeSystem, hasDerivation, reachedAnswer } from "../lib/chat/free";
 import { fillMissing } from "../lib/fill";
-import { hasChecks } from "../lib/chat/goals";
 
 // Đo AI thật theo từng cấu hình model. Kết quả in ra bảng và ghi evals/out/<thời gian>.json.
 // Biến môi trường: EVAL_IDS (mã đề, mặc định TC01,TC03,TC05), EVAL_REPEAT (mặc định 3), EVAL_ONLY (student|teacher).
@@ -31,10 +29,9 @@ const problems = IDS.map((id) => all.find((p) => p.id === id)!).filter(Boolean);
 
 const usage: Usage[] = [];
 const cfgOf = (model: string): LlmCfg => ({ provider: "gemini", key: KEY, model, temperature: TEMPERATURE, onUsage: (u) => usage.push(u) });
-const cost = (us: Usage[]) => us.reduce((s, u) => s + costUsd({ provider: u.provider, model: u.model, use: u.use ?? "", calls: 1, input: u.input, cached: u.cached, output: u.output, thoughts: u.thoughts }, DEFAULT_PRICES[u.model] ?? FALLBACK_PRICE), 0);
 const mark = () => usage.length;
 const since = (i: number) => usage.slice(i);
-const fmt = (us: Usage[]) => ({ calls: us.length, ms: Math.round(us.reduce((s, u) => s + (u.ms ?? 0), 0) / Math.max(1, us.length)), usd: +cost(us).toFixed(5) });
+const fmt = (us: Usage[]) => ({ calls: us.length, ms: Math.round(us.reduce((s, u) => s + (u.ms ?? 0), 0) / Math.max(1, us.length)) });
 
 // A. Chat nộp bài làm tự do: một lượt AI nhận xét bài làm học sinh nộp (kiểu gia sư). Thời gian là thời gian đến chữ đầu tiên và tổng.
 async function studentEval(c: (typeof CONFIGS)[number]) {
@@ -64,20 +61,20 @@ async function studentEval(c: (typeof CONFIGS)[number]) {
   return { rows, summary: { ...Object.fromEntries(Object.entries(by).map(([k, [a, n]]) => [k, `${a}/${n}`])), leak: `${rows.filter((r) => r.leak).length}/${rows.length}`, firstMs: avg("firstMs"), totalMs: avg("totalMs"), ...fmt(since(i0)) } };
 }
 
-// B. Phía giáo viên: bỏ đáp án, lời giải, chỉ dẫn rồi để AI nạp lại; so với đáp án thật.
+// B. Phía giáo viên: bỏ đáp án, lời giải rồi để AI nạp lại; so với đáp án thật.
 const near = (a: number, b: number) => Math.abs(a - b) <= Math.abs(b) * 0.005 + 1e-9;
 async function teacherEval(model: string) {
-  const rows: { id: string; ok: boolean; answer: boolean; guides: boolean; note: string }[] = [];
+  const rows: { id: string; ok: boolean; answer: boolean; note: string }[] = [];
   const i0 = mark();
   for (const p of problems) {
-    const bare: Problem = { ...p, solution: {}, solution_steps: [], step_goals: [], step_hints: [] };
+    const bare: Problem = { ...p, solution: {}, solution_steps: [] };
     const out = await fillMissing(cfgOf(model), bare).catch((e) => String(e).slice(0, 100));
-    if (typeof out === "string") { rows.push({ id: p.id, ok: false, answer: false, guides: false, note: out }); continue; }
+    if (typeof out === "string") { rows.push({ id: p.id, ok: false, answer: false, note: out }); continue; }
     const got = numsIn(JSON.stringify(out.solution)).map(Number);
     const miss = numsIn(JSON.stringify(p.solution)).map(Number).filter((n) => !got.some((g) => near(g, n)));
-    rows.push({ id: p.id, ok: true, answer: !miss.length, guides: hasChecks(out), note: miss.length ? "thiếu " + miss.join(",") : "" });
+    rows.push({ id: p.id, ok: true, answer: !miss.length, note: miss.length ? "thiếu " + miss.join(",") : "" });
   }
-  return { rows, summary: { answer: `${rows.filter((r) => r.answer).length}/${rows.length}`, guides: `${rows.filter((r) => r.guides).length}/${rows.length}`, ...fmt(since(i0)) } };
+  return { rows, summary: { answer: `${rows.filter((r) => r.answer).length}/${rows.length}`, ...fmt(since(i0)) } };
 }
 
 it("đo chất lượng AI theo cấu hình", async () => {

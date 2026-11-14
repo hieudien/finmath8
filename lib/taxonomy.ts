@@ -3,7 +3,6 @@ export const BRANCHES = { algebra: "Đại số", geometry: "Hình học", other
 export type Branch = keyof typeof BRANCHES;
 export const BRANCH_KEYS = Object.keys(BRANCHES) as Branch[];
 export const isBranch = (v: unknown): v is Branch => typeof v === "string" && v in BRANCHES;
-export const branchLabel = (b: Branch | undefined) => (b ? BRANCHES[b] : "Chưa phân loại");
 
 // Chương trình GDPT 2018, lớp 6-9. Lớp khác không có gợi ý (gõ tự do).
 const TOPICS: Record<number, Record<Branch, string[]>> = {

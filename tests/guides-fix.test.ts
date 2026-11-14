@@ -1,17 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
 
-vi.mock("../lib/llm", () => ({ askJson: vi.fn() }));
 vi.mock("../lib/errors", () => ({ reportError: vi.fn(async () => "REF") }));
 
-import { askJson } from "../lib/llm";
 import { lintProblem } from "../lib/lint";
 import { walk } from "../lib/latex-fix";
 import { problemSchema } from "../lib/schema/problem";
-import type { LlmCfg } from "../lib/llm";
 
 const BS = String.fromCharCode(92);
 const c = String.fromCharCode;
-const cfg = { provider: "gemini", key: "k", model: "m", temperature: 0 } as unknown as LlmCfg;
 const base = () => problemSchema.parse({
   id: "T", title: "t", grade: 9, statement: "Giải $2x = 8$", solution: { x: 4 }, solution_steps: ["Chia hai vế cho $2$.", "Vậy $x = 4$."],
   hints: [1, 2, 3].map((level) => ({ level, text: "g" })),

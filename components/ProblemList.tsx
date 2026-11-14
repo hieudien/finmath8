@@ -12,7 +12,7 @@ import { BRANCHES, type Branch } from "@/lib/taxonomy";
 // Dữ liệu đã tính ở server (readiness, missingInfo) để danh sách chỉ lo hiển thị, cuộn và tìm.
 export type ProblemItem = {
   id: string; code: string; title: string; grade: number; topic: string; branch?: Branch; version: number; updated: string;
-  unconfirmed: boolean; lint: string[]; needGuides: boolean; pending: boolean; missing: string[]; hay: string;
+  unconfirmed: boolean; lint: string[]; pending: boolean; missing: string[]; hay: string;
 };
 
 export function ProblemList({ items }: { items: ProblemItem[] }) {
@@ -37,10 +37,9 @@ export function ProblemList({ items }: { items: ProblemItem[] }) {
                 <p className="truncate text-sm text-text-muted">{r.topic} · v{r.version} · {r.updated}</p>
               </div>
               <ProblemActions id={r.id} />
-              {(r.needGuides || r.pending || r.lint.length > 0) && (
+              {(r.pending || r.lint.length > 0) && (
                 <div className="flex basis-full flex-wrap gap-1">
                   {r.lint.length > 0 && <Badge tone="warn"><span title={r.lint.join("\n")}>Cần xem lại ({r.lint.length})</span></Badge>}
-                  {r.needGuides && <Badge tone="warn">Cần chuẩn hóa lại</Badge>}
                   {r.pending && <Badge tone="warn">Chưa hoàn thiện</Badge>}
                 </div>
               )}

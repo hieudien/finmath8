@@ -6,7 +6,7 @@ const NL = code(10);
 const nlLatex = new RegExp(`${NL}(?=(eq|e |ot|eg|abla|mid|subset))`, "g"); // \neq, \ne, \not, \neg, \nabla, \nmid, \nsubset
 const nlEnd = new RegExp(`${NL}(?=end\\{)`, "g"); // \end{cases}: dấu \ bị nuốt cùng chữ e
 
-export const fixStr = (s: string) => {
+const fixStr = (s: string) => {
   const t = s.replace(/\t(?=[A-Za-z])/g, BS + "t").split(code(12)).join(BS + "f").split(code(8)).join(BS + "b").replace(/\r(?=[A-Za-z])/g, BS + "r").split(code(11)).join(BS + "v")
     .split(code(7)).join(BS + "a") // \alpha, \approx, \angle: dấu \ bị nuốt thành ký tự chuông
     .replace(nlLatex, BS + "n").replace(nlEnd, BS);

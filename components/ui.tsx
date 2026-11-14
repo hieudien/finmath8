@@ -165,7 +165,7 @@ let toasts: Toast[] = [];
 let tid = 0;
 const subs = new Set<() => void>();
 const emit = () => subs.forEach((f) => f());
-export function dismissToast(id: number) { toasts = toasts.filter((t) => t.id !== id); emit(); }
+function dismissToast(id: number) { toasts = toasts.filter((t) => t.id !== id); emit(); }
 export function toast(tone: keyof typeof TONE, text: string) {
   const id = ++tid;
   toasts = [...toasts.slice(-2), { id, tone, text }]; // tối đa 3 cái cùng lúc

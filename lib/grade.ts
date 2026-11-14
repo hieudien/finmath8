@@ -13,7 +13,7 @@ const BEFORE10 = /logarit|\\log\b|\\ln\b|vectơ|véc-?tơ|\\vec\b|\\overrightarr
 
 export function aboveGrade(p: Problem): string[] {
   if (p.grade >= 11) return [];
-  const text = [...p.solution_steps, ...p.step_goals, ...p.step_hints.flat(), ...p.hints.map((h) => h.text), ...p.common_errors].join("\n");
+  const text = [...p.solution_steps, ...p.hints.map((h) => h.text), ...p.common_errors].join("\n");
   const m = text.match(ABOVE) ?? (p.grade < 9 ? text.match(BEFORE9) : null) ?? (p.grade < 10 ? text.match(BEFORE10) : null);
   return m ? [`Lời giải hoặc chỉ dẫn dùng kiến thức vượt lớp ${p.grade} ("${m[0]}"). Bấm chuẩn hóa để AI viết lại đúng lớp.`] : [];
 }

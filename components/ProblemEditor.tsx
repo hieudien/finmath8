@@ -32,9 +32,7 @@ export default function ProblemEditor({ initial, newCode, rowId, inPanel = false
   const [imgSteps, setImgSteps] = useState<string[]>([]); // lời giải đọc từ ảnh: chỉ làm tham khảo cho bước AI giải
   const [errors, setErrors] = useState((p?.common_errors ?? []).join("\n"));
   const [hints, setHints] = useState([1, 2, 3].map((l) => p?.hints.find((h) => h.level === l)?.text ?? ""));
-  const [extension, setExtension] = useState(p?.extension ?? "");
-  const [built, setBuilt] = useState<Problem | null>(null); // đề AI vừa làm đạt chuẩn: giữ lời giải chi tiết và kết quả chuẩn để lưu cùng
-  const [objectives, setObjectives] = useState(p?.learning_objectives ?? []);
+  const [built, setBuilt] = useState<Problem | null>(null); // đề AI vừa làm đạt chuẩn: giữ lời giải chi tiết để lưu cùng
   const [ok, setOk] = useState(!!p?.answer_locked); // đề đang khóa: giữ khóa khi lưu, trừ khi sửa đáp án (tự bỏ tick)
   const [figure, setFigure] = useState<Figure | null>(p?.figure ?? null); // hình vẽ đã lưu ở bucket "figures" + mô tả cho AI
   const [offer, setOffer] = useState<FigureOffer | null>(null); // ảnh đề vừa đọc có hình: chờ giáo viên chỉnh khung cắt
@@ -57,7 +55,6 @@ export default function ProblemEditor({ initial, newCode, rowId, inPanel = false
     setBuilt(g); setLocked(false); fly?.markDirty(true); // AI điền lại thì đáp án chưa được xác nhận nữa
     setSkills(g.skills.join(", ")); setData(J(g.data)); setSolution(answersToLines(g.solution)); setSteps(g.solution_steps.join("\n"));
     setErrors(g.common_errors.join("\n")); setHints([1, 2, 3].map((l) => g.hints.find((h) => h.level === l)?.text ?? ""));
-    setExtension(g.extension); setObjectives(g.learning_objectives);
     if (!title.trim()) setTitle(g.title);
     if (!topic.trim()) setTopic(g.topic);
     if (!branch && g.branch) setBranch(g.branch);
@@ -137,11 +134,9 @@ export default function ProblemEditor({ initial, newCode, rowId, inPanel = false
     const s = ans.value;
     return {
       ...(built ?? p ?? {}), id, title: title.trim() || "Đề từ ảnh", grade: Number(grade), topic: topic.trim(), branch: isBranch(branch) ? branch : undefined, skills: skills.split(",").map((x) => x.trim()).filter(Boolean),
-      statement: (o.statement ?? statement).trim(), figure: figure ?? undefined, learning_objectives: objectives, data: d, solution: s, solution_steps: lines(steps), common_errors: lines(errors),
-      hints: hints.map((text, i) => ({ level: i + 1, text: text.trim() })), extension: extension.trim(), reviewed: true,
+      statement: (o.statement ?? statement).trim(), figure: figure ?? undefined, data: d, solution: s, solution_steps: lines(steps), common_errors: lines(errors),
+      hints: hints.map((text, i) => ({ level: i + 1, text: text.trim() })), reviewed: true,
       check_note: "", // giáo viên đã duyệt: bỏ cảnh báo kiểm chéo (bấm Kiểm tra đáp án để chạy lại)
-      // Sửa lời giải thì kết quả chuẩn và lỗi gắn theo số bước cũ không còn đúng: bỏ để AI tạo lại cùng chỉ dẫn.
-      ...(lines(steps).join("\n") !== (built ?? p)?.solution_steps.join("\n") && { step_checks: [], error_traps: [] }),
     };
   }
 
@@ -226,7 +221,6 @@ export default function ProblemEditor({ initial, newCode, rowId, inPanel = false
         <summary className="min-h-11 cursor-pointer py-2 font-medium">Nâng cao</summary>
         <div className="flex flex-col gap-4 pb-2">
           <TextArea label="Dữ kiện (JSON)" rows={3} value={data} onChange={(e) => setData(e.target.value)} className="font-mono text-sm" />
-          <MathTextArea label="Câu hỏi mở rộng" rows={2} value={extension} onChange={setExtension} />
         </div>
       </details>
 

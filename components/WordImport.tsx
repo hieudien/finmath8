@@ -6,7 +6,8 @@ import { ListSearch } from "@/components/ListSearch";
 import { matchText } from "@/lib/search";
 import { CHUNK, PAR } from "@/lib/batch";
 import { readDocx } from "@/lib/docx-read";
-import { answersToLines, linesToAnswers, type Fail, type ItemStatus, type ItemView } from "@/lib/import-batch";
+import { answersToLines } from "@/lib/answers";
+import { looseAnswers, type Fail, type ItemStatus, type ItemView } from "@/lib/import-batch";
 
 // Nạp đề hàng loạt từ tệp Word: 1) chọn tệp và lớp, 2) xem trước và sửa, 3) bấm dùng AI (lưu nháp từng lượt), 4) xem kết quả rồi xác nhận mới lưu vào danh sách đề.
 type Row = ItemView & { statement: string; answers: Record<string, unknown> };
@@ -92,7 +93,7 @@ export default function WordImport({ draft }: { draft: DraftBatch | null }) {
 
   async function start() {
     if (!pre) return;
-    const items = pre.filter((x) => x.statement.trim().length >= 15).map((x) => ({ statement: x.statement.trim(), answers: linesToAnswers(x.answers), steps: x.steps }));
+    const items = pre.filter((x) => x.statement.trim().length >= 15).map((x) => ({ statement: x.statement.trim(), answers: looseAnswers(x.answers), steps: x.steps }));
     if (!items.length) return toast("danger", "Chưa có đề nào đủ dài để tạo.");
     setBusy("Đang tạo đợt...");
     const { ok, data } = await post<{ id: string }>("/api/problems", { action: "batch_start", file_name: fileName, grade: Number(grade), sources: sourceN, read_errors: errs, items });
@@ -166,7 +167,7 @@ export default function WordImport({ draft }: { draft: DraftBatch | null }) {
 
   // ---- Xem trước ----
   if (pre && pre.length) {
-    const withAns = pre.filter((x) => Object.keys(linesToAnswers(x.answers)).length).length;
+    const withAns = pre.filter((x) => Object.keys(looseAnswers(x.answers)).length).length;
     return (
       <section aria-label="Xem trước" className="flex flex-col gap-3">
         <h3>Xem trước: {pre.length} đề từ {fileName}</h3>

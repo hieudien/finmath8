@@ -7,7 +7,7 @@ Chatbot **không đưa đáp án**. Nó nhận xét bài làm của học sinh (
 ## Cách hoạt động
 
 1. Giáo viên đăng ký, nhập API key của Google Gemini trong Cài đặt (key được mã hóa AES-256-GCM, không trả về trình duyệt).
-2. Giáo viên tạo đề: soạn trực tiếp, chụp ảnh đề hoặc tạo hàng loạt từ tệp Word (tab "Tạo đề hàng loạt"). AI điền đáp án, lời giải, gợi ý và câu chào đầu tiên; giáo viên kiểm tra rồi lưu. Giáo viên bấm "Chuẩn hóa đề" để AI viết lời giải chi tiết từng bước cơ bản nhất (mỗi bước một phép biến đổi hoặc tính toán nhỏ) cùng kết quả chuẩn từng bước để server chấm. Học sinh không thấy các bước này.
+2. Giáo viên tạo đề: soạn trực tiếp, chụp ảnh đề hoặc tạo hàng loạt từ tệp Word (tab "Tạo đề hàng loạt"). AI điền đáp án, lời giải, gợi ý và câu chào đầu tiên; giáo viên kiểm tra rồi lưu. Giáo viên bấm "Chuẩn hóa đề" để AI viết lời giải chi tiết từng bước cơ bản nhất (mỗi bước một phép biến đổi hoặc tính toán nhỏ). Học sinh không thấy các bước này.
 3. Giáo viên chọn một hoặc nhiều đề (đề cần có lời giải chi tiết, thiếu thì học sinh chưa làm được), tạo liên kết công khai và gửi cho học sinh.
 4. Học sinh mở liên kết, nhập họ tên và lớp (không nhớ, mở lại là nhập lại), chọn đề, làm bài theo kiểu đã chọn, tự đánh giá mức hiểu bài và mức hài lòng cuối bài.
 5. Hệ thống chấm theo 4 tiêu chí (hiểu đề bài, lập kế hoạch giải, thực hiện kế hoạch, kiểm tra và đánh giá). Giáo viên xem thống kê theo liên kết, hồ sơ từng học sinh và nội dung hội thoại.
@@ -21,7 +21,7 @@ Chatbot **không đưa đáp án**. Nó nhận xét bài làm của học sinh (
 - Đề do AI tạo có cờ `reviewed = false`: phải mở đề, tick xác nhận đáp án đúng rồi lưu mới được đưa vào liên kết.
 - AI tạo lời giải chi tiết từng bước cơ bản và kiểm tra lời giải khớp đáp án.
 - Cách làm bài duy nhất là chat nhận xét bài làm: học sinh viết một bước, nhiều bước hoặc cả bài mỗi lần nộp; giao diện không có yêu cầu hay gợi ý theo bước. Đề thiếu lời giải chi tiết thì API trả lỗi "Bài này chưa sẵn sàng". Phiên cũ kiểu Chat hoặc Trắc nghiệm vẫn xem được trong lịch sử.
-- Chuẩn hóa đề chỉ tạo lời giải chi tiết (`solution_steps`), kết quả chuẩn từng bước (`step_checks`) và sai lầm gắn bước (`error_traps`); không còn việc cần làm, gợi ý, câu hỏi con, ví dụ theo bước (các trường `step_goals`, `step_hints`, `step_subs`, `step_analog`, `step_formats`, `step_examples` chỉ còn để đọc đề cũ). Nhận xét và gợi ý do AI viết lúc chạy, chỉ dựa trên đề đã chuẩn hóa. Nút "Chuẩn hóa đề" ở trang từng đề, "Chuẩn hóa N đề" ở danh sách đề.
+- Chuẩn hóa đề chỉ tạo lại dữ kiện, đáp án (có bỏ phiếu), kỹ năng, sai lầm thường gặp, 3 mức gợi ý và lời giải chi tiết (`solution_steps`); không còn kết quả chuẩn từng bước, sai lầm gắn bước, mục tiêu, câu mở rộng. Nhận xét và gợi ý do AI viết lúc chạy, chỉ dựa trên đề đã chuẩn hóa. Nút "Chuẩn hóa đề" ở trang từng đề, "Chuẩn hóa N đề" ở danh sách đề.
 - Liên kết công khai: bật/tắt, hạn dùng, nhãn nhóm (trước, sau, thực nghiệm, đối chứng).
 - Trang **Học sinh**: gom theo tên và lớp; điểm trung bình 4 tiêu chí, kỹ năng cần củng cố, lỗi hay mắc, kiến thức nền còn thiếu (khi được giải hộ), danh sách bài đã làm (kể cả bài bỏ dở) và nút **AI phân tích và đề xuất cải thiện**. Mở từng phiên (ở Thống kê hoặc hồ sơ học sinh) có nút **AI phân tích phiên này**: nhận xét điểm tốt, điểm yếu và việc nên làm, lưu lại để xem lại.
 - Thống kê theo liên kết: số phiên, tỉ lệ hoàn thành, điểm, mức gợi ý, thời gian, so sánh giữa các nhóm, xem hội thoại từng phiên.- Bước học sinh hay gặp khó (bấm Gợi ý, hỏi, làm sai, được giải hộ; cột `chat_sessions.struggled`): hiện ở Thống kê (cả lớp), hồ sơ học sinh, dòng "Hay vướng" ở danh sách Học sinh; AI đề xuất cải thiện có thêm "Ôn tập theo bước".
@@ -71,8 +71,6 @@ lib/
   schema/problem.ts         schema Zod của đề
   students.ts               hồ sơ học sinh
   llm.ts, models.ts         gọi AI (kể cả ảnh), danh sách model, tự đổi model
-  step-all.ts               AI viết kết quả chuẩn và sai lầm theo bước lúc chuẩn hóa (học sinh không thấy)
-  step-guides.ts            hàm dùng chung của việc viết kết quả chuẩn và sai lầm theo bước
   import-batch.ts           đợt nạp đề hàng loạt từ tệp Word (bản nháp, xác nhận, lịch sử)
   batch.ts                  chạy hàng loạt theo lượt: tách đề thô, mã đề mới, song song có hạn giờ
   pii.ts, crypto.ts, log.ts lọc thông tin cá nhân, mã hóa key, nhật ký
@@ -110,7 +108,7 @@ Chạy các file trong `supabase/migrations/` theo thứ tự số (`001_init.sq
 
 ## Triển khai
 
-Triển khai trên Vercel, khai báo các biến môi trường ở trên. Bản kế hoạch ban đầu nằm ở [PLAN.md](PLAN.md).
+Triển khai trên Vercel, khai báo các biến môi trường ở trên.
 
 ## Quyền riêng tư và dữ liệu
 

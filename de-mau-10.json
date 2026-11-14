@@ -5,11 +5,6 @@
     "grade": 8,
     "topic": "Mua sắm thông minh",
     "statement": "An có 300.000 đồng để mua vở (giá niêm yết 10.000 đồng/quyển). Cửa hàng A giảm 15% mỗi quyển, phí giao hàng 20.000 đồng. Cửa hàng B giảm 10% mỗi quyển, miễn phí giao hàng. An mua số vở trị giá 300.000 đồng theo giá niêm yết thì nên mua ở cửa hàng nào để tiết kiệm nhất? Giải thích.",
-    "learning_objectives": [
-      "Xác định đại lượng so sánh",
-      "Tính toán tỷ lệ phần trăm",
-      "Đánh giá và giải thích kết quả"
-    ],
     "data": {
       "budget": 300000,
       "price": 10000,
@@ -41,13 +36,6 @@
         "text": "Tính tiền giảm giá ở A (15% của 300.000), lấy 300.000 trừ đi, rồi cộng phí giao hàng. Em ra bao nhiêu?"
       }
     ],
-    "extension": "Nếu An chỉ mua 20 quyển vở (giá niêm yết 200.000 đồng) thì lựa chọn nào tốt hơn? Vì sao?",
-    "rubric": {
-      "identify": 3,
-      "plan": 3,
-      "calculate": 3,
-      "explain": 3
-    },
     "solution_steps": [
       "Số vở cần mua có giá niêm yết 300.000 đồng.",
       "Cửa hàng A giảm 15% nên chỉ trả 85%: 300.000 × 0,85 = 255.000 đồng. Cộng phí giao hàng 20.000 đồng: 255.000 + 20.000 = 275.000 đồng.",
@@ -62,11 +50,6 @@
     "grade": 8,
     "topic": "Kế hoạch chi tiêu",
     "statement": "Minh muốn mua một bộ dụng cụ vẽ giá 480.000 đồng. Hiện Minh có 120.000 đồng và mỗi tuần để dành thêm 40.000 đồng. Sau bao nhiêu tuần Minh đủ tiền mua? Hãy lập phương trình để giải.",
-    "learning_objectives": [
-      "Lập biểu thức tính số tiền tiết kiệm theo số tuần",
-      "Giải phương trình bậc nhất một ẩn",
-      "Kiểm tra nghiệm theo ngữ cảnh"
-    ],
     "data": {
       "target": 480000,
       "saved": 120000,
@@ -95,13 +78,6 @@
         "text": "Số tiền sau x tuần là 120.000 cộng với 40.000 nhân x. Em lập phương trình và chuyển vế xem."
       }
     ],
-    "extension": "Nếu Minh tiết kiệm mỗi tuần 60.000 đồng thì mua sớm hơn mấy tuần?",
-    "rubric": {
-      "identify": 3,
-      "plan": 3,
-      "calculate": 3,
-      "explain": 3
-    },
     "solution_steps": [
       "Gọi x là số tuần Minh tiết kiệm. Sau x tuần Minh có 120.000 + 40.000x đồng.",
       "Minh đủ tiền khi số tiền đó bằng giá bộ dụng cụ: 120.000 + 40.000x = 480.000.",
@@ -116,11 +92,6 @@
     "grade": 8,
     "topic": "Mua hàng khuyến mãi",
     "statement": "Chiếc áo giá niêm yết 400.000 đồng. Cửa hàng có hai khuyến mãi (chỉ chọn một): KM1 giảm 20% giá niêm yết. KM2 giảm 50.000 đồng, sau đó giảm thêm 10% trên số tiền còn lại. Em chọn khuyến mãi nào để trả ít tiền hơn, và ít hơn bao nhiêu?",
-    "learning_objectives": [
-      "Tính tiền sau giảm giá nhiều lần",
-      "So sánh hai phương án",
-      "Giải thích lựa chọn bằng số liệu"
-    ],
     "data": {
       "price": 400000,
       "km1_percent": 0.2,
@@ -152,13 +123,6 @@
         "text": "Với KM2: lấy 400.000 trừ 50.000 trước, rồi mới tính 90% của số vừa ra. Em tính thử."
       }
     ],
-    "extension": "Giá niêm yết là bao nhiêu thì hai khuyến mãi cho số tiền phải trả bằng nhau?",
-    "rubric": {
-      "identify": 3,
-      "plan": 3,
-      "calculate": 3,
-      "explain": 3
-    },
     "solution_steps": [
       "KM1: giảm 20% nên trả 80%: 400.000 × 0,8 = 320.000 đồng.",
       "KM2: giảm 50.000 đồng trước: 400.000 − 50.000 = 350.000 đồng. Giảm thêm 10% trên số còn lại: 350.000 × 0,9 = 315.000 đồng.",
@@ -172,11 +136,6 @@
     "grade": 8,
     "topic": "Dịch vụ, gói cước",
     "statement": "Gói A: 60.000 đồng/tháng gồm 5 GB, mỗi GB vượt thêm 10.000 đồng. Gói B: 90.000 đồng/tháng gồm 12 GB. Tháng này Lan dùng 9 GB. Gói nào rẻ hơn? Với bao nhiêu GB thì hai gói tốn bằng nhau (trong khoảng từ 5 đến 12 GB)?",
-    "learning_objectives": [
-      "Lập biểu thức chi phí theo mức sử dụng",
-      "Giải phương trình để tìm điểm hòa vốn",
-      "So sánh hai gói dịch vụ"
-    ],
     "data": {
       "A_fee": 60000,
       "A_included_gb": 5,
@@ -210,13 +169,6 @@
         "text": "Số GB vượt của gói A là 9 trừ 5. Nhân số đó với 10.000 rồi cộng 60.000. Em ra bao nhiêu?"
       }
     ],
-    "extension": "Nếu Lan dùng 6 GB thì gói nào rẻ hơn? Vì sao kết quả đổi so với 9 GB?",
-    "rubric": {
-      "identify": 3,
-      "plan": 3,
-      "calculate": 3,
-      "explain": 3
-    },
     "solution_steps": [
       "Gói A: Lan dùng 9 GB, vượt 9 − 5 = 4 GB. Tiền vượt: 4 × 10.000 = 40.000 đồng. Tổng: 60.000 + 40.000 = 100.000 đồng.",
       "Gói B: 9 GB không vượt 12 GB nên chỉ trả 90.000 đồng.",
@@ -231,11 +183,6 @@
     "grade": 8,
     "topic": "Tài chính cá nhân",
     "statement": "Bình có 50.000.000 đồng gửi 2 năm. Ngân hàng X trả lãi đơn 6%/năm (lãi mỗi năm tính trên số tiền gốc). Ngân hàng Y trả lãi kép 6%/năm (lãi năm đầu được cộng vào gốc để tính lãi năm sau). Sau 2 năm, Bình nhận được bao nhiêu tiền ở mỗi ngân hàng? Nên gửi ở đâu?",
-    "learning_objectives": [
-      "Phân biệt lãi đơn và lãi kép",
-      "Tính phần trăm liên tiếp",
-      "So sánh và rút ra kết luận"
-    ],
     "data": {
       "principal": 50000000,
       "rate": 0.06,
@@ -266,13 +213,6 @@
         "text": "Ở Y, sau năm thứ nhất em có gốc nhân 106%. Năm thứ hai lại nhân 106% số vừa tính. Em tính thử."
       }
     ],
-    "extension": "Nếu gửi 3 năm thì chênh lệch giữa hai ngân hàng tăng hay giảm? Vì sao?",
-    "rubric": {
-      "identify": 3,
-      "plan": 3,
-      "calculate": 3,
-      "explain": 3
-    },
     "solution_steps": [
       "Ngân hàng X (lãi đơn): lãi mỗi năm là 50.000.000 × 6% = 3.000.000 đồng. Hai năm lãi 6.000.000 đồng. Tổng nhận: 50.000.000 + 6.000.000 = 56.000.000 đồng.",
       "Ngân hàng Y (lãi kép), năm 1: 50.000.000 × 1,06 = 53.000.000 đồng.",
@@ -287,11 +227,6 @@
     "grade": 8,
     "topic": "Tín dụng mua sắm",
     "statement": "Chiếc xe đạp giá 3.000.000 đồng. Cửa hàng cho trả góp: trả trước 20% giá xe, phần còn lại vay trong 6 tháng với lãi đơn 1%/tháng tính trên số tiền vay, trả đều mỗi tháng. Tổng số tiền phải trả là bao nhiêu? Mỗi tháng trả bao nhiêu? Trả góp đắt hơn trả tiền mặt bao nhiêu?",
-    "learning_objectives": [
-      "Tính phần trăm của một số",
-      "Tính lãi đơn theo tháng",
-      "So sánh tổng chi phí vay với trả tiền mặt"
-    ],
     "data": {
       "price": 3000000,
       "down_percent": 0.2,
@@ -325,13 +260,6 @@
         "text": "Số tiền vay là 3.000.000 trừ khoản trả trước. Lãi là số tiền vay nhân 1% nhân 6. Em tính thử."
       }
     ],
-    "extension": "Nếu trả trước 40% thì tổng lãi giảm bao nhiêu?",
-    "rubric": {
-      "identify": 3,
-      "plan": 3,
-      "calculate": 3,
-      "explain": 3
-    },
     "solution_steps": [
       "Tiền trả trước: 3.000.000 × 20% = 600.000 đồng.",
       "Số tiền vay: 3.000.000 − 600.000 = 2.400.000 đồng.",
@@ -347,11 +275,6 @@
     "grade": 8,
     "topic": "Quản lý chi tiêu",
     "statement": "Một tuần học 5 ngày, em có 350.000 đồng cho ăn trưa và nước uống. Tiền nước uống cả tuần là 30.000 đồng. Ba ngày đầu em ăn hết 70.000 đồng mỗi ngày. Hai ngày còn lại, mỗi ngày em được chi tối đa bao nhiêu để không vượt ngân sách (giả sử hai ngày chi bằng nhau)?",
-    "learning_objectives": [
-      "Lập biểu thức chi tiêu",
-      "Giải phương trình bậc nhất",
-      "So sánh chi phí thực tế với dự tính"
-    ],
     "data": {
       "budget": 350000,
       "drinks": 30000,
@@ -383,13 +306,6 @@
         "text": "Tổng chi gồm: 3 lần 70.000, cộng 2 lần x, cộng 30.000 tiền nước. Cho tổng đó bằng 350.000 rồi giải."
       }
     ],
-    "extension": "Nếu em muốn dư lại ít nhất 20.000 đồng thì mỗi ngày trong hai ngày còn lại tối đa bao nhiêu?",
-    "rubric": {
-      "identify": 3,
-      "plan": 3,
-      "calculate": 3,
-      "explain": 3
-    },
     "solution_steps": [
       "Gọi x là số tiền chi mỗi ngày trong hai ngày còn lại.",
       "Tổng chi bằng ngân sách: 3 × 70.000 + 2x + 30.000 = 350.000.",
@@ -404,11 +320,6 @@
     "grade": 8,
     "topic": "Đầu tư tài chính",
     "statement": "Hùng mua 100 cổ phiếu, giá 25.000 đồng/cổ phiếu. Sau 1 tháng giá lên 27.000 đồng/cổ phiếu và Hùng bán hết. Phí bán là 0,2% giá trị bán. Hùng lãi ròng bao nhiêu tiền, tỉ suất sinh lời là bao nhiêu phần trăm (làm tròn 2 chữ số thập phân)? Nếu gửi cùng số vốn vào ngân hàng lãi 0,5%/tháng thì được lãi bao nhiêu? Em nhận xét gì về hai cách?",
-    "learning_objectives": [
-      "Tính giá trị mua, bán và phí",
-      "Tính tỉ suất sinh lời",
-      "Đánh giá lợi nhuận và rủi ro"
-    ],
     "data": {
       "shares": 100,
       "buy_price": 25000,
@@ -443,13 +354,6 @@
         "text": "Tỉ suất sinh lời bằng lãi ròng chia cho vốn bỏ ra, rồi nhân 100%. Em lấy lãi ròng đã tính chia cho vốn xem."
       }
     ],
-    "extension": "Nếu giá giảm xuống 24.000 đồng/cổ phiếu thì Hùng lỗ bao nhiêu? Vì sao cổ phiếu có rủi ro hơn gửi tiết kiệm?",
-    "rubric": {
-      "identify": 3,
-      "plan": 3,
-      "calculate": 3,
-      "explain": 3
-    },
     "solution_steps": [
       "Vốn bỏ ra: 100 × 25.000 = 2.500.000 đồng.",
       "Tiền bán: 100 × 27.000 = 2.700.000 đồng. Phí bán 0,2%: 2.700.000 × 0,002 = 5.400 đồng.",
@@ -465,11 +369,6 @@
     "grade": 8,
     "topic": "Mua sắm thông minh",
     "statement": "Tai nghe có giá chưa VAT là 500.000 đồng, VAT 8%. Cửa hàng A giảm 10% giá chưa VAT, sau đó mới cộng VAT. Cửa hàng B tính VAT trước rồi giảm thẳng 50.000 đồng. Em mua ở cửa hàng nào rẻ hơn và rẻ hơn bao nhiêu?",
-    "learning_objectives": [
-      "Tính phần trăm liên tiếp (giảm giá, VAT)",
-      "Phân biệt thứ tự các phép tính phần trăm",
-      "So sánh và kết luận"
-    ],
     "data": {
       "price_before_vat": 500000,
       "vat": 0.08,
@@ -501,13 +400,6 @@
         "text": "Ở A: lấy 500.000 nhân 90%, rồi nhân tiếp 108%. Em tính thử."
       }
     ],
-    "extension": "Nếu cửa hàng B giảm thẳng 60.000 đồng thì chọn cửa hàng nào?",
-    "rubric": {
-      "identify": 3,
-      "plan": 3,
-      "calculate": 3,
-      "explain": 3
-    },
     "solution_steps": [
       "Cửa hàng A: giảm 10% giá chưa VAT: 500.000 × 0,9 = 450.000 đồng. Cộng VAT 8%: 450.000 × 1,08 = 486.000 đồng.",
       "Cửa hàng B: tính VAT trước: 500.000 × 1,08 = 540.000 đồng. Trừ 50.000 đồng: 540.000 − 50.000 = 490.000 đồng.",
@@ -521,11 +413,6 @@
     "grade": 8,
     "topic": "Quản lý chi tiêu",
     "statement": "Một nhóm bạn đi tham quan. Mỗi bạn trả tiền vé 40.000 đồng. Tiền thuê xe chung là 240.000 đồng, chia đều cho các bạn. Biết mỗi bạn phải trả tổng cộng 52.000 đồng. Nhóm có bao nhiêu bạn?",
-    "learning_objectives": [
-      "Lập phương trình từ bài toán chia đều",
-      "Giải phương trình bậc nhất một ẩn",
-      "Kiểm tra nghiệm theo ngữ cảnh"
-    ],
     "data": {
       "ticket": 40000,
       "bus": 240000,
@@ -554,13 +441,6 @@
         "text": "Tổng cả nhóm là 40.000 nhân x cộng 240.000. Mặt khác là 52.000 nhân x. Cho hai biểu thức bằng nhau rồi giải."
       }
     ],
-    "extension": "Nếu có thêm 5 bạn tham gia thì mỗi bạn trả bao nhiêu?",
-    "rubric": {
-      "identify": 3,
-      "plan": 3,
-      "calculate": 3,
-      "explain": 3
-    },
     "solution_steps": [
       "Gọi x là số bạn trong nhóm.",
       "Tổng số tiền cả nhóm trả: tiền vé 40.000x cộng tiền xe 240.000, tức 40.000x + 240.000. Mặt khác, mỗi bạn trả 52.000 nên cả nhóm trả 52.000x.",

@@ -12,7 +12,7 @@ export type ReadInput = { image?: { mime: string; b64: string }; text?: string }
 
 const BS = String.fromCharCode(92);
 
-export const MULTI_PROMPT = (src: "ảnh" | "văn bản") => `Đây là ${src} chứa MỘT HOẶC NHIỀU đề Toán. Mỗi đề là một bài toán độc lập. Đọc, tách từng đề và PHÂN LOẠI nội dung, chép NGUYÊN VĂN, không tự giải${src === "ảnh" ? ", bỏ qua hình vẽ" : ""}.
+const MULTI_PROMPT = (src: "ảnh" | "văn bản") => `Đây là ${src} chứa MỘT HOẶC NHIỀU đề Toán. Mỗi đề là một bài toán độc lập. Đọc, tách từng đề và PHÂN LOẠI nội dung, chép NGUYÊN VĂN, không tự giải${src === "ảnh" ? ", bỏ qua hình vẽ" : ""}.
 Chỉ trả văn bản đúng theo khung thẻ sau, mỗi đề một thẻ <bai>, theo thứ tự xuất hiện, không viết gì ngoài các thẻ, không dùng JSON, không dùng khối mã:
 <bai>
 <de>

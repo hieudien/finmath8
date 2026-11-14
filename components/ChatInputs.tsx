@@ -20,7 +20,7 @@ const BOX = "min-h-11 flex-1 resize-y rounded-sm border bg-surface px-3 py-2 tex
 const SM = "max-sm:min-h-8! max-sm:px-2.5! max-sm:text-xs!";
 const Preview = ({ text }: { text: string }) => text.includes("$") ? <div className="rounded-sm border border-border bg-primary-soft px-3 py-2 text-sm"><span className="block text-xs text-text-muted">Xem trước</span><MathText text={text} /></div> : null;
 
-export const STEP_MAX = 500; // khớp giới hạn của route /api/chat
+const STEP_MAX = 500; // khớp giới hạn của route /api/chat
 const ASK_MAX = 200;
 
 // Nhắc nhẹ khi gõ nhầm ô: vẫn cho gửi, chỉ gợi ý chuyển (nội dung đã gõ được giữ nguyên).
